@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#fbfbf9" />
+  <!-- A régua de tinta: mesmo traço que marca cada registro no sistema. -->
+  <rect x="6" y="4" width="4" height="24" fill="#16265c" />
+  <rect x="14" y="9" width="12" height="2.5" fill="#33332f" />
+  <rect x="14" y="15" width="12" height="2.5" fill="#33332f" />
+  <rect x="14" y="21" width="7" height="2.5" fill="#33332f" />
+</svg>

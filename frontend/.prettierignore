@@ -1,0 +1,7 @@
+.svelte-kit/
+build/
+node_modules/
+package-lock.json
+# Gerados a partir do OpenAPI do backend — não editar nem formatar.
+src/lib/api/schema.d.ts
+src/lib/api/openapi.json

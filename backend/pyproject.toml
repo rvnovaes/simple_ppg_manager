@@ -1,0 +1,67 @@
+[project]
+name = "ppgd-backend"
+version = "0.1.0"
+description = "PPGD Manager — backend Django + Ninja"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "django>=5.2,<6.0",
+    "django-ninja>=1.3",
+    # EmailStr dos schemas depende do validador de e-mail do Pydantic.
+    "pydantic[email]>=2.9",
+    "psycopg[binary]>=3.2",
+    "gunicorn>=23.0",
+    "dj-database-url>=2.2",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "django-stubs[compatible-mypy]>=5.1",
+]
+
+# ---------------------------------------------------------------------------
+# Ferramentas: uma configuração só, neste arquivo (Seção 2 do CLAUDE.md).
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ", "N", "C4", "SIM"]
+ignore = [
+    # Django exige __str__ opcional; DJ012 briga com a ordem que usamos.
+    "DJ012",
+    # N818 pede sufixo "Error" em toda exceção. O CLAUDE.md (Seção 3) nomeia
+    # InvalidStateTransition sem sufixo e o guia vence o lint.
+    "N818",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.14"
+plugins = ["mypy_django_plugin.main"]
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["*.migrations.*"]
+ignore_errors = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.dev"
+python_files = ["test_*.py"]
+testpaths = ["apps"]
+addopts = "-q --reuse-db"
