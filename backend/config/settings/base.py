@@ -79,7 +79,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": dj_database_url.parse(
-        os.getenv("DATABASE_URL", "postgres://ppgd:ppgd@localhost:5432/ppgd"),
+        os.getenv("DATABASE_URL", "postgres://ppg:ppg@localhost:5433/ppg"),
         conn_max_age=600,
     )
 }

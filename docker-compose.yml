@@ -14,9 +14,9 @@ services:
     # recriar o volume e restaurar — nunca só trocar a tag.
     image: postgres:17.5-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ppgd}
-      POSTGRES_USER: ${POSTGRES_USER:-ppgd}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ppgd}
+      POSTGRES_DB: ${POSTGRES_DB:-ppg}
+      POSTGRES_USER: ${POSTGRES_USER:-ppg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ppg}
     ports:
       # Exposto no host para permitir `make run` (Django nativo, sem container).
       # 5433 por padrão: a 5432 desta máquina já é de outro projeto.
@@ -24,7 +24,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ppgd} -d ${POSTGRES_DB:-ppgd}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ppg} -d ${POSTGRES_DB:-ppg}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -39,7 +39,7 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8080}
       # Dentro da rede do compose o banco atende em "db".
-      DATABASE_URL: postgres://${POSTGRES_USER:-ppgd}:${POSTGRES_PASSWORD:-ppgd}@db:5432/${POSTGRES_DB:-ppgd}
+      DATABASE_URL: postgres://${POSTGRES_USER:-ppg}:${POSTGRES_PASSWORD:-ppg}@db:5432/${POSTGRES_DB:-ppg}
     volumes:
       - ./backend:/app
     depends_on:
