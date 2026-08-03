@@ -20,7 +20,11 @@ services:
     ports:
       # Exposto no host para permitir `make run` (Django nativo, sem container).
       # 5433 por padrão: a 5432 desta máquina já é de outro projeto.
-      - "${DB_HOST_PORT:-5433}:5432"
+      #
+      # DB_PORT vem antes porque é o nome que o chef-helena-dev escreve no .env da
+      # worktree ao subir uma stack efêmera; DB_HOST_PORT é o nome deste projeto e
+      # continua valendo para o `make up` de todo dia.
+      - "${DB_PORT:-${DB_HOST_PORT:-5433}}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -37,7 +41,9 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-inseguro-nao-usar-em-producao}
       DEBUG: ${DEBUG:-True}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
-      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8080}
+      # O default acompanha NGINX_PORT: numa stack efêmera o .env da worktree não traz
+      # CSRF_TRUSTED_ORIGINS, e um valor fixo apontaria para a porta de outra stack.
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:${NGINX_PORT:-8080}}
       # Dentro da rede do compose o banco atende em "db".
       DATABASE_URL: postgres://${POSTGRES_USER:-ppg}:${POSTGRES_PASSWORD:-ppg}@db:5432/${POSTGRES_DB:-ppg}
     volumes:
@@ -50,7 +56,10 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "8080:80"
+      # Porta cravada colide: duas stacks deste projeto no mesmo host disputam a 8080.
+      # NGINX_PORT é o nome que o chef-helena-dev escreve no .env da worktree; sem ele
+      # o valor de sempre continua valendo.
+      - "${NGINX_PORT:-8080}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/proxy_headers.conf:/etc/nginx/proxy_headers.conf:ro
