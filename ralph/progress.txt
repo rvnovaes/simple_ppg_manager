@@ -505,3 +505,41 @@ Started: qua. 05 ago 2026 16:58:54 -03
   - `eslint-plugin-svelte` aceita `Record<number, T>` em `$derived.by`; `new Map()` continua
     proibido (mesma pegadinha da US-014).
 ---
+
+## 2026-08-05 - US-016
+- Tela Svelte "Alunos" (`/alunos`): lista com filtros de modalidade, situação, nível e
+  período letivo (filtragem em memória); colunas de modalidade e situação separadas, nunca
+  um rótulo combinado.
+- Formulário governado pela modalidade, que é a primeira decisão da tela: REGULAR mostra
+  nível, projeto, orientador, ingresso, prazo e defesa; ISOLADA/ELETIVA mostram só o
+  período letivo. Na edição a modalidade fica travada (o PATCH não a aceita).
+- Prazo pré-preenchido com ingresso + 2 (mestrado) ou 4 anos (doutorado), recalculado ao
+  mudar nível/ingresso e congelado assim que alguém digita; na edição já entra congelado.
+- Busca por e-mail antes de criar (`GET /people/?email=`), com reaproveitamento da Person
+  via `person_id` — caminho de quem volta a cursar isolada em outro semestre.
+- "Definir senha inicial" só com `accounts.change_user` e enquanto
+  `person.needs_initial_password`. Coordenação (só `academic.view_student`) vê tudo em
+  leitura.
+- Nav do `(app)/+layout.svelte` ganhou o link "Alunos".
+- Sem mudança de backend: `openapi.json`/`schema.d.ts` já cobriam os endpoints da US-013.
+- `make ready` verde: ruff, prettier/eslint, mypy 71 arquivos, svelte-check 177 arquivos
+  0 erros, 181 testes.
+- Arquivos: `frontend/src/routes/(app)/alunos/+page.svelte` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`.
+- **Learnings for future iterations:**
+  - `eslint-plugin-svelte` também proíbe `new Date()` dentro de componente
+    (`svelte/prefer-svelte-reactivity`, "Use SvelteDate instead") — vale mesmo para um Date
+    local e descartável dentro de função pura. Aritmética de data em `YYYY-MM-DD` se faz
+    com string + `padStart`, sem instanciar Date (mesma família da pegadinha do `new Map()`).
+  - O PATCH usa `exclude_unset=True, exclude_none=True`: mandar `campo: null` não limpa
+    campo nenhum, ele é descartado. Serve para a tela mandar o payload inteiro sem
+    quebrar a coerência de modalidade, mas significa que hoje NÃO existe caminho de API
+    para apagar `defense_date`/`deadline` já gravados.
+  - `Student.person` é FK e não OneToOne (ADR-007 dec. 2): a mesma Person pode ter vários
+    Student no mesmo programa (verificado — duas isoladas, 2026/1 e 2026/2).
+  - Verificação no navegador segue bloqueada no loop autônomo (`permission-blocked: wait
+    for the user to click Allow`); o binário `browser-use` também não está no PATH do
+    shell, só o MCP. Caminho de dados conferido por HTTP no nginx :8080: POST regular com
+    prazo calculado pela tela, POST isolada, POST isolada reaproveitando `person_id`,
+    PATCH de trancamento, set-initial-password e `permissions` da coordenação.
+---

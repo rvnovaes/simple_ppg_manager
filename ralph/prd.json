@@ -294,7 +294,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Único caso do projeto em que esconder campo por regra de UI é correto, porque a regra existe como CheckConstraint no banco (US-005)."
     }
   ]
