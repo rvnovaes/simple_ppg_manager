@@ -96,3 +96,21 @@ Started: qua. 05 ago 2026 19:02:47 -03
   - Ninja valida o corpo ANTES de entrar na view, então teste de 403 por falta de permissão precisa de payload sintaticamente válido; com `items: []` a resposta é 422 e o teste não prova nada.
   - `EnrollmentAdjustmentRequestOut.resolve_items` devolve `list(obj.items.all())`; a US-007 (listagem) deve `prefetch_related("items__discipline")`, senão são 2 consultas por solicitação.
   - A US-006 já tem `_aluno_da_sessao` como molde para o `_orientador_da_sessao`: mesma forma (Person ativa do user + escopo de programa), com `NotAllowed` para docente que não é o advisor.
+---
+
+## 2026-08-05 - US-006
+- `POST /api/v1/academic/enrollment-requests/{id}/approve` e `.../reject` em `apps/academic/router.py`: `require_perm("academic.change_enrollmentadjustmentrequest")` na 1ª linha de ambas, `current_program(request)` na 2ª, decisão pelo método do model, `save(update_fields=["status", "decision_note", "decided_at"])` e `audit.record` dentro de um só `transaction.atomic()`.
+- `_solicitacao_para_decidir()` é o `_orientador_da_sessao` previsto na US-005, mas invertido: em vez de resolver o Teacher da sessão, checa `Teacher.objects.for_program(program).filter(pk=solicitacao.student.advisor_id, person__in=pessoas).exists()`. Uma consulta só, e aluno sem orientador (`advisor_id` nulo) cai no mesmo 403 sem caso especial.
+- Schemas `EnrollmentAdjustmentApproveIn` (`note: str = ""`) e `EnrollmentAdjustmentRejectIn` (`note: str`, obrigatório). Nota só de espaços é 400 `rejection_requires_note` pelo model — a borda cobra a presença do campo, o model cobra o conteúdo.
+- Transição inválida sai 409 `invalid_state_transition` sem nenhum try/except no router: o handler central converte a `InvalidStateTransition` de `_exigir_aberta()`.
+- 14 testes novos em `apps/academic/tests/test_api_decisao_acerto.py`, incluindo o caso que a permissão de grupo não cobre (outro docente do programa recebe 403) e solicitação de outro programa (404, nunca 403).
+- Arquivos alterados: `backend/apps/academic/router.py`, `backend/apps/academic/schemas.py`, `backend/apps/academic/tests/test_api_decisao_acerto.py` (novo).
+- `make ready` verde: prettier/eslint/ruff, mypy (74 arquivos), svelte-check (177 arquivos, 0 erros), pytest 244 passed (eram 230).
+- Sem migração nesta US — nada aplicado no banco compartilhado :5433.
+- Sem verificação de browser: US-006 é só backend. A US-010 (tela do orientador) precisa rodar `make gen-api` antes de tipar a tela.
+- **Learnings for future iterations:**
+  - Rota de ação (`/approve`, `/reject`) fica SEM barra final, ao contrário das rotas de recurso (`/enrollment-requests/`). Chamar com barra devolve 404.
+  - Body de schema no Ninja é obrigatório mesmo quando todos os campos têm default: `approve` sem corpo é 422; o cliente precisa mandar ao menos `{}`. A tela da US-010 deve enviar `{"note": ...}` sempre.
+  - Fixture de aluno regular em outro programa precisa de `project` do MESMO programa, senão a CheckConstraint `student_regular_requires_degree_fields` derruba com IntegrityError — `level` e `admission_date` sozinhos não bastam.
+  - Verificação de "é você o dono deste objeto?" cabe melhor como `.filter(...).exists()` sobre a ponta oposta do que resolvendo o vínculo da sessão primeiro: evita ramo separado para o caso nulo.
+  - `rtk` filtra a saída do pytest a ponto de esconder falhas ("No tests collected"); use `rtk proxy uv run pytest ...` para ver o traceback real.

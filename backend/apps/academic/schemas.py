@@ -301,6 +301,23 @@ class EnrollmentAdjustmentRequestIn(Schema):
         return self
 
 
+class EnrollmentAdjustmentApproveIn(Schema):
+    """Aprovação: a nota é opcional — quem aprova não deve satisfação."""
+
+    note: str = ""
+
+
+class EnrollmentAdjustmentRejectIn(Schema):
+    """Recusa: o motivo é o que o aluno lê para saber o que corrigir.
+
+    A obrigatoriedade real é do model (`reject` levanta
+    `rejection_requires_note`): aqui o campo é exigido na borda, mas
+    string em branco só é barrada lá, com `code` estável.
+    """
+
+    note: str
+
+
 class EnrollmentAdjustmentRequestOut(Schema):
     id: int
     program_id: int

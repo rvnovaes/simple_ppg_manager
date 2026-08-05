@@ -24,8 +24,10 @@ from apps.programs.models import (
     ResearchLine,
 )
 
-from .models import Student, Teacher
+from .models import EnrollmentAdjustmentRequest, Student, Teacher
 from .schemas import (
+    EnrollmentAdjustmentApproveIn,
+    EnrollmentAdjustmentRejectIn,
     EnrollmentAdjustmentRequestIn,
     EnrollmentAdjustmentRequestOut,
     StudentIn,
@@ -336,3 +338,82 @@ def create_enrollment_request(
         request=request,
     )
     return Status(201, solicitacao)
+
+
+def _solicitacao_para_decidir(
+    request: HttpRequest, program: Program, request_id: int
+) -> EnrollmentAdjustmentRequest:
+    """A solicitação que esta sessão pode decidir — só a do próprio orientando.
+
+    `academic.change_enrollmentadjustmentrequest` é permissão de papel: ela
+    diz que docente decide acerto, não QUAL acerto. Sem esta checagem,
+    qualquer docente do programa decidiria o orientando de outro.
+
+    O escopo entra na busca (404, nunca 403, para solicitação de outro
+    programa). Aluno sem orientador nunca casa com o filtro — o `advisor_id`
+    nulo não encontra Teacher nenhum —, então cai no mesmo 403.
+    """
+    solicitacao = get_object_or_404(
+        EnrollmentAdjustmentRequest.objects.for_program(program)
+        .select_related("student")
+        .prefetch_related("items__discipline"),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    sou_o_orientador = (
+        Teacher.objects.for_program(program)
+        .filter(pk=solicitacao.student.advisor_id, person__in=pessoas)
+        .exists()
+    )
+    if not sou_o_orientador:
+        raise NotAllowed("Só o orientador do aluno decide este acerto de matrícula.")
+    return solicitacao
+
+
+@router.post(
+    "/enrollment-requests/{int:request_id}/approve",
+    response=EnrollmentAdjustmentRequestOut,
+)
+def approve_enrollment_request(
+    request: HttpRequest, request_id: int, payload: EnrollmentAdjustmentApproveIn
+):
+    require_perm(request, "academic.change_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    solicitacao = _solicitacao_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        # A regra mora no model: decidir de novo levanta
+        # InvalidStateTransition (409) e o handler central converte, sem
+        # try/except aqui (Seção 8).
+        solicitacao.approve(note=payload.note)
+        solicitacao.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.enrollment_adjustment.approve",
+            request=request,
+            target=solicitacao,
+            student_id=solicitacao.student_id,
+            note=solicitacao.decision_note,
+        )
+    return solicitacao
+
+
+@router.post(
+    "/enrollment-requests/{int:request_id}/reject",
+    response=EnrollmentAdjustmentRequestOut,
+)
+def reject_enrollment_request(
+    request: HttpRequest, request_id: int, payload: EnrollmentAdjustmentRejectIn
+):
+    require_perm(request, "academic.change_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    solicitacao = _solicitacao_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        solicitacao.reject(note=payload.note)
+        solicitacao.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.enrollment_adjustment.reject",
+            request=request,
+            target=solicitacao,
+            student_id=solicitacao.student_id,
+            note=solicitacao.decision_note,
+        )
+    return solicitacao
