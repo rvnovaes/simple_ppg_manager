@@ -133,7 +133,7 @@
         "Tests pass: definir senha em conta nova funciona; repetir a chamada na mesma conta retorna 409; usuário sem a permissão retorna 403; assign_role_group chamado duas vezes deixa o usuário com o grupo uma vez só"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "US nova. Sem ela, create_person_with_user deixa a conta com set_unusable_password() e sem grupo, e todo o fluxo de ralph/prd.matricula.json fica inexequível."
     },
     {

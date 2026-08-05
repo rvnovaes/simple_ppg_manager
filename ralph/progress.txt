@@ -171,3 +171,34 @@ Started: qua. 05 ago 2026 16:58:54 -03
   - O `conftest.py` da raiz já monta o usuário `secretaria` a partir do Group da
     migration; grupo novo com fixture segue esse mesmo caminho.
 ---
+
+## 2026-08-05 - US-007 (Acesso — professor e aluno aptos a entrar no sistema)
+- `User.set_initial_password(raw_password)` em `apps/accounts/models.py`: só age em conta
+  com `has_usable_password() is False`, senão `InvalidStateTransition` (409). Passa por
+  `validate_password` (AUTH_PASSWORD_VALIDATORS do settings) e converte a ValidationError
+  do Django em `DomainError(code="senha_invalida")` (400).
+- `apps/accounts/services.py` (novo): `assign_role_group(user, *, group_name, request=None)`,
+  idempotente — devolve True só quando criou o vínculo, e só então audita
+  (`accounts.user.assign_role_group`). Quem chama são os services das US-012/US-013.
+- `users_router` (tag `accounts`) no mesmo `apps/accounts/router.py`, montado em
+  `/api/v1/accounts/`: `POST /users/{id}/set-initial-password` com
+  `require_perm(request, "accounts.change_user")` e AuditLog
+  `accounts.user.set_initial_password` sem a senha no payload.
+- Schemas `SetInitialPasswordIn` e `DetailOut` em `apps/accounts/schemas.py`.
+- `make ready` verde: ruff, mypy 63 arquivos, svelte-check 0 erros, 76 testes (10 novos em
+  `apps/accounts/tests/test_acesso.py`).
+- Arquivos: backend/apps/accounts/models.py, services.py (novo), router.py, schemas.py,
+  tests/test_acesso.py (novo), backend/api.py
+- **Learnings for future iterations:**
+  - `User()` recém-instanciado tem `password=""`, e `has_usable_password()` devolve **True**
+    para string vazia (só `None` e o prefixo `!` são "inutilizáveis"). Em teste de invariante
+    sem banco, chame `set_unusable_password()` antes.
+  - App pode ter mais de um Router no mesmo `router.py`; `api.py` monta cada um no seu
+    prefixo. Não crie arquivo novo de borda só para separar prefixo.
+  - Erro de validação de senha não precisa de exceção nova: `DomainError(msg, code="...")`
+    aceita o code pelo construtor.
+  - `uv run pytest` direto pelo Bash volta vazio por causa do filtro do rtk; use
+    `rtk proxy "uv run pytest ..."` para ver a saída real.
+  - Endpoint novo muda o OpenAPI; `make gen-api` só é necessário quando alguma tela for
+    consumir (US-015/US-016) — não foi rodado aqui.
+---
