@@ -284,3 +284,25 @@ Started: qua. 05 ago 2026 16:58:54 -03
     `current_program` dá 403. Crie uma `Person(program=..., user=secretaria)` na fixture do
     teste (padrão já usado em `apps/core/tests/test_tenancy.py`).
 ---
+
+## 2026-08-05 - US-010
+- Endpoints de Projeto Coletivo: GET/POST/PATCH em /api/v1/programs/collective-projects/
+- GET paginado, escopado por current_program, com filtro opcional research_line_id
+- POST/PATCH resolvem a FK research_line com get_object_or_404 antes de instanciar o model;
+  CollectiveProject.clean() barra linha de outro programa com code program_mismatch (400)
+- Arquivos: backend/apps/programs/schemas.py, router.py,
+  backend/apps/programs/tests/test_api_projetos.py (16 testes),
+  frontend/src/lib/api/openapi.json e schema.d.ts (regenerados por make gen-api)
+- **Learnings for future iterations:**
+  - Endpoint que recebe FK no corpo NÃO pode atribuir só o `<fk>_id` cru: id inexistente
+    escapa do `clean()` (ObjectDoesNotExist faz o clean sair cedo) e vira IntegrityError 500.
+    Resolver com `get_object_or_404(Model, pk=...)` no router: inexistente vira 404, e de
+    outro programa chega ao `clean()` como 400 com code estável.
+  - `save(update_fields=[...])` aceita o attname da FK ("research_line_id") — o Django
+    registra name e attname na lista de campos válidos.
+  - `make gen-api` é parte da fatia de endpoint, não só das telas: US-009 commitou
+    openapi.json + schema.d.ts junto. Precisa do backend rodando via uv (o alvo do Makefile
+    já usa `manage.py export_openapi_schema`, sem servidor de pé).
+  - Saída do pytest chega filtrada pelo proxy rtk e às vezes some ("No tests collected"
+    mesmo com testes passando). `rtk proxy "uv run pytest ..."` mostra o resultado real.
+---

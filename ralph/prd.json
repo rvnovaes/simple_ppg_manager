@@ -185,7 +185,7 @@
         "Tests pass, inclusive: criar projeto com research_line de outro programa é recusado"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
