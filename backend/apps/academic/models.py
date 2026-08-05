@@ -356,3 +356,50 @@ class Student(models.Model):
                 "O orientador precisa ser do mesmo programa do aluno.",
                 code="program_mismatch",
             )
+        # Por último: o erro de tenant é o mais grave e por isso fala
+        # primeiro.
+        self._conferir_modalidade()
+
+    def _conferir_modalidade(self) -> None:
+        """Mesma coerência das CheckConstraint, no caminho do domínio.
+
+        A constraint continua sendo a garantia final; aqui ela vira erro de
+        negócio (400) em vez de IntegrityError (500) para quem edita pela
+        API — o PATCH pode deixar o vínculo incoerente sem tocar na
+        modalidade, por exemplo trancando uma isolada.
+
+        `deadline` fica de fora: `save()` calcula o do regular quando ele
+        não veio, e neste ponto ele ainda pode estar vazio.
+        """
+        if self.modality == self.Modality.REGULAR:
+            if not (self.level and self.project_id and self.admission_date):
+                raise DomainError(
+                    "Aluno regular exige nível, projeto e data de ingresso.",
+                    code="incomplete_regular",
+                )
+            return
+
+        if self.term_id is None:
+            raise DomainError(
+                "Aluno de isolada ou eletiva exige período letivo.",
+                code="term_required",
+            )
+        if any(
+            (
+                self.level,
+                self.project_id,
+                self.advisor_id,
+                self.admission_date,
+                self.deadline,
+                self.defense_date,
+            )
+        ):
+            raise DomainError(
+                "Aluno de isolada ou eletiva não tem campos de grau.",
+                code="degree_fields_not_allowed",
+            )
+        if self.status == self.Status.LEAVE:
+            raise DomainError(
+                "Trancamento só se aplica ao aluno regular.",
+                code="leave_not_allowed",
+            )

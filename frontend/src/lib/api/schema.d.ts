@@ -281,6 +281,41 @@ export interface paths {
         patch: operations["apps_academic_router_update_teacher"];
         trace?: never;
     };
+    "/academic/students/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Students */
+        get: operations["apps_academic_router_list_students"];
+        put?: never;
+        /** Create Student Endpoint */
+        post: operations["apps_academic_router_create_student_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/students/{student_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Student */
+        patch: operations["apps_academic_router_update_student"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -697,6 +732,127 @@ export interface components {
             /** Project Ids */
             project_ids?: number[] | null;
         };
+        /**
+         * Level
+         * @enum {string}
+         */
+        Level: "masters" | "doctorate";
+        /**
+         * Modality
+         * @enum {string}
+         */
+        Modality: "regular" | "isolated" | "elective";
+        /**
+         * Status
+         * @enum {string}
+         */
+        Status: "active" | "leave" | "excluded";
+        /** PagedStudentOut */
+        PagedStudentOut: {
+            /** Items */
+            items: components["schemas"]["StudentOut"][];
+            /** Count */
+            count: number;
+        };
+        /** StudentOut */
+        StudentOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            person: components["schemas"]["PersonBrief"];
+            /** Registration Number */
+            registration_number: string | null;
+            /** Modality */
+            modality: string;
+            /** Status */
+            status: string;
+            /** Level */
+            level: string | null;
+            /** Project Id */
+            project_id: number | null;
+            /** Advisor Id */
+            advisor_id: number | null;
+            /** Admission Date */
+            admission_date: string | null;
+            /** Deadline */
+            deadline: string | null;
+            /** Defense Date */
+            defense_date: string | null;
+            /** Term Id */
+            term_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * StudentIn
+         * @description Criação de aluno.
+         *
+         *     Como em `TeacherIn`, o payload traz OU `person_id` OU os dados de uma
+         *     pessoa nova. Os campos exigidos dependem da modalidade — é a mesma
+         *     regra das CheckConstraint de `Student`, cobrada aqui na borda.
+         */
+        StudentIn: {
+            /** Person Id */
+            person_id?: number | null;
+            /** Full Name */
+            full_name?: string | null;
+            /** Primary Email */
+            primary_email?: string | null;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            modality: components["schemas"]["Modality"];
+            /** @default active */
+            status: components["schemas"]["Status"];
+            /** Registration Number */
+            registration_number?: string | null;
+            level?: components["schemas"]["Level"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Advisor Id */
+            advisor_id?: number | null;
+            /** Admission Date */
+            admission_date?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Defense Date */
+            defense_date?: string | null;
+            /** Term Id */
+            term_id?: number | null;
+        };
+        /**
+         * StudentPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         *
+         *     A pessoa e a modalidade ficam de fora. Trocar a pessoa apagaria o
+         *     histórico do vínculo; trocar a modalidade transformaria uma isolada em
+         *     regular por edição de campo, quando o que existe no domínio é um
+         *     vínculo novo.
+         */
+        StudentPatch: {
+            status?: components["schemas"]["Status"] | null;
+            /** Registration Number */
+            registration_number?: string | null;
+            level?: components["schemas"]["Level"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Advisor Id */
+            advisor_id?: number | null;
+            /** Admission Date */
+            admission_date?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Defense Date */
+            defense_date?: string | null;
+            /** Term Id */
+            term_id?: number | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1063,6 +1219,7 @@ export interface operations {
     apps_people_router_list_people: {
         parameters: {
             query?: {
+                email?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -1199,6 +1356,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TeacherOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_students: {
+        parameters: {
+            query?: {
+                modality?: components["schemas"]["Modality"] | null;
+                status?: components["schemas"]["Status"] | null;
+                level?: components["schemas"]["Level"] | null;
+                term_id?: number | null;
+                advisor_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedStudentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_student_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_student: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"];
                 };
             };
         };

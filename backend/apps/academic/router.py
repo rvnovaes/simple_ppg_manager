@@ -15,11 +15,23 @@ from apps.core import audit
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
 from apps.people.models import Person
-from apps.programs.models import CollectiveProject, Program, ResearchLine
+from apps.programs.models import (
+    AcademicTerm,
+    CollectiveProject,
+    Program,
+    ResearchLine,
+)
 
-from .models import Teacher
-from .schemas import TeacherIn, TeacherOut, TeacherPatch
-from .services import conferir_programa, create_teacher
+from .models import Student, Teacher
+from .schemas import (
+    StudentIn,
+    StudentOut,
+    StudentPatch,
+    TeacherIn,
+    TeacherOut,
+    TeacherPatch,
+)
+from .services import conferir_programa, create_student, create_teacher
 
 router = Router(tags=["academic"])
 
@@ -126,3 +138,129 @@ def update_teacher(request: HttpRequest, teacher_id: int, payload: TeacherPatch)
             ),
         )
     return teacher
+
+
+def _projeto(program: Program, project_id: int | None) -> CollectiveProject | None:
+    if project_id is None:
+        return None
+    return get_object_or_404(
+        CollectiveProject.objects.for_program(program), pk=project_id
+    )
+
+
+def _orientador(program: Program, advisor_id: int | None) -> Teacher | None:
+    if advisor_id is None:
+        return None
+    return get_object_or_404(Teacher.objects.for_program(program), pk=advisor_id)
+
+
+def _periodo(term_id: int | None) -> AcademicTerm | None:
+    """Período letivo é institucional (ADR-007 dec. 4): não tem programa
+    para escopar, então a busca é global.
+    """
+    if term_id is None:
+        return None
+    return get_object_or_404(AcademicTerm, pk=term_id)
+
+
+@router.get("/students/", response=list[StudentOut])
+@paginate
+def list_students(
+    request: HttpRequest,
+    modality: Student.Modality | None = None,
+    status: Student.Status | None = None,
+    level: Student.Level | None = None,
+    term_id: int | None = None,
+    advisor_id: int | None = None,
+):
+    require_perm(request, "academic.view_student")
+    alunos = Student.objects.for_program(current_program(request)).select_related(
+        "person"
+    )
+    # Filtros de conveniência da tela. Nenhum deles é escopo de tenant —
+    # esse já foi aplicado acima e não é opcional.
+    filtros = {
+        "modality": modality,
+        "status": status,
+        "level": level,
+        "term_id": term_id,
+        "advisor_id": advisor_id,
+    }
+    return alunos.filter(
+        **{campo: valor for campo, valor in filtros.items() if valor is not None}
+    )
+
+
+@router.post("/students/", response={201: StudentOut})
+def create_student_endpoint(request: HttpRequest, payload: StudentIn):
+    require_perm(request, "academic.add_student")
+    program: Program = current_program(request)
+    dados = payload.model_dump()
+    person_id = dados.pop("person_id")
+    full_name = dados.pop("full_name")
+    primary_email = dados.pop("primary_email")
+    phone_number = dados.pop("phone_number")
+
+    person = None
+    dados_da_pessoa = None
+    if person_id is not None:
+        # O escopo entra na busca: pessoa de outro programa simplesmente
+        # não existe para esta requisição (404, nunca 403).
+        person = get_object_or_404(Person.objects.for_program(program), pk=person_id)
+    else:
+        dados_da_pessoa = {
+            "full_name": full_name,
+            "email": primary_email,
+            "phone_number": phone_number,
+        }
+
+    # As FKs viram objeto aqui: id inexistente vira 404, e não
+    # IntegrityError 500 lá na frente.
+    dados["project"] = _projeto(program, dados.pop("project_id"))
+    dados["advisor"] = _orientador(program, dados.pop("advisor_id"))
+    dados["term"] = _periodo(dados.pop("term_id"))
+
+    student = create_student(
+        program=program,
+        person=person,
+        dados_da_pessoa=dados_da_pessoa,
+        campos=dados,
+        request=request,
+    )
+    return Status(201, student)
+
+
+@router.patch("/students/{int:student_id}/", response=StudentOut)
+def update_student(request: HttpRequest, student_id: int, payload: StudentPatch):
+    require_perm(request, "academic.change_student")
+    program = current_program(request)
+    student = get_object_or_404(
+        Student.objects.for_program(program).select_related("person"), pk=student_id
+    )
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "project_id" in campos:
+        campos["project"] = _projeto(program, campos.pop("project_id"))
+    if "advisor_id" in campos:
+        campos["advisor"] = _orientador(program, campos.pop("advisor_id"))
+    if "term_id" in campos:
+        campos["term"] = _periodo(campos.pop("term_id"))
+
+    # A situação anterior entra na auditoria: "quem trancou este aluno e
+    # em que situação ele estava" é a pergunta que a secretaria faz.
+    status_anterior = student.status
+    for campo, valor in campos.items():
+        setattr(student, campo, valor)
+    with transaction.atomic():
+        student.clean()
+        student.save()
+        extra = {}
+        if "status" in campos and campos["status"] != status_anterior:
+            extra = {"status_anterior": status_anterior, "status_novo": student.status}
+        audit.record(
+            "academic.student.update",
+            request=request,
+            target=student,
+            fields=sorted(campos),
+            **extra,
+        )
+    return student

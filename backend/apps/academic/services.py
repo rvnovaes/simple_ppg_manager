@@ -22,7 +22,7 @@ from apps.people.models import Person
 from apps.people.services import create_person_with_user
 from apps.programs.models import CollectiveProject, Program, ResearchLine
 
-from .models import Teacher
+from .models import Student, Teacher
 
 
 def conferir_programa(objetos: Sequence[Any], program: Program, rotulo: str) -> None:
@@ -84,3 +84,47 @@ def create_teacher(
         category=teacher.category,
     )
     return teacher
+
+
+@transaction.atomic
+def create_student(
+    *,
+    program: Program,
+    person: Person | None = None,
+    dados_da_pessoa: dict[str, Any] | None = None,
+    campos: dict[str, Any],
+    request: HttpRequest | None = None,
+) -> Student:
+    """Cria o vínculo de aluno — tudo ou nada.
+
+    Mesma regra de `create_teacher` para a pessoa: `person` já existe,
+    `dados_da_pessoa` cria uma nova junto com a conta, e a exclusividade
+    entre os dois é cobrada na borda por `StudentIn`.
+
+    Só o regular entra no papel Discente: a isolada e a eletiva duram um
+    semestre e não dão acesso ao sistema do programa.
+    """
+    if person is None:
+        if dados_da_pessoa is None:
+            raise DomainError("Informe a pessoa do aluno.", code="person_required")
+        person = create_person_with_user(
+            program=program, request=request, **dados_da_pessoa
+        )
+
+    student = Student(program=program, person=person, **campos)
+    # A regra mora no model; aqui só persistimos e auditamos.
+    student.clean()
+    student.save()
+
+    if student.modality == Student.Modality.REGULAR and person.user is not None:
+        assign_role_group(person.user, group_name="Discente", request=request)
+
+    audit.record(
+        "academic.student.create",
+        request=request,
+        target=student,
+        person_id=person.pk,
+        modality=student.modality,
+        status=student.status,
+    )
+    return student
