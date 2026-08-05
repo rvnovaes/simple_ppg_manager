@@ -126,7 +126,7 @@
         "Tests pass: um teste por papel, verificando que cada um vê exatamente o conjunto esperado"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

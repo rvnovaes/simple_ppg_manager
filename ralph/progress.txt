@@ -114,3 +114,20 @@ Started: qua. 05 ago 2026 19:02:47 -03
   - Fixture de aluno regular em outro programa precisa de `project` do MESMO programa, senão a CheckConstraint `student_regular_requires_degree_fields` derruba com IntegrityError — `level` e `admission_date` sozinhos não bastam.
   - Verificação de "é você o dono deste objeto?" cabe melhor como `.filter(...).exists()` sobre a ponta oposta do que resolvendo o vínculo da sessão primeiro: evita ramo separado para o caso nulo.
   - `rtk` filtra a saída do pytest a ponto de esconder falhas ("No tests collected"); use `rtk proxy uv run pytest ...` para ver o traceback real.
+
+## 2026-08-05 - US-007
+- `GET /api/v1/academic/enrollment-requests/` em `apps/academic/router.py`: paginado (`@paginate`, molde de `list_people`), `require_perm("academic.view_enrollmentadjustmentrequest")` na 1ª linha, `current_program(request)` na 2ª, filtros opcionais `status` (enum, valor inválido é 422 na borda) e `term_id`, `select_related("student__person")` + `prefetch_related("items__discipline")`.
+- O recorte por papel virou `EnrollmentAdjustmentRequestQuerySet.visible_to(user, program)` no model (Seção 8: query nomeada em manager, não solta no router). Secretaria, Coordenação e superusuário veem o programa inteiro; todo o resto vê a UNIÃO de `student__person__in=pessoas` e `student__advisor__person__in=pessoas` — união e não dois ramos, porque o mesmo User pode ter os dois vínculos. Constante `PAPEIS_COM_VISAO_DO_PROGRAMA = ("Secretaria", "Coordenação")` ao lado do QuerySet.
+- Ordem sempre `for_program(program).visible_to(user, program)`: tenant primeiro (não é opcional), papel depois.
+- `EnrollmentAdjustmentRequestOut` ganhou `student_name` (resolve por `obj.student.person.full_name`), mesmo motivo do `discipline_code`: a tela da secretaria lista acerto de vários alunos e não deve buscar cada um.
+- 12 testes novos em `apps/academic/tests/test_api_listagem_acerto.py`: um por papel (aluno, orientador, secretaria, coordenação), docente sem orientando com acerto vê lista vazia, visão de programa não atravessa o tenant, corpo com itens e nome do aluno, filtro por status, filtro por período, status inválido 422, 403 sem permissão, 401 sem sessão.
+- Arquivos alterados: `backend/apps/academic/{models,schemas,router}.py`, `backend/apps/academic/tests/test_api_listagem_acerto.py` (novo).
+- `make ready` verde: prettier/eslint/ruff, mypy (75 arquivos), svelte-check (177 arquivos, 0 erros), pytest 256 passed (eram 244).
+- Sem migração nesta US — nada aplicado no banco compartilhado :5433.
+- Sem verificação de browser: US-007 é só backend. As telas (US-008 a US-011) precisam rodar `make gen-api` — esta rota e o campo `student_name` ainda não estão em `frontend/src/lib/api/schema.d.ts`.
+- **Learnings for future iterations:**
+  - `apps/academic/models.py` agora importa `apps.people.models.Person` no topo (antes só usava a string `"people.Person"` nas FKs). Não há ciclo: `people` não conhece `academic`.
+  - Papel de leitura ampla se checa por NOME de Group (`user.groups.filter(name__in=...)`), porque a permissão `view_` é idêntica nos quatro papéis e não distingue quem vê o quê. Inferir pelo verbo (`add_` = aluno, `change_` = docente) daria a visão MAIOR a quem tem MENOS permissão — armadilha a evitar.
+  - Fixture de papel de leitura (Secretaria/Coordenação) precisa de `Person` ativa no programa, senão `current_program` devolve 403 antes de qualquer asserção sobre a lista.
+  - Parâmetro de query tipado como `TextChoices | None` no Ninja já recusa valor fora do enum com 422 — não precisa validar à mão no router.
+---
