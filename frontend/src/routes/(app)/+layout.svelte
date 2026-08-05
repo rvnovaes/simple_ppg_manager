@@ -54,6 +54,14 @@
 								Acertos
 							</a>
 						{/if}
+						{#if sessao.temPapel('Secretaria', 'Coordenação')}
+							<a
+								class="text-grafite hover:text-tinta text-sm"
+								href={resolve('/acertos-do-programa')}
+							>
+								Acertos do programa
+							</a>
+						{/if}
 						{#if sessao.pode('programs.view_discipline')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/disciplinas')}>
 								Disciplinas

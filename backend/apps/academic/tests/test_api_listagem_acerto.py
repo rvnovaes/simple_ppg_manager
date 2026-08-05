@@ -296,6 +296,9 @@ def test_a_listagem_traz_itens_e_nome_do_aluno(
     assert resposta.status_code == 200, resposta.content
     (item,) = resposta.json()["items"]
     assert item["student_name"] == "Ana Ribeiro"
+    # A tela da secretaria (US-011) mostra quem decide; sem o campo aqui ela
+    # teria de cruzar com a listagem de docentes por solicitação.
+    assert item["advisor_name"] == "Célia Souza"
     assert item["status"] == "open"
     assert [mudanca["discipline_code"] for mudanca in item["items"]] == ["DIR001"]
 

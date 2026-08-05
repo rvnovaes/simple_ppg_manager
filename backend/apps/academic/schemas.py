@@ -325,6 +325,10 @@ class EnrollmentAdjustmentRequestOut(Schema):
     # O nome vem junto pelo mesmo motivo do código da disciplina: a tela da
     # secretaria lista acerto de vários alunos e não deve buscar cada um.
     student_name: str
+    # Quem decide o acerto. Nulo só no aluno sem orientador, que hoje nem
+    # consegue abrir solicitação (advisor_required) — mas o vínculo pode ser
+    # desfeito depois, e a tela da secretaria não deve quebrar por isso.
+    advisor_name: str | None
     term_id: int
     status: str
     justification: str
@@ -336,6 +340,11 @@ class EnrollmentAdjustmentRequestOut(Schema):
     @staticmethod
     def resolve_student_name(obj: EnrollmentAdjustmentRequest) -> str:
         return obj.student.person.full_name
+
+    @staticmethod
+    def resolve_advisor_name(obj: EnrollmentAdjustmentRequest) -> str | None:
+        advisor = obj.student.advisor
+        return advisor.person.full_name if advisor is not None else None
 
     @staticmethod
     def resolve_items(

@@ -33,6 +33,7 @@ def _user_out(user) -> dict:
         "full_name": user.get_full_name(),
         "is_staff": user.is_staff,
         "permissions": sorted(user.get_all_permissions()),
+        "groups": sorted(user.groups.values_list("name", flat=True)),
         "people": [
             {
                 "id": p.id,

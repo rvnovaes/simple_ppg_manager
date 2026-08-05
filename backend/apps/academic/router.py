@@ -349,7 +349,7 @@ def list_enrollment_requests(
         .visible_to(request.user, program)
         # Sem o prefetch são duas consultas por solicitação: uma pelos
         # itens, outra pela disciplina de cada item.
-        .select_related("student__person")
+        .select_related("student__person", "student__advisor__person")
         .prefetch_related("items__discipline")
     )
     # Filtros de conveniência da tela. Nenhum deles é escopo — esse já foi

@@ -1574,6 +1574,13 @@
             "title": "Permissions",
             "type": "array"
           },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
           "people": {
             "items": {
               "$ref": "#/components/schemas/PersonRefOut"
@@ -1589,6 +1596,7 @@
           "full_name",
           "is_staff",
           "permissions",
+          "groups",
           "people"
         ],
         "title": "UserOut",
@@ -3163,6 +3171,17 @@
             "title": "Student Name",
             "type": "string"
           },
+          "advisor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisor Name"
+          },
           "term_id": {
             "title": "Term Id",
             "type": "integer"
@@ -3209,6 +3228,7 @@
           "program_id",
           "student_id",
           "student_name",
+          "advisor_name",
           "term_id",
           "status",
           "justification",

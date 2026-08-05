@@ -466,6 +466,8 @@ export interface components {
             is_staff: boolean;
             /** Permissions */
             permissions: string[];
+            /** Groups */
+            groups: string[];
             /** People */
             people: components["schemas"]["PersonRefOut"][];
         };
@@ -1052,6 +1054,8 @@ export interface components {
             student_id: number;
             /** Student Name */
             student_name: string;
+            /** Advisor Name */
+            advisor_name: string | null;
             /** Term Id */
             term_id: number;
             /** Status */

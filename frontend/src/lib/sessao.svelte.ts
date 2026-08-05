@@ -22,6 +22,18 @@ class Sessao {
 		return this.usuario?.permissions.includes(permissao) ?? false;
 	}
 
+	/**
+	 * Se a sessão está em algum dos papéis (Groups) informados.
+	 *
+	 * Só para o caso em que a permissão não distingue o público: os quatro
+	 * papéis têm `academic.view_enrollmentadjustmentrequest`, e o que muda é
+	 * o recorte que o backend aplica por papel. Onde existir permissão
+	 * exclusiva, `pode()` continua sendo o critério certo.
+	 */
+	temPapel(...papeis: string[]): boolean {
+		return this.usuario?.groups.some((papel) => papeis.includes(papel)) ?? false;
+	}
+
 	/** Pergunta ao backend quem é o usuário da sessão atual. */
 	async carregar(): Promise<void> {
 		this.carregando = true;
