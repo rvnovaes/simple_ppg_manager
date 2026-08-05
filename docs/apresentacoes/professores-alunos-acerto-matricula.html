@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPGD Manager — Professores, Alunos e Acerto de Matrícula</title>
+
+<style>
+  :root {
+    --paper: #F0ECDF;
+    --paper-raised: #FFFFFF;
+    --ink: #22242A;
+    --ink-soft: #5B564B;
+    --ink-faint: #8B8576;
+    --accent: #1D3557;
+    --accent-soft: #E4E9EF;
+    --stamp: #A23E1D;
+    --stamp-soft: #F1E3DA;
+    --rule: #D8D2C0;
+    --ok: #3F6B4A;
+    --warn: #8A6A1F;
+    --off: #8B8576;
+    --shadow: 0 1px 2px rgba(34,36,42,0.06), 0 6px 20px -8px rgba(34,36,42,0.18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #1B1D22;
+      --paper-raised: #24272E;
+      --ink: #EDEAE0;
+      --ink-soft: #B4AFA0;
+      --ink-faint: #736E62;
+      --accent: #8CAAD4;
+      --accent-soft: #263140;
+      --stamp: #DD8961;
+      --stamp-soft: #362720;
+      --rule: #383A40;
+      --ok: #7FAE8B;
+      --warn: #C9A24E;
+      --off: #736E62;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 28px -10px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #1B1D22; --paper-raised: #24272E; --ink: #EDEAE0; --ink-soft: #B4AFA0;
+    --ink-faint: #736E62; --accent: #8CAAD4; --accent-soft: #263140; --stamp: #DD8961;
+    --stamp-soft: #362720; --rule: #383A40; --ok: #7FAE8B; --warn: #C9A24E; --off: #736E62;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 28px -10px rgba(0,0,0,0.5);
+  }
+  :root[data-theme="light"] {
+    --paper: #F0ECDF; --paper-raised: #FFFFFF; --ink: #22242A; --ink-soft: #5B564B;
+    --ink-faint: #8B8576; --accent: #1D3557; --accent-soft: #E4E9EF; --stamp: #A23E1D;
+    --stamp-soft: #F1E3DA; --rule: #D8D2C0; --ok: #3F6B4A; --warn: #8A6A1F; --off: #8B8576;
+    --shadow: 0 1px 2px rgba(34,36,42,0.06), 0 6px 20px -8px rgba(34,36,42,0.18);
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 3.5rem 1.5rem 6rem;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .sheet {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  h1, h2, h3 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-weight: 400;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+
+  .masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 1.4rem;
+    margin-bottom: 0.6rem;
+  }
+  .protocolo {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin-bottom: 1.1rem;
+  }
+  h1 {
+    font-size: clamp(1.7rem, 4vw, 2.3rem);
+    line-height: 1.18;
+    margin: 0 0 0.5rem;
+  }
+  .dek {
+    font-size: 1.06rem;
+    color: var(--ink-soft);
+    max-width: 58ch;
+    margin: 0;
+  }
+
+  nav.index {
+    margin: 2.1rem 0 2.6rem;
+    padding: 1.1rem 1.3rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    box-shadow: var(--shadow);
+  }
+  nav.index p {
+    margin: 0 0 0.6rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  nav.index ol {
+    margin: 0;
+    padding: 0 0 0 1.2rem;
+    columns: 2;
+    column-gap: 1.5rem;
+  }
+  nav.index li { margin-bottom: 0.35rem; break-inside: avoid; }
+  nav.index a {
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.92rem;
+    border-bottom: 1px solid transparent;
+  }
+  nav.index a:hover, nav.index a:focus-visible { border-bottom-color: var(--accent); color: var(--accent); }
+
+  section { margin: 3.2rem 0; scroll-margin-top: 1.5rem; }
+  section > .eyebrow {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--stamp);
+    display: block;
+    margin-bottom: 0.4rem;
+  }
+  h2 { font-size: 1.55rem; margin: 0 0 0.9rem; }
+  h3 { font-size: 1.12rem; margin: 1.6rem 0 0.5rem; color: var(--accent); }
+  p { margin: 0 0 1rem; max-width: 68ch; }
+  ul, ol.plain { margin: 0 0 1rem; padding-left: 1.3rem; max-width: 66ch; }
+  li { margin-bottom: 0.45rem; }
+  strong { color: var(--ink); font-weight: 600; }
+
+  hr.rule {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 3rem 0;
+  }
+
+  /* ficha cards */
+  .ficha {
+    position: relative;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    box-shadow: var(--shadow);
+    padding: 1.6rem 1.7rem 1.8rem;
+    margin: 1.3rem 0 1.8rem;
+  }
+  .ficha .etapa {
+    position: absolute;
+    top: -0.75rem;
+    left: 1.5rem;
+    background: var(--stamp);
+    color: var(--paper-raised);
+    font-family: Georgia, "Iowan Old Style", serif;
+    font-style: italic;
+    font-size: 0.82rem;
+    padding: 0.22rem 0.75rem;
+    border-radius: 2px;
+    box-shadow: var(--shadow);
+  }
+  .ficha h3 { margin-top: 0.3rem; }
+  .campo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 0.9rem 1.4rem;
+    margin: 1.1rem 0 0.3rem;
+  }
+  .campo {
+    border-left: 2px solid var(--rule);
+    padding-left: 0.7rem;
+  }
+  .campo .label {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 0.15rem;
+  }
+  .campo .valor { font-size: 0.9rem; color: var(--ink-soft); }
+
+  /* flow diagram */
+  .fluxo {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin: 1.6rem 0 1rem;
+    flex-wrap: wrap;
+  }
+  .fluxo .passo {
+    flex: 1 1 190px;
+    background: var(--accent-soft);
+    border-radius: 3px;
+    padding: 1rem 1.1rem;
+    position: relative;
+  }
+  .fluxo .passo .n {
+    font-family: Georgia, serif;
+    font-style: italic;
+    color: var(--accent);
+    font-size: 0.85rem;
+    display: block;
+    margin-bottom: 0.3rem;
+  }
+  .fluxo .passo .quem {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+  .fluxo .passo p { margin: 0; font-size: 0.87rem; color: var(--ink-soft); max-width: none; }
+  .fluxo .seta {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.5rem;
+    color: var(--ink-faint);
+    font-size: 1.3rem;
+  }
+  @media (max-width: 620px) {
+    .fluxo { flex-direction: column; }
+    .fluxo .seta { transform: rotate(90deg); padding: 0.2rem 0; }
+  }
+
+  /* role table */
+  .tabela-wrap { overflow-x: auto; margin: 1.2rem 0 1rem; }
+  table.papeis {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    min-width: 480px;
+  }
+  table.papeis th, table.papeis td {
+    text-align: left;
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  table.papeis th {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    border-bottom: 2px solid var(--ink);
+  }
+  table.papeis td.papel { font-weight: 600; white-space: nowrap; }
+
+  .pill {
+    display: inline-block;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  /* out of scope appendix */
+  .fora {
+    background: transparent;
+    border: 1px dashed var(--rule);
+    border-radius: 3px;
+    padding: 1.2rem 1.4rem;
+    margin: 1.2rem 0;
+  }
+  .fora ul { columns: 2; column-gap: 1.6rem; margin-bottom: 0.4rem; }
+  .fora li { font-size: 0.92rem; color: var(--ink-soft); break-inside: avoid; }
+
+  .rodape {
+    margin-top: 3.5rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <div class="protocolo">
+      <span>PPGD Manager · apresentação interna</span>
+      <span>05 ago 2026</span>
+    </div>
+    <h1>Professores, Alunos e Acerto de Matrícula</h1>
+    <p class="dek">O que vai entrar no sistema nas duas próximas entregas, por quê, e o que continua fora por enquanto.</p>
+  </header>
+
+  <nav class="index" aria-label="Sumário">
+    <p>Sumário</p>
+    <ol>
+      <li><a href="#onde-estamos">Onde estamos hoje</a></li>
+      <li><a href="#duas-entregas">Duas entregas, nessa ordem</a></li>
+      <li><a href="#cadastros">Cadastro de professores e alunos</a></li>
+      <li><a href="#acerto">Acerto de matrícula</a></li>
+      <li><a href="#papeis">Quem faz o quê</a></li>
+      <li><a href="#fora">O que fica de fora por enquanto</a></li>
+      <li><a href="#depois">Depois disso</a></li>
+    </ol>
+  </nav>
+
+  <section id="onde-estamos">
+    <span class="eyebrow">Contexto</span>
+    <h2>Onde estamos hoje</h2>
+    <p>O PPGD Manager já sabe guardar <strong>pessoas</strong> ligadas a um programa de pós — nome, e-mail, telefone, situação. O que falta o sistema saber é <strong>quem cada pessoa é</strong> dentro do programa: professor ou aluno, e o que vem junto disso — categoria docente, orientação, linha de pesquisa, situação acadêmica, prazo.</p>
+    <p>É esse pedaço que entra agora, em duas entregas sequenciais.</p>
+  </section>
+
+  <section id="duas-entregas">
+    <span class="eyebrow">Ordem</span>
+    <h2>Duas entregas, nessa ordem</h2>
+    <p>A segunda entrega depende da primeira: não dá pra ter um pedido de acerto de matrícula aprovado por um orientador que ainda não existe no sistema.</p>
+    <div class="fluxo">
+      <div class="passo">
+        <span class="n">Etapa 1</span>
+        <span class="quem">Cadastros Básicos</span>
+        <p>Cria a ficha de professor e a ficha de aluno, e a estrutura de linhas de pesquisa e projetos coletivos em que eles se organizam.</p>
+      </div>
+      <div class="seta">→</div>
+      <div class="passo">
+        <span class="n">Etapa 2</span>
+        <span class="quem">Acerto de Matrícula</span>
+        <p>Usa as fichas da etapa 1 pra rodar o fluxo de pedido → aprovação do orientador de troca de disciplina.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="cadastros">
+    <span class="eyebrow">Etapa 1</span>
+    <h2>Cadastro de professores e alunos</h2>
+    <p>Cada professor e cada aluno passa a ter uma ficha própria dentro do sistema, além dos dados pessoais que já existem hoje (nome, e-mail, telefone).</p>
+
+    <div class="ficha">
+      <span class="etapa">Ficha do professor</span>
+      <h3>O que a secretaria cadastra</h3>
+      <div class="campo-grid">
+        <div class="campo"><span class="label">Categoria</span><span class="valor">Permanente, Colaborador ou Visitante — a classificação que a CAPES exige de todo programa</span></div>
+        <div class="campo"><span class="label">Credenciamento</span><span class="valor">desde quando está credenciado no programa, e até quando (se já saiu)</span></div>
+        <div class="campo"><span class="label">Titulação</span><span class="valor">Doutor, Pós-doutor ou Livre-docente</span></div>
+        <div class="campo"><span class="label">Lattes e instituição</span><span class="valor">link do currículo Lattes; instituição de origem, quando é colaborador ou visitante vindo de fora</span></div>
+        <div class="campo"><span class="label">Linhas de pesquisa</span><span class="valor">pode estar em mais de uma</span></div>
+        <div class="campo"><span class="label">Projetos coletivos</span><span class="valor">pode participar de mais de um, em linhas diferentes</span></div>
+      </div>
+    </div>
+
+    <div class="ficha">
+      <span class="etapa">Ficha do aluno</span>
+      <h3>O que a secretaria cadastra</h3>
+      <div class="campo-grid">
+        <div class="campo"><span class="label">Nível</span><span class="valor">mestrado ou doutorado</span></div>
+        <div class="campo"><span class="label">Projeto coletivo</span><span class="valor">obrigatório — todo aluno pertence a um projeto, que pertence a uma linha de pesquisa</span></div>
+        <div class="campo"><span class="label">Orientador</span><span class="valor">pode ficar em aberto no cadastro inicial e ser definido depois</span></div>
+        <div class="campo"><span class="label">Situação</span><span class="valor">Regular, Trancado, Isolada, Eletiva ou Excluído</span></div>
+        <div class="campo"><span class="label">Ingresso e prazo</span><span class="valor">o prazo final é calculado sozinho — 24 meses no mestrado, 48 no doutorado — mas a secretaria pode ajustar em caso de prorrogação</span></div>
+        <div class="campo"><span class="label">Matrícula UFMG</span><span class="valor">fica em branco no cadastro e é preenchida depois, quando a universidade gera o número</span></div>
+      </div>
+    </div>
+
+    <p>Também entra o cadastro das <strong>linhas de pesquisa</strong> do programa e dos <strong>projetos coletivos</strong> de cada uma — uma linha tem vários projetos, e é a estrutura em torno da qual professores e alunos se organizam.</p>
+  </section>
+
+  <section id="acerto">
+    <span class="eyebrow">Etapa 2</span>
+    <h2>Acerto de matrícula</h2>
+    <p>A matrícula em disciplinas continua sendo feita, do início ao fim, no sistema da UFMG — isso <strong>não muda</strong>. O que não tem nenhum controle hoje é quando um aluno <strong>já matriculado</strong> precisa ajustar: tirar uma disciplina, colocar outra. Isso é resolvido informalmente, por e-mail ou no corredor, sem registro.</p>
+    <p>O PPGD Manager passa a dar um fluxo pra esse ajuste:</p>
+    <div class="fluxo">
+      <div class="passo">
+        <span class="n">1</span>
+        <span class="quem">Aluno</span>
+        <p>Monta um pedido com as trocas que quer — pode juntar várias mudanças num pedido só, com uma justificativa opcional.</p>
+      </div>
+      <div class="seta">→</div>
+      <div class="passo">
+        <span class="n">2</span>
+        <span class="quem">Orientador</span>
+        <p>Aprova ou recusa o pedido. Se recusar, precisa explicar o motivo.</p>
+      </div>
+      <div class="seta">→</div>
+      <div class="passo">
+        <span class="n">3</span>
+        <span class="quem">Secretaria</span>
+        <p>Vê o que foi aprovado e replica a mudança no sistema da UFMG — isso continua manual, mas agora com registro de quem pediu e quem decidiu.</p>
+      </div>
+    </div>
+    <p>Se não há necessidade de ajuste, esse fluxo simplesmente nunca é acionado.</p>
+  </section>
+
+  <section id="papeis">
+    <span class="eyebrow">Acesso</span>
+    <h2>Quem faz o quê</h2>
+    <div class="tabela-wrap">
+      <table class="papeis">
+        <thead>
+          <tr><th>Papel</th><th>O que pode fazer</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="papel">Secretaria</td><td>Cadastra e edita professores, alunos, linhas de pesquisa e projetos coletivos. Acompanha todos os pedidos de acerto do programa.</td></tr>
+          <tr><td class="papel">Coordenação</td><td>Só visualiza — professores, alunos e pedidos de acerto, sem editar nada.</td></tr>
+          <tr><td class="papel">Professor</td><td>Aprova ou recusa pedidos de acerto dos seus próprios orientandos — de mais ninguém.</td></tr>
+          <tr><td class="papel">Aluno</td><td>Abre pedidos de acerto de matrícula pra si mesmo.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="fora">
+    <span class="eyebrow">Escopo</span>
+    <h2>O que fica de fora por enquanto</h2>
+    <p>Cortamos deliberadamente pra entregar rápido o que já resolve o problema de hoje. Nada disso está descartado — só não faz parte dessas duas entregas.</p>
+    <div class="fora">
+      <ul>
+        <li>CPF e outros dados pessoais sensíveis</li>
+        <li>Dado de bolsa (agência, tipo, valor)</li>
+        <li>Coorientador — só um orientador por aluno</li>
+        <li>Histórico de mudança de categoria docente</li>
+        <li>Notificação por e-mail — só lista dentro do sistema</li>
+        <li>Processo seletivo completo, de ponta a ponta</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="depois">
+    <span class="eyebrow">Próximo</span>
+    <h2>Depois disso</h2>
+    <p>O próximo pedaço grande a desenhar é o <strong>processo seletivo</strong>: como um candidato se inscreve, envia documentos, é aprovado pela secretaria e vira aluno oficialmente — inclusive o envio pra UFMG e a volta do número de matrícula. Isso já foi identificado como necessidade, mas ainda não tem desenho nem data.</p>
+  </section>
+
+  <div class="rodape">
+    <span>PPGD Manager</span>
+    <span>documento de apresentação interna</span>
+  </div>
+
+</div>
+</body>
+</html>
