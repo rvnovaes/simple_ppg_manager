@@ -143,3 +143,31 @@ Started: qua. 05 ago 2026 16:58:54 -03
   - Fixture `program` do conftest raiz devolve o PPGD criado pela data migration
     `programs.0002` — reutilize em vez de criar programa novo.
 ---
+
+## 2026-08-05 - US-006 (Grupos e permissões dos papéis de domínio)
+- Data migration `academic/0003_papeis_dos_cadastros.py`: cria os Groups `Docente` e
+  `Discente` e estende `Secretaria` (view/add/change nos cinco cadastros novos +
+  `accounts.change_user`) e `Coordenação` (só view). Docente e Discente recebem view da
+  estrutura (ResearchLine, CollectiveProject, AcademicTerm); Docente também
+  `view_teacher`/`view_student`.
+- Nenhum `delete_*`, nenhuma permissão sobre User além do `change_user` da Secretaria,
+  nenhum `is_staff`/`is_superuser`.
+- `desfazer` apaga só os grupos criados aqui e remove das duas migrações anteriores
+  apenas as permissões que esta adicionou.
+- Testes novos em `apps/academic/tests/test_papeis.py` (11 casos) verificam o resultado
+  no banco, não o dicionário do módulo.
+- `make ready` verde: ruff, mypy 61 arquivos, svelte-check 0 erros, 66 testes.
+- Arquivos: backend/apps/academic/migrations/0003_papeis_dos_cadastros.py,
+  backend/apps/academic/tests/test_papeis.py
+- **Learnings for future iterations:**
+  - Papel novo entra em data migration NOVA, seguindo o padrão de
+    `programs/0002_programa_inicial_e_papeis.py` (get_or_create de ContentType e
+    Permission porque o post_migrate ainda não rodou). Migração aplicada não se edita.
+  - A migration de papéis mora no app cujas permissões ela concede e que fica mais no
+    fim do grafo — aqui `academic`, porque uma migração de `programs` dependendo de
+    `academic` inverteria a direção natural das dependências.
+  - `codename.split("_", 1)[1]` deriva o nome do model do codename; funciona para todos
+    os verbos padrão, inclusive `change_user` -> `user`.
+  - O `conftest.py` da raiz já monta o usuário `secretaria` a partir do Group da
+    migration; grupo novo com fixture segue esse mesmo caminho.
+---
