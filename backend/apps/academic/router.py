@@ -53,7 +53,10 @@ def _projetos(ids: list[int]) -> list[CollectiveProject]:
 def list_teachers(request: HttpRequest, category: Teacher.Category | None = None):
     require_perm(request, "academic.view_teacher")
     professores = Teacher.objects.for_program(current_program(request)).select_related(
-        "person"
+        # person__user por causa de needs_initial_password: sem isto a
+        # listagem faz uma consulta por professor.
+        "person",
+        "person__user",
     )
     if category is not None:
         # Filtro de conveniência da tela. Não é escopo de tenant — esse já
@@ -105,7 +108,8 @@ def update_teacher(request: HttpRequest, teacher_id: int, payload: TeacherPatch)
     require_perm(request, "academic.change_teacher")
     program = current_program(request)
     teacher = get_object_or_404(
-        Teacher.objects.for_program(program).select_related("person"), pk=teacher_id
+        Teacher.objects.for_program(program).select_related("person", "person__user"),
+        pk=teacher_id,
     )
     campos = payload.model_dump(exclude_unset=True, exclude_none=True)
     research_line_ids = campos.pop("research_line_ids", None)
@@ -175,7 +179,8 @@ def list_students(
 ):
     require_perm(request, "academic.view_student")
     alunos = Student.objects.for_program(current_program(request)).select_related(
-        "person"
+        "person",
+        "person__user",
     )
     # Filtros de conveniência da tela. Nenhum deles é escopo de tenant —
     # esse já foi aplicado acima e não é opcional.

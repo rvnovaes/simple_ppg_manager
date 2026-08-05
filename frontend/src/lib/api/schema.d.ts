@@ -621,6 +621,10 @@ export interface components {
             primary_email: string;
             /** Phone Number */
             phone_number: string;
+            /** User Id */
+            user_id: number | null;
+            /** Needs Initial Password */
+            needs_initial_password: boolean;
         };
         /** TeacherOut */
         TeacherOut: {

@@ -11,6 +11,8 @@ import datetime
 from ninja import Schema
 from pydantic import EmailStr, model_validator
 
+from apps.people.models import Person
+
 from .models import Student, Teacher
 
 
@@ -21,6 +23,17 @@ class PersonBrief(Schema):
     full_name: str
     primary_email: str
     phone_number: str
+    # Nulo quando a pessoa não tem conta de acesso.
+    user_id: int | None
+    # A tela da Secretaria só oferece "definir senha inicial" enquanto a
+    # conta não tiver senha (US-007). Sem este campo ela teria de adivinhar
+    # — ou pior, oferecer a ação para quem já usa o sistema.
+    needs_initial_password: bool
+
+    @staticmethod
+    def resolve_needs_initial_password(obj: Person) -> bool:
+        user = obj.user
+        return user is not None and not user.has_usable_password()
 
 
 class TeacherIn(Schema):

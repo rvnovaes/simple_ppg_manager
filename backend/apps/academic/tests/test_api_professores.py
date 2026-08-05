@@ -375,3 +375,37 @@ def test_alterar_professor_sem_permissao_devolve_403(
 def test_papel_docente_existe_para_o_grupo_da_migration(db):
     """Guarda-costas: o service depende do Group criado pela data migration."""
     assert Group.objects.filter(name="Docente").exists()
+
+
+def test_pessoa_sem_conta_nao_pede_senha_inicial(
+    client_secretaria, secretaria_no_programa, program, pessoa
+):
+    """Sem conta não há senha para definir — a tela não pode oferecer a ação."""
+    _teacher(program, pessoa)
+
+    corpo = client_secretaria.get(URL).json()["items"][0]
+
+    assert corpo["person"]["user_id"] is None
+    assert corpo["person"]["needs_initial_password"] is False
+
+
+def test_conta_sem_senha_pede_senha_inicial_e_para_de_pedir_depois(
+    client_secretaria, secretaria_no_programa, program
+):
+    resposta = _post(
+        client_secretaria,
+        {**VINCULO, "full_name": "Ana Ribeiro", "primary_email": "ana@exemplo.br"},
+    )
+
+    # A conta nasce com set_unusable_password(): a Secretaria ainda precisa
+    # definir a primeira senha.
+    assert resposta.json()["person"]["needs_initial_password"] is True
+
+    usuario = Person.objects.get(primary_email="ana@exemplo.br").user
+    assert usuario is not None
+    usuario.set_initial_password("senha-forte-do-ppgd")
+    usuario.save(update_fields=["password"])
+
+    corpo = client_secretaria.get(URL).json()["items"][0]
+    assert corpo["person"]["user_id"] == usuario.id
+    assert corpo["person"]["needs_initial_password"] is False

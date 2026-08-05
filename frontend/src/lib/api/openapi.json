@@ -1817,13 +1817,30 @@
           "phone_number": {
             "title": "Phone Number",
             "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "needs_initial_password": {
+            "title": "Needs Initial Password",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
           "full_name",
           "primary_email",
-          "phone_number"
+          "phone_number",
+          "user_id",
+          "needs_initial_password"
         ],
         "title": "PersonBrief",
         "type": "object"
