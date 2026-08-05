@@ -361,6 +361,29 @@ class Student(models.Model):
         # primeiro.
         self._conferir_modalidade()
 
+    def ensure_can_request_adjustment(self) -> None:
+        """Invariante de quem pode abrir acerto de matrícula.
+
+        A ordem importa: a modalidade vem primeiro porque a isolada e a
+        eletiva nem podem ter orientador (CheckConstraint
+        `student_non_regular_requires_term`) — checar o orientador antes
+        devolveria `advisor_required` para quem nunca poderia ter um.
+
+        Sem orientador a solicitação nasceria presa: só o orientador
+        decide, então ninguém a tiraria de Aberta. É 409, não 400 — o
+        payload está certo, o estado do vínculo é que não permite.
+        """
+        if self.modality != self.Modality.REGULAR:
+            raise InvalidStateTransition(
+                "Só o aluno regular abre acerto de matrícula.",
+                code="regular_students_only",
+            )
+        if self.advisor_id is None:
+            raise InvalidStateTransition(
+                "Aluno sem orientador não tem quem decida o acerto.",
+                code="advisor_required",
+            )
+
     def _conferir_modalidade(self) -> None:
         """Mesma coerência das CheckConstraint, no caminho do domínio.
 

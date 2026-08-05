@@ -12,18 +12,22 @@ from ninja import Router, Status
 from ninja.pagination import paginate
 
 from apps.core import audit
+from apps.core.exceptions import NotAllowed
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
 from apps.people.models import Person
 from apps.programs.models import (
     AcademicTerm,
     CollectiveProject,
+    Discipline,
     Program,
     ResearchLine,
 )
 
 from .models import Student, Teacher
 from .schemas import (
+    EnrollmentAdjustmentRequestIn,
+    EnrollmentAdjustmentRequestOut,
     StudentIn,
     StudentOut,
     StudentPatch,
@@ -31,7 +35,12 @@ from .schemas import (
     TeacherOut,
     TeacherPatch,
 )
-from .services import conferir_programa, create_student, create_teacher
+from .services import (
+    conferir_programa,
+    create_enrollment_adjustment,
+    create_student,
+    create_teacher,
+)
 
 router = Router(tags=["academic"])
 
@@ -269,3 +278,61 @@ def update_student(request: HttpRequest, student_id: int, payload: StudentPatch)
             **extra,
         )
     return student
+
+
+def _aluno_da_sessao(
+    request: HttpRequest, program: Program, student_id: int | None
+) -> Student:
+    """O vínculo de aluno de quem está pedindo — nunca o do payload.
+
+    Aceitar `student_id` do corpo sem conferir seria deixar qualquer
+    discente abrir pedido em nome de outro. O `student_id` só serve para a
+    tela ser explícita: se não for um vínculo desta sessão, é 403.
+
+    Quando ele não vem, o vínculo regular ganha do não regular. O `first()`
+    solto no fim é de propósito: quem só tem isolada recebe o 409
+    `regular_students_only`, que explica o problema, em vez de um 403 que
+    diria "você não é aluno".
+    """
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    meus = Student.objects.for_program(program).filter(person__in=pessoas)
+    if student_id is not None:
+        aluno = meus.filter(pk=student_id).first()
+        if aluno is None:
+            raise NotAllowed("O acerto de matrícula é sempre em nome do próprio aluno.")
+        return aluno
+    aluno = meus.regular().first() or meus.first()
+    if aluno is None:
+        raise NotAllowed("Sua conta não tem vínculo de aluno neste programa.")
+    return aluno
+
+
+@router.post("/enrollment-requests/", response={201: EnrollmentAdjustmentRequestOut})
+def create_enrollment_request(
+    request: HttpRequest, payload: EnrollmentAdjustmentRequestIn
+):
+    require_perm(request, "academic.add_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    student = _aluno_da_sessao(request, program, payload.student_id)
+    # Período letivo é institucional (ADR-007 dec. 4): busca global.
+    term = get_object_or_404(AcademicTerm, pk=payload.term_id)
+    # O escopo entra na busca: disciplina de outro programa não existe para
+    # esta requisição (404, nunca 403).
+    itens = [
+        (
+            get_object_or_404(
+                Discipline.objects.for_program(program), pk=item.discipline_id
+            ),
+            item.action,
+        )
+        for item in payload.items
+    ]
+    solicitacao = create_enrollment_adjustment(
+        program=program,
+        student=student,
+        term=term,
+        justification=payload.justification,
+        itens=itens,
+        request=request,
+    )
+    return Status(201, solicitacao)

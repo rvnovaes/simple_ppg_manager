@@ -13,7 +13,12 @@ from pydantic import EmailStr, model_validator
 
 from apps.people.models import Person
 
-from .models import Student, Teacher
+from .models import (
+    EnrollmentAdjustmentItem,
+    EnrollmentAdjustmentRequest,
+    Student,
+    Teacher,
+)
 
 
 class PersonBrief(Schema):
@@ -240,3 +245,76 @@ class StudentOut(Schema):
     defense_date: datetime.date | None
     term_id: int | None
     created_at: datetime.datetime
+
+
+class EnrollmentAdjustmentItemIn(Schema):
+    """Uma mudança pedida: incluir ou excluir uma disciplina."""
+
+    discipline_id: int
+    action: EnrollmentAdjustmentItem.Action
+
+
+class EnrollmentAdjustmentItemOut(Schema):
+    id: int
+    discipline_id: int
+    # O código e o nome vêm junto para a tela do aluno e a da secretaria
+    # não precisarem de uma segunda chamada ao catálogo por item.
+    discipline_code: str
+    discipline_name: str
+    action: str
+
+    @staticmethod
+    def resolve_discipline_code(obj: EnrollmentAdjustmentItem) -> str:
+        return obj.discipline.code
+
+    @staticmethod
+    def resolve_discipline_name(obj: EnrollmentAdjustmentItem) -> str:
+        return obj.discipline.name
+
+
+class EnrollmentAdjustmentRequestIn(Schema):
+    """Abertura de um acerto de matrícula.
+
+    Sem `program_id`: o programa é o da requisição (current_program).
+    `student_id` é opcional e existe só para a tela ser explícita — o
+    aluno vem sempre da sessão, e informar o de outra pessoa é 403.
+    """
+
+    student_id: int | None = None
+    term_id: int
+    justification: str = ""
+    items: list[EnrollmentAdjustmentItemIn]
+
+    @model_validator(mode="after")
+    def itens_validos(self) -> "EnrollmentAdjustmentRequestIn":
+        """Lista vazia e item repetido são 422 na borda.
+
+        A repetição já é barrada pela UniqueConstraint
+        `unique_item_por_solicitacao`, mas lá viraria IntegrityError 500 —
+        aqui vira erro de validação com a lista do que veio duplicado.
+        """
+        if not self.items:
+            raise ValueError("Informe ao menos uma disciplina.")
+        pares = [(item.discipline_id, item.action) for item in self.items]
+        if len(set(pares)) != len(pares):
+            raise ValueError("A mesma disciplina aparece duas vezes com a mesma ação.")
+        return self
+
+
+class EnrollmentAdjustmentRequestOut(Schema):
+    id: int
+    program_id: int
+    student_id: int
+    term_id: int
+    status: str
+    justification: str
+    decision_note: str
+    decided_at: datetime.datetime | None
+    created_at: datetime.datetime
+    items: list[EnrollmentAdjustmentItemOut]
+
+    @staticmethod
+    def resolve_items(
+        obj: EnrollmentAdjustmentRequest,
+    ) -> list[EnrollmentAdjustmentItem]:
+        return list(obj.items.all())
