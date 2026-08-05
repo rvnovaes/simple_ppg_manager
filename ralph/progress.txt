@@ -29,6 +29,8 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Antes de dizer que :8080 não serve a sua branch, cheque o dono do Vite**: `ls -l /proc/$(pgrep -f vite)/cwd`. Em várias rodadas quem estava de pé em :5173 era esta worktree.
 - **Suíte de API por recurso tem um conjunto canônico de casos** (copiar de `test_api_linhas.py`/`test_api_disciplinas.py`): 201+auditoria, payload não escolhe tenant, duplicata 400 com `code` estável, sem permissão 403, sem sessão 401, listagem escopada, PATCH 200+auditoria, PATCH de outro programa 404, PATCH mantendo o próprio valor único, escrita sem CSRF 403.
 - **Ciclo de isolada (`IsolatedEnrollmentCycle`)**: as janelas do edital são métodos do model (`submission_open(at)`, `appeal_open(at)`), sempre com `at` recebido por parâmetro — nunca `timezone.now()` lá dentro. É o que permite testar a janela em memória, sem banco e sem congelar o relógio.
+- **Método que depende de model ainda não escrito não se antecipa**: com `django-stubs` ligado, o mypy recusa acessor reverso (`self.items`) de um model que não existe, e o método quebraria em runtime de qualquer jeito. Quando um critério de US anterior depende de model de US posterior, mova o critério na `prd.json` para a US que cria o model, em vez de escrever código morto ou `type: ignore`.
+- **`clean()` que compara programa de vários relacionados** (ver `DisciplineOffering.clean()`): itera os nomes de campo, pega cada um com `getattr` dentro de `try/except ObjectDoesNotExist` (relacionado ausente é cobrança da borda, não do invariante) e compara os `program_id` com o próprio. Um único `code="program_mismatch"` para todos.
 - **Ordem cronológica é invariante de `clean()`, não CheckConstraint**: `DomainError(code="invalid_cycle_dates")` sai 400 (erro do formulário da secretaria). A convenção do calendário é `<` dentro de cada janela (janela de duração zero não aceita ninguém) e `<=` entre o fechamento de uma fase e a abertura da seguinte (encadear no mesmo instante é legítimo).
 
 ---
@@ -45,4 +47,19 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - `datetime` já não estava importado em `apps/academic/models.py` (só `date`); o `from datetime import date, datetime` foi ampliado para tipar `at` nos métodos de janela.
   - Testes de janela usam `datetime(..., tzinfo=UTC)` (`from datetime import UTC`), porque `USE_TZ=True` — objeto naive passaria no teste em memória e explodiria na comparação com valor vindo do banco.
   - Sem verificação de browser: US-001 não toca UI.
+---
+
+## 2026-08-05 - US-002
+- Implementado o model `DisciplineOffering` (oferta de disciplina das isoladas num ciclo) no app `academic`: FKs diretas `program`, `cycle` (`IsolatedEnrollmentCycle`), `discipline` (`programs.Discipline`) e `teacher` (`academic.Teacher`, obrigatório — é quem classifica), `seats` (`PositiveSmallIntegerField`), `UniqueConstraint(cycle, discipline)` chamada `unique_oferta_por_ciclo_e_disciplina` e `DisciplineOfferingQuerySet` com `.for_program()`/`.for_cycle()`.
+- `clean()` exige que ciclo, disciplina e docente sejam do mesmo programa da oferta, com `DomainError(code="program_mismatch")`.
+- Permissão customizada `rank_disciplineoffering` declarada em `Meta.permissions` — a US-007 só a concede ao Docente, ela já existe a partir desta migração.
+- `DisciplineOfferingAdmin(AuditedModelAdmin)` registrado como quebra-vidro (ADR-006), com `cycle`, `discipline`, `teacher` e `seats` em `list_display`.
+- Arquivos alterados: `backend/apps/academic/models.py`, `backend/apps/academic/admin.py`, `backend/apps/academic/tests/test_models.py`, `backend/apps/academic/migrations/0007_disciplineoffering.py` (nova, lida antes do commit).
+- `make ready` verde: prettier/eslint/ruff, mypy (75 arquivos), svelte-check (185 arquivos, 0 erros), pytest 274 passed.
+- **`make migrate` RODADO no banco compartilhado :5433** — `academic.0007_disciplineoffering` aplicada. Só acrescenta tabela; o outro checkout não perde nada.
+- **Learnings for future iterations:**
+  - O critério `seats_taken()`/`seats_available()` da US-002 foi **movido para a US-005** na `prd.json`: ele conta itens de requerimento e `IsolatedEnrollmentItem` só nasce lá. Escrito agora, o `self.items` não passaria no mypy (django-stubs) e quebraria em runtime. Quem pegar a US-005 tem de entregá-lo.
+  - `Meta.permissions` de permissão customizada entra junto com o model, não na US de papéis: a US-007 só faz `Permission.objects.get_or_create` + vincular ao grupo, e a permissão precisa existir no `ContentType` antes.
+  - O ruff formata `search_fields` longo quebrando em várias linhas — rodar `make lint` antes de conferir o diff evita reescrita depois do commit.
+  - Sem verificação de browser: US-002 não toca UI.
 ---

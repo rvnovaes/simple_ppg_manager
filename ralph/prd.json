@@ -30,15 +30,14 @@
         "Model DisciplineOffering no app academic: program (FK to programs.Program, on_delete=PROTECT, related_name='offerings'), cycle (FK to IsolatedEnrollmentCycle, on_delete=PROTECT, related_name='offerings'), discipline (FK to programs.Discipline, on_delete=PROTECT, related_name='offerings'), teacher (FK to academic.Teacher, on_delete=PROTECT, related_name='offerings', OBRIGATÓRIO — é o docente responsável), seats (PositiveSmallIntegerField)",
         "UniqueConstraint em (cycle, discipline)",
         "Método clean() garante que program, cycle.program, discipline.program e teacher.program são o mesmo; levanta DomainError com code='program_mismatch'",
-        "Método seats_taken() conta os itens de requerimento DEFERRED naquela oferta; seats_available() devolve seats - seats_taken()",
         "Registrado no Django Admin do app academic com cycle, discipline, teacher e seats em list_display",
         "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes",
         "Tests pass (em memória: clean() rejeita docente de outro programa)"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": "Depende de programs.Discipline (ralph/prd.matricula.json US-001) e academic.Teacher (ralph/prd.json US-004)."
+      "passes": true,
+      "notes": "Depende de programs.Discipline (ralph/prd.matricula.json US-001) e academic.Teacher (ralph/prd.json US-004). O critério de seats_taken()/seats_available() foi movido para a US-005: ele conta itens de requerimento, e IsolatedEnrollmentItem só nasce lá — escrito antes, o método não typechecaria (django-stubs) nem rodaria."
     },
     {
       "id": "US-003",
@@ -85,6 +84,7 @@
         "UniqueConstraint em (request, offering)",
         "UniqueConstraint em (offering, rank) com condition=Q(rank__isnull=False) — duas pessoas não ocupam a mesma posição na mesma oferta",
         "Método clean() garante request.cycle == offering.cycle; levanta DomainError com code='cycle_mismatch'",
+        "Métodos DisciplineOffering.seats_taken() (conta os itens cujo requerimento está DEFERRED naquela oferta) e seats_available() (seats - seats_taken()) — critério herdado da US-002, adiado até aqui porque depende deste model",
         "O limite de no máximo 2 itens por requerimento é validado em IsolatedEnrollmentRequest.submit() (US-004), não por constraint de banco — depende de contagem de linhas relacionadas",
         "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes",
