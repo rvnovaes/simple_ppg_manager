@@ -14,6 +14,17 @@
   `program_id` opcional de filtro. Assina
   `current_program(request, *, program_id=None)`; sem o argumento ele lê `program_id` da
   query string.
+- Sub-recurso entra no Router do app que já existe, com path próprio (`/research-lines/`),
+  e não em Router/prefixo novo. Escopo de tenant em busca por id vai DENTRO do queryset
+  (`get_object_or_404(X.objects.for_program(program), pk=...)`) — objeto de outro programa
+  dá 404, nunca 403.
+- Escrita: `require_perm` -> `current_program` -> `transaction.atomic()` com
+  `model.clean()`, `save()` e `audit.record("<app>.<entidade>.<verbo>", ...)` juntos.
+  Entrada nunca aceita `program_id` no corpo; PATCH usa schema de campos opcionais +
+  `model_dump(exclude_unset=True, exclude_none=True)`.
+- Teste de endpoint com `current_program` precisa de uma `Person(program=..., user=...)`
+  para o usuário da fixture; o `secretaria` do conftest sozinho dá 403 `no_program`.
+  Rodar pytest sempre a partir de `backend/`.
 - Ambiente: `make db` sobe o Postgres (host 5433) — pytest e migrate precisam dele.
   `make ready` (lint + typecheck + test) é pré-condição de commit.
 
@@ -238,4 +249,38 @@ Started: qua. 05 ago 2026 16:58:54 -03
   - `make gen-api` NÃO precisa do backend de pé: usa o management command
     `export_openapi_schema`. A instrução do CLAUDE.md ("backend precisa estar de pé") vale
     só para o fluxo antigo.
+---
+
+## 2026-08-05 - US-009 (Endpoints — Linha de Pesquisa)
+- `apps/programs/schemas.py`: `ResearchLineIn` (só `name`/`is_active` — sem `program_id`,
+  o tenant é o da requisição), `ResearchLinePatch` (campos opcionais, aplicação parcial) e
+  `ResearchLineOut`.
+- `apps/programs/router.py` deixou de ser só leitura: `GET /research-lines/` paginado e
+  escopado por `current_program(request)`, `POST /research-lines/` (201) e
+  `PATCH /research-lines/{id}/`, cada um com `require_perm` de
+  `programs.view|add|change_researchline` e AuditLog
+  `programs.research_line.create`/`.update` dentro do mesmo `transaction.atomic()`.
+- `ResearchLine.clean()` (novo): nome duplicado no programa vira 400 `duplicate_name` em
+  vez de IntegrityError 500; a checagem exclui o próprio pk, senão PATCH que mantém o nome
+  se auto-rejeitaria.
+- `make gen-api` rodado: `openapi.json`/`schema.d.ts` já com os três caminhos novos.
+- `make ready` verde: ruff, mypy 67 arquivos, svelte-check 0 erros, 100 testes (14 novos em
+  `apps/programs/tests/test_api_linhas.py`).
+- Arquivos: backend/apps/programs/models.py, schemas.py, router.py,
+  tests/test_api_linhas.py (novo), frontend/src/lib/api/openapi.json, schema.d.ts
+- **Learnings for future iterations:**
+  - O router de `programs` já estava montado em `api.py`; endpoint novo de sub-recurso entra
+    no MESMO Router com path `/research-lines/`. Não crie Router nem prefixo novo por
+    entidade filha — vale o mesmo para US-010/US-011.
+  - Escopo em PATCH/GET-por-id vai DENTRO da busca
+    (`get_object_or_404(X.objects.for_program(program), pk=...)`), o que devolve 404 para
+    objeto de outro tenant. Testar 404 aqui, não 403 — 403 revelaria que o id existe.
+  - `save(update_fields=[])` faz o Django PULAR o save silenciosamente; com
+    `model_dump(exclude_unset=True)` vazio use `list(campos) or None`.
+  - Schema Ninja descarta campo extra do corpo, então `program_id` no payload é ignorado em
+    silêncio — vale um teste explícito de que o tenant veio de `current_program`.
+  - `pytest apps/...` só funciona rodando de `backend/`; da raiz o path não existe.
+  - Fixture de tenant: `secretaria` do conftest NÃO tem Person, então qualquer endpoint com
+    `current_program` dá 403. Crie uma `Person(program=..., user=secretaria)` na fixture do
+    teste (padrão já usado em `apps/core/tests/test_tenancy.py`).
 ---
