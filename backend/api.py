@@ -9,6 +9,7 @@ from ninja.errors import AuthenticationError, ValidationError
 from ninja.security import django_auth
 
 from apps.accounts.router import router as accounts_router
+from apps.accounts.router import users_router as accounts_users_router
 from apps.core.exceptions import DomainError
 from apps.people.router import router as people_router
 from apps.programs.router import router as programs_router
@@ -66,5 +67,6 @@ def on_validation_error(request: HttpRequest, exc: ValidationError):
 
 
 api.add_router("/auth/", accounts_router)
+api.add_router("/accounts/", accounts_users_router)
 api.add_router("/programs/", programs_router)
 api.add_router("/people/", people_router)
