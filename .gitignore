@@ -185,3 +185,6 @@ temp/
 #   .env.example .......... o modelo das variáveis, sem valores reais.
 #                           Toda variável nova entra aqui no mesmo commit.
 # =============================================================================
+# Estado local do loop do ralph — não versionar
+ralph/.last-branch
+ralph/archive/
