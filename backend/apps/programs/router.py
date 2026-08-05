@@ -19,8 +19,11 @@ from apps.core import audit
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
 
-from .models import CollectiveProject, Program, ResearchLine
+from .models import AcademicTerm, CollectiveProject, Program, ResearchLine
 from .schemas import (
+    AcademicTermIn,
+    AcademicTermOut,
+    AcademicTermPatch,
     CollectiveProjectIn,
     CollectiveProjectOut,
     CollectiveProjectPatch,
@@ -158,3 +161,52 @@ def update_collective_project(
             fields=sorted(campos),
         )
     return projeto
+
+
+# Período letivo é institucional (ADR-007 dec. 4): nenhuma rota abaixo
+# chama current_program. A ausência é a regra, não esquecimento — o
+# calendário 2026/1 é o mesmo para todos os programas.
+@router.get("/terms/", response=list[AcademicTermOut])
+@paginate
+def list_academic_terms(request: HttpRequest):
+    require_perm(request, "programs.view_academicterm")
+    return AcademicTerm.objects.all()
+
+
+@router.post("/terms/", response={201: AcademicTermOut})
+def create_academic_term(request: HttpRequest, payload: AcademicTermIn):
+    require_perm(request, "programs.add_academicterm")
+    periodo = AcademicTerm(**payload.model_dump())
+    with transaction.atomic():
+        periodo.clean()
+        periodo.save()
+        # AuditLog sai com program=None de propósito: o período não
+        # pertence a programa nenhum.
+        audit.record(
+            "programs.academic_term.create",
+            request=request,
+            target=periodo,
+            label=str(periodo),
+        )
+    return Status(201, periodo)
+
+
+@router.patch("/terms/{int:academic_term_id}/", response=AcademicTermOut)
+def update_academic_term(
+    request: HttpRequest, academic_term_id: int, payload: AcademicTermPatch
+):
+    require_perm(request, "programs.change_academicterm")
+    periodo = get_object_or_404(AcademicTerm, pk=academic_term_id)
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    for campo, valor in campos.items():
+        setattr(periodo, campo, valor)
+    with transaction.atomic():
+        periodo.clean()
+        periodo.save(update_fields=list(campos) or None)
+        audit.record(
+            "programs.academic_term.update",
+            request=request,
+            target=periodo,
+            fields=sorted(campos),
+        )
+    return periodo

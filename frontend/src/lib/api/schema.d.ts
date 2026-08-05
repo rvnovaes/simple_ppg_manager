@@ -176,6 +176,41 @@ export interface paths {
         patch: operations["apps_programs_router_update_collective_project"];
         trace?: never;
     };
+    "/programs/terms/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Academic Terms */
+        get: operations["apps_programs_router_list_academic_terms"];
+        put?: never;
+        /** Create Academic Term */
+        post: operations["apps_programs_router_create_academic_term"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/programs/terms/{academic_term_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Academic Term */
+        patch: operations["apps_programs_router_update_academic_term"];
+        trace?: never;
+    };
     "/people/": {
         parameters: {
             query?: never;
@@ -371,6 +406,77 @@ export interface components {
             research_line_id?: number | null;
             /** Name */
             name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** AcademicTermOut */
+        AcademicTermOut: {
+            /** Id */
+            id: number;
+            /** Year */
+            year: number;
+            /** Half */
+            half: number;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Label */
+            label: string;
+        };
+        /** PagedAcademicTermOut */
+        PagedAcademicTermOut: {
+            /** Items */
+            items: components["schemas"]["AcademicTermOut"][];
+            /** Count */
+            count: number;
+        };
+        /** AcademicTermIn */
+        AcademicTermIn: {
+            /** Year */
+            year: number;
+            half: components["schemas"]["Half"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * Half
+         * @enum {integer}
+         */
+        Half: 1 | 2;
+        /**
+         * AcademicTermPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        AcademicTermPatch: {
+            /** Year */
+            year?: number | null;
+            half?: components["schemas"]["Half"] | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
             /** Is Active */
             is_active?: boolean | null;
         };
@@ -706,6 +812,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectiveProjectOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_list_academic_terms: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedAcademicTermOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_create_academic_term: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcademicTermIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicTermOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_update_academic_term: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                academic_term_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcademicTermPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicTermOut"];
                 };
             };
         };

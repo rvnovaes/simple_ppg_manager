@@ -211,3 +211,17 @@ class AcademicTerm(models.Model):
                 "O fim do período letivo precisa ser posterior ao início.",
                 code="invalid_term_range",
             )
+        if self.year is None or self.half is None:
+            # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+            return
+        duplicatas = AcademicTerm.objects.filter(year=self.year, half=self.half)
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            # A constraint do banco já barra; validar aqui é o que faz a
+            # violação chegar como 400 com code estável em vez de
+            # IntegrityError virando 500.
+            raise DomainError(
+                "Já existe um período letivo para este ano e semestre.",
+                code="duplicate_term",
+            )

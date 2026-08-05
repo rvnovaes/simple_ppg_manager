@@ -65,7 +65,12 @@ def test_str_do_periodo_usa_o_rotulo_canonico():
     assert str(_periodo(half=2)) == "2026/2"
 
 
+@pytest.mark.django_db
 def test_clean_aceita_periodo_com_fim_posterior_ao_inicio():
+    """Único teste com banco neste arquivo: passando pela validação de
+    intervalo, o clean segue para a checagem de ano/semestre duplicado, que
+    consulta a tabela. Os testes de rejeição acima levantam antes disso e
+    continuam sem banco."""
     _periodo().clean()
 
 

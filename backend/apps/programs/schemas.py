@@ -4,7 +4,11 @@ Schemas explícitos de entrada e saída. Serializar o model direto faria o
 contrato da API mudar por acidente quando uma coluna mudasse.
 """
 
+import datetime
+
 from ninja import Schema
+
+from .models import AcademicTerm
 
 
 class ProgramOut(Schema):
@@ -58,3 +62,41 @@ class CollectiveProjectOut(Schema):
     research_line_id: int
     name: str
     is_active: bool
+
+
+class AcademicTermIn(Schema):
+    # Sem program_id, e não por omissão: período letivo é institucional
+    # (ADR-007 dec. 4), não pertence a programa nenhum.
+    # half tipado com a IntegerChoices do model para que semestre 3 seja
+    # 422 na borda, e não uma linha inválida no banco.
+    year: int
+    half: AcademicTerm.Half
+    starts_on: datetime.date
+    ends_on: datetime.date
+    is_active: bool = True
+
+
+class AcademicTermPatch(Schema):
+    """Atualização parcial: só os campos presentes no corpo são aplicados."""
+
+    year: int | None = None
+    half: AcademicTerm.Half | None = None
+    starts_on: datetime.date | None = None
+    ends_on: datetime.date | None = None
+    is_active: bool | None = None
+
+
+class AcademicTermOut(Schema):
+    id: int
+    year: int
+    half: int
+    starts_on: datetime.date
+    ends_on: datetime.date
+    is_active: bool
+    # Rótulo canônico '2026/1'. Vai no contrato para que nenhuma tela
+    # remonte a string por conta própria (ADR-007 dec. 4).
+    label: str
+
+    @staticmethod
+    def resolve_label(obj: AcademicTerm) -> str:
+        return str(obj)
