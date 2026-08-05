@@ -25,8 +25,18 @@
 - Teste de endpoint com `current_program` precisa de uma `Person(program=..., user=...)`
   para o usuário da fixture; o `secretaria` do conftest sozinho dá 403 `no_program`.
   Rodar pytest sempre a partir de `backend/`.
+- Entidade institucional (só `AcademicTerm`, ADR-007 dec. 4) NÃO tem FK `program`: rota
+  sem `current_program`, AuditLog com `program=None`. Toda outra entidade escopa.
+- Campo com `TextChoices`/`IntegerChoices` no schema Ninja: tipar com a própria classe de
+  choices (`half: AcademicTerm.Half`) e ganhar 422 na borda, em vez de `int`/`str` cru.
+- Validação que consulta o banco dentro de `clean()` quebra teste de invariante em memória
+  (nível (a)); ou o teste ganha `@pytest.mark.django_db`, ou a checagem vai depois das que
+  levantam sem banco.
+- Endpoint novo pede `make gen-api` (regenera `openapi.json` + `schema.d.ts`); ele só
+  precisa do backend importável, não do servidor. Rodar `make ready` DEPOIS dele.
 - Ambiente: `make db` sobe o Postgres (host 5433) — pytest e migrate precisam dele.
   `make ready` (lint + typecheck + test) é pré-condição de commit.
+  O hook do rtk engole a saída do pytest; usar `rtk proxy uv run pytest ...` para ver.
 
 # Ralph Progress Log
 Started: qua. 05 ago 2026 16:58:54 -03
@@ -305,4 +315,34 @@ Started: qua. 05 ago 2026 16:58:54 -03
     já usa `manage.py export_openapi_schema`, sem servidor de pé).
   - Saída do pytest chega filtrada pelo proxy rtk e às vezes some ("No tests collected"
     mesmo com testes passando). `rtk proxy "uv run pytest ..."` mostra o resultado real.
+---
+
+## 2026-08-05 - US-011 (Endpoints — Período Letivo)
+- `AcademicTermIn`/`AcademicTermPatch`/`AcademicTermOut` em `apps/programs/schemas.py`.
+  `half` tipado com a própria `AcademicTerm.Half` (IntegerChoices é IntEnum, o pydantic
+  entende): semestre 3 vira 422 na borda em vez de linha inválida no banco.
+  `AcademicTermOut.label` resolvido por `resolve_label` devolvendo `str(obj)` — o rótulo
+  canônico '2026/1' entra no contrato para nenhuma tela remontar a string.
+- Rotas `GET/POST/PATCH /api/v1/programs/terms/` no Router já existente do app `programs`.
+  Nenhuma chama `current_program`: período letivo é institucional (ADR-007 dec. 4).
+  AuditLog `programs.academic_term.create`/`.update` sai com `program=None`, correto.
+- `AcademicTerm.clean` passou a recusar ano/semestre duplicado (`code="duplicate_term"`),
+  no mesmo molde do `ResearchLine.clean` — sem isso a UniqueConstraint virava
+  IntegrityError 500.
+- Testes: `apps/programs/tests/test_api_periodos.py` (15 casos). `make ready` verde,
+  131 testes. `make gen-api` regenerou `openapi.json` e `schema.d.ts`.
+- Arquivos: `apps/programs/{models,router,schemas}.py`,
+  `apps/programs/tests/{test_models,test_api_periodos}.py`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}`.
+- **Learnings for future iterations:**
+  - Validar duplicidade no `clean()` faz o método consultar o banco, e isso QUEBRA teste
+    de invariante em memória (nível (a) da pirâmide). Foi preciso marcar
+    `test_clean_aceita_periodo_com_fim_posterior_ao_inicio` com `@pytest.mark.django_db`.
+    Os testes de rejeição continuam sem banco porque levantam antes da consulta.
+  - Entidade institucional (sem FK `program`) é exceção conhecida: rota sem
+    `current_program`, e o teste de listagem NÃO precisa da fixture `Person` no programa.
+  - `make gen-api` precisa só do backend importável (roda `export_openapi_schema`), não do
+    servidor de pé. Rodar `make ready` de novo depois dele, porque mexe em arquivo do front.
+  - O hook do rtk engole a saída do pytest ("Pytest: No tests collected"); usar
+    `rtk proxy uv run pytest ...` para ver o resultado real.
 ---
