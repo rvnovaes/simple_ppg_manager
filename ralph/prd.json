@@ -221,7 +221,7 @@
         "Tests pass, inclusive: criar professor com person_id de outro programa é recusado"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

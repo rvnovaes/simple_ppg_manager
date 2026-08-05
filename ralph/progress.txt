@@ -346,3 +346,37 @@ Started: qua. 05 ago 2026 16:58:54 -03
   - O hook do rtk engole a saída do pytest ("Pytest: No tests collected"); usar
     `rtk proxy uv run pytest ...` para ver o resultado real.
 ---
+
+## 2026-08-05 - US-012 (Endpoints — Professor)
+- `apps/academic/schemas.py`: `PersonBrief` (pessoa embutida em `TeacherOut`, nunca o model
+  Person serializado direto), `TeacherIn` com `@model_validator(mode="after")` cobrando
+  person_id XOR pessoa nova (422 na borda), `TeacherPatch` e `TeacherOut` com
+  `resolve_research_line_ids`/`resolve_project_ids` para os M2M.
+- `apps/academic/services.py`: `create_teacher()` atômico — cria a Person nova via
+  `create_person_with_user` quando é o caso, `Teacher.clean()` + `save()`, `.set()` nos M2M,
+  `assign_role_group(user, group_name="Docente")` e AuditLog `academic.teacher.create`.
+  `conferir_programa()` (público, usado também pelo router) barra linha/projeto de outro
+  programa com `DomainError(code="program_mismatch")`.
+- `apps/academic/router.py`: `GET/POST/PATCH /api/v1/academic/teachers/`, paginado e escopado
+  por `current_program`, filtro opcional `category`, `require_perm` de
+  `academic.view|add|change_teacher`, AuditLog `academic.teacher.update` no PATCH.
+  Router registrado em `backend/api.py` sob `/academic/`.
+- Testes: `apps/academic/tests/test_api_professores.py` (21 casos), incluindo person_id de
+  outro programa -> 404 e linha de outro programa -> 400 program_mismatch.
+- `make gen-api` + `make ready` verde: 152 testes, mypy 70 arquivos, svelte-check 0 erros.
+- **Learnings for future iterations:**
+  - Atributo de classe sem anotação dentro de Schema do Ninja quebra o pydantic v2
+    (`non-annotated attribute`); constante auxiliar fica fora da classe.
+  - Campo `TextChoices` também serve como tipo de QUERY PARAM (`category: Teacher.Category |
+    None = None`): valor fora do enum vira 422 sem `if` no router.
+  - M2M não é validável em `clean()` (só é gravável depois do `save()`); a checagem de tenant
+    dos M2M mora no service, com o MESMO `code="program_mismatch"` das FKs.
+  - `Model.objects.create(..., **extra)` com o mesmo campo em kwarg explícito e em `extra`
+    dá `TypeError: got multiple values`; usar `extra.setdefault(...)` no helper de teste.
+  - `Person` tem `UniqueConstraint unique_conta_por_programa`: duas Person do mesmo programa
+    NÃO podem apontar para o mesmo User. Teste que precisa de pessoa com conta cria um
+    `User` próprio, não reaproveita o da fixture `secretaria`.
+  - Payload com duas caras (id existente OU dados novos) é decidido na borda com
+    `@model_validator(mode="after")`, e o service recebe `person=` ou `dados_da_pessoa=`
+    já resolvidos — o router faz o `get_object_or_404` escopado.
+---
