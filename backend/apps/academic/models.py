@@ -848,3 +848,147 @@ class DisciplineOffering(models.Model):
                 "mesmo programa.",
                 code="program_mismatch",
             )
+
+
+class IsolatedRequestStatus(models.TextChoices):
+    """Situação do requerimento de isolada, no vocabulário do edital.
+
+    Mora fora do model, com nome único, porque o gerador de OpenAPI batiza
+    o schema do enum com o `__name__` da classe: dois `Status` aninhados
+    colidem e o último registrado sobrescreve o outro, silenciosamente.
+    `IsolatedEnrollmentRequest.Status` continua valendo pelo alias.
+    """
+
+    DRAFT = "draft", "Rascunho"
+    SUBMITTED = "submitted", "Inscrito"
+    DEFERRED = "deferred", "Deferido"
+    REJECTED = "rejected", "Indeferido"
+    CANCELLED = "cancelled", "Cancelado"
+    ENROLLED = "enrolled", "Matriculado"
+
+
+class IsolatedPaymentStatus(models.TextChoices):
+    """Situação da taxa (GRU) do requerimento.
+
+    Separada do `status` porque as duas caminham em ritmos diferentes: o
+    deferimento é decisão da secretaria, o pagamento é ato do candidato, e
+    é a combinação das duas que libera a matrícula (US-004 `enroll()`).
+    Fora do model pelo mesmo motivo de colisão de nome no OpenAPI.
+    """
+
+    PENDING = "pending", "Pendente"
+    PAID = "paid", "Pago"
+    EXEMPT = "exempt", "Isento"
+
+
+class IsolatedEnrollmentRequestQuerySet(models.QuerySet):
+    def for_program(self, program) -> "IsolatedEnrollmentRequestQuerySet":
+        return self.filter(program=program)
+
+    def for_cycle(
+        self, cycle: IsolatedEnrollmentCycle
+    ) -> "IsolatedEnrollmentRequestQuerySet":
+        return self.filter(cycle=cycle)
+
+
+class IsolatedEnrollmentRequest(models.Model):
+    """Requerimento de uma pessoa para cursar isoladas num ciclo.
+
+    Um requerimento por pessoa por ciclo: a inscrição carrega até duas
+    disciplinas (`items`, US-005), e não duas inscrições. É o que mantém
+    documentação e taxa únicas — o edital cobra uma GRU por candidato, não
+    uma por disciplina.
+
+    `person` e não `student`: quem se inscreve ainda não é aluno. O
+    `Student` com `modality=ISOLATED` só nasce na efetivação (US-014).
+
+    A FK `program` é direta mesmo sendo alcançável por `cycle`
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None` e o rastro perde a chave de tenant.
+    """
+
+    Status = IsolatedRequestStatus
+    PaymentStatus = IsolatedPaymentStatus
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="isolated_requests",
+        verbose_name="programa",
+    )
+    cycle = models.ForeignKey(
+        IsolatedEnrollmentCycle,
+        on_delete=models.PROTECT,
+        related_name="requests",
+        verbose_name="ciclo",
+    )
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.PROTECT,
+        related_name="isolated_requests",
+        verbose_name="candidato",
+    )
+    status = models.CharField(
+        "situação",
+        max_length=20,
+        choices=Status,
+        default=Status.DRAFT,
+    )
+    payment_status = models.CharField(
+        "situação do pagamento",
+        max_length=20,
+        choices=PaymentStatus,
+        default=PaymentStatus.PENDING,
+    )
+    # Servidor da UFMG é isento da taxa, mas em troca precisa juntar
+    # contracheque e autorização da chefia (US-006).
+    is_ufmg_staff = models.BooleanField("é servidor da UFMG", default=False)
+    # Link da GRU, gravado pela secretaria no deferimento (US-012). O
+    # sistema não emite a guia; ela vem do sistema de arrecadação da UFMG.
+    gru_url = models.URLField("link da GRU", blank=True)
+    decision_note = models.TextField("motivo da decisão", blank=True)
+    # Vazio enquanto não decidido; carimbado por defer()/reject() (US-004).
+    decided_at = models.DateTimeField("decidido em", null=True, blank=True)
+    appeal_note = models.TextField("razões do recurso", blank=True)
+    appealed_at = models.DateTimeField("recurso interposto em", null=True, blank=True)
+    # Vazio enquanto Rascunho; carimbado por submit() (US-004).
+    submitted_at = models.DateTimeField("inscrito em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = IsolatedEnrollmentRequestQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "requerimento de isolada"
+        verbose_name_plural = "requerimentos de isolada"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cycle", "person"],
+                name="unique_requerimento_isolada_por_ciclo_e_pessoa",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Requerimento de {self.person} em {self.cycle}"
+
+    def clean(self) -> None:
+        """A FK `program` é direta (ADR-007 dec. 5) e por isso pode divergir
+        da do ciclo e da pessoa. Divergir significa AuditLog com a chave de
+        tenant errada — é invariante, não detalhe de formulário.
+        """
+        super().clean()
+        outros = []
+        for campo in ("cycle", "person"):
+            try:
+                relacionado = getattr(self, campo)
+            except ObjectDoesNotExist:
+                # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+                continue
+            outros.append(relacionado.program_id)
+        if self.program_id is None or not outros:
+            return
+        if any(program_id != self.program_id for program_id in outros):
+            raise DomainError(
+                "O ciclo e o candidato do requerimento precisam ser do mesmo programa.",
+                code="program_mismatch",
+            )

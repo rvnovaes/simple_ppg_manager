@@ -12,6 +12,7 @@ from apps.academic.models import (
     DisciplineOffering,
     EnrollmentAdjustmentRequest,
     IsolatedEnrollmentCycle,
+    IsolatedEnrollmentRequest,
     Student,
     Teacher,
 )
@@ -317,3 +318,55 @@ def test_clean_sem_relacionado_obrigatorio_nao_levanta():
     programa = Program(pk=1, acronym="PPGD")
 
     DisciplineOffering(program=programa, seats=5).clean()
+
+
+def _requerimento(**kwargs) -> IsolatedEnrollmentRequest:
+    programa = kwargs.pop("program", None) or Program(pk=1, acronym="PPGD")
+    padrao = {
+        "program": programa,
+        "cycle": _ciclo(pk=1, program=programa),
+        "person": Person(pk=1, program=programa, full_name="Carla Reis"),
+    }
+    return IsolatedEnrollmentRequest(**{**padrao, **kwargs})
+
+
+def test_requerimento_nasce_em_rascunho_e_com_pagamento_pendente():
+    requerimento = _requerimento()
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.DRAFT
+    assert (
+        requerimento.payment_status == IsolatedEnrollmentRequest.PaymentStatus.PENDING
+    )
+    assert requerimento.is_ufmg_staff is False
+
+
+def test_clean_aceita_requerimento_com_tudo_no_mesmo_programa():
+    _requerimento().clean()
+
+
+def test_clean_rejeita_candidato_de_outro_programa():
+    outro = Program(pk=2, acronym="PPGA")
+    requerimento = _requerimento(
+        person=Person(pk=2, program=outro, full_name="Davi Melo"),
+    )
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.clean()
+
+    assert exc.value.code == "program_mismatch"
+    assert exc.value.status_code == 400
+
+
+def test_clean_rejeita_ciclo_de_outro_programa_no_requerimento():
+    outro = Program(pk=2, acronym="PPGA")
+    requerimento = _requerimento(cycle=_ciclo(pk=2, program=outro))
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.clean()
+
+    assert exc.value.code == "program_mismatch"
+
+
+def test_clean_do_requerimento_sem_relacionado_obrigatorio_nao_levanta():
+    """Obrigatoriedade é da borda e do NOT NULL, não deste invariante."""
+    IsolatedEnrollmentRequest(program=Program(pk=1, acronym="PPGD")).clean()
