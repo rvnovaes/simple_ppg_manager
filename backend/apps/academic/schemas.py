@@ -351,3 +351,30 @@ class EnrollmentAdjustmentRequestOut(Schema):
         obj: EnrollmentAdjustmentRequest,
     ) -> list[EnrollmentAdjustmentItem]:
         return list(obj.items.all())
+
+
+class IsolatedSignupIn(Schema):
+    """Auto-registro do candidato a disciplina isolada.
+
+    Não tem `program_id` obrigatório pela mesma razão dos demais schemas de
+    entrada — o tenant não é escolha livre de quem chama. Aqui não há
+    sessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;
+    o campo só existe (opcional) para desempatar quando mais de um programa
+    está com edital aberto no mesmo instante.
+    """
+
+    full_name: str
+    email: EmailStr
+    phone_number: str = ""
+    password: str
+    program_id: int | None = None
+
+
+class IsolatedSignupOut(Schema):
+    """Resposta única do auto-registro.
+
+    Corpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem
+    exatamente isto, senão a rota vira um oráculo de quem tem conta.
+    """
+
+    detail: str

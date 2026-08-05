@@ -38,6 +38,10 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Fixture de fluxo longo mora em `apps/<app>/tests/conftest.py`**, e helper reutilizável (`criar_requerimento`, `anexar_documentos_obrigatorios`) é função do mesmo módulo, importada explicitamente (`from apps.academic.tests.conftest import ...`). O arranjo do edital (período, ciclo, docente, oferta, requerimento) é grande demais para duplicar por módulo — duplicado, sai de sincronia.
 - **Upload em teste não pode cair no checkout**: `conftest.py` da raiz do backend tem `media_temporaria` autouse, que aponta `settings.MEDIA_ROOT` para `tmp_path`. Teste de `FileField` novo não precisa fazer nada.
 - **Método que consulta relacionados fica testável em memória com saída antecipada por `pk is None`** (ver `missing_documents()`): instância sem pk não tem linha relacionada nenhuma por definição, então devolver o conjunto completo é a resposta correta, e não um atalho. Alternativa ao padrão anterior de migrar o teste para módulo com banco — use quando a resposta para "sem pk" for bem definida.
+- **Rota pública de escrita tem quatro travas, e todas explícitas**: `# público` com justificativa (Seção 5), `@decorate_view(csrf_protect)` porque `auth=None` desliga junto o CSRF do `SessionAuth`, `enforce_rate_limit()` de `apps/core/ratelimit.py` (contador por IP no cache; IP sai de `X-Real-IP`, confiável só porque o nosso Nginx o sobrescreve) e uma condição de negócio que limita a janela em que ela funciona. Ver `POST /api/v1/academic/isolated/signup`.
+- **Resposta que não distingue e-mail novo de e-mail existente**: o service devolve `bool`, o router ignora e responde sempre o mesmo corpo. Toda cobrança que possa denunciar o desvio (força da senha) roda ANTES da consulta. Conta que já existe com senha utilizável nunca tem a senha redefinida — seria tomada de conta pelo formulário público.
+- **Sem sessão não há `current_program()`**: o tenant da rota pública sai do dado de negócio (`programa_com_inscricao_aberta()` lê os ciclos com inscrição aberta agora), e `program_id` do payload só desempata entre os já abertos — nunca escolhe livremente, senão a rota cria conta em qualquer programa a qualquer hora.
+- **Cache é estado que sobrevive ao rollback do banco**: fixture autouse `cache_limpo` em `backend/conftest.py` limpa o cache do Django entre testes. Sem ela, contador de rate limit vaza de um teste para o outro e a suíte falha conforme a ORDEM em que roda.
 - **Ordem cronológica é invariante de `clean()`, não CheckConstraint**: `DomainError(code="invalid_cycle_dates")` sai 400 (erro do formulário da secretaria). A convenção do calendário é `<` dentro de cada janela (janela de duração zero não aceita ninguém) e `<=` entre o fechamento de uma fase e a abertura da seguinte (encadear no mesmo instante é legítimo).
 
 ---
@@ -156,4 +160,50 @@ Started: qua. 05 ago 2026 20:19:36 -03
     (catálogo, acerto). Papel novo que não participa desses fluxos NÃO entra
     nessa lista; use uma lista separada para os invariantes universais, senão
     testes de US antigas quebram sem motivo.
+---
+
+## 2026-08-05 - US-008 (Endpoint de auto-registro do candidato)
+- `POST /api/v1/academic/isolated/signup` (`apps/academic/router.py`): única rota pública de
+  escrita do projeto. `auth=None` + `# público` com justificativa + `@decorate_view(csrf_protect)`
+  + `enforce_rate_limit()` + resolução do tenant pelo edital aberto.
+- `apps/core/ratelimit.py` (novo): `client_ip()` e `enforce_rate_limit(scope, limit, window_seconds)`
+  com contador no cache do Django; `TooManyRequests` (429, `code="rate_limited"`) em
+  `apps/core/exceptions.py`. Limite: 5 tentativas por IP por hora.
+- `apps/academic/services.py`: `programa_com_inscricao_aberta(at, program_id=None)` resolve o
+  programa pelos ciclos com inscrição aberta (`no_open_cycle` / `program_required`), e
+  `signup_isolated_candidate()` cria User + Person + papel Candidato + AuditLog numa
+  `transaction.atomic()`, reusando `people.services.create_person_with_user` e
+  `accounts.services.assign_role_group`.
+- `apps/accounts/models.py`: `validate_password` extraído para a função de módulo `validar_senha()`,
+  usada por `User.set_initial_password()` e pelo signup.
+- `apps/academic/schemas.py`: `IsolatedSignupIn` / `IsolatedSignupOut`.
+- `backend/conftest.py`: fixture autouse `cache_limpo`.
+- Testes novos em `apps/academic/tests/test_isolada_signup.py` (11 casos).
+- Arquivos alterados: `backend/apps/academic/router.py`, `backend/apps/academic/schemas.py`,
+  `backend/apps/academic/services.py`, `backend/apps/accounts/models.py`,
+  `backend/apps/core/exceptions.py`, `backend/apps/core/ratelimit.py` (novo),
+  `backend/conftest.py`, `backend/apps/academic/tests/test_isolada_signup.py` (novo),
+  `frontend/src/lib/api/openapi.json` e `schema.d.ts` (gerados), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (80 arquivos), svelte-check (185 arquivos,
+  0 erros), pytest 344 passed. `make gen-api` rodado.
+- **Sem migração e sem `make migrate`**: a US só acrescenta rota, service e helper.
+- **Learnings for future iterations:**
+  - **O tenant da rota pública não podia sair do payload.** `program_id` livre faria a rota
+    criar conta em qualquer programa a qualquer momento. Ele sai dos ciclos com inscrição
+    aberta agora; `program_id` só desempata quando há mais de um edital aberto. Consequência
+    para a US-016: a tela pública de cadastro só funciona durante a janela de inscrição, e o
+    `code="no_open_cycle"` (400) é a mensagem a exibir fora dela.
+  - **`create_person_with_user` reusa User existente por `username=email`.** Se a pessoa já tem
+    conta de outro programa, a Person nova nasce ligada a ela — e a senha do payload NÃO é
+    aplicada (`has_usable_password()`), senão o formulário público seria takeover de conta.
+    Quem cai nesse caso entra no edital com a senha que já tinha.
+  - **Validar a senha antes da consulta ao banco** é o que mantém a resposta indistinguível:
+    se a validação viesse depois do desvio "e-mail já existe", a mensagem de senha fraca
+    denunciaria quais e-mails são inéditos.
+  - `LocMemCache` (padrão, sem `CACHES` no settings) é por processo: com vários workers de
+    gunicorn o limite é por worker. Suficiente contra script ingênuo; exatidão exige Redis em
+    `CACHES`, sem tocar em quem chama `enforce_rate_limit()`.
+  - `frontend/package-lock.json` aparece modificado desde o início do ciclo (ruído de
+    reordenação, não é desta US) — continua fora do commit.
+  - Sem verificação de browser: US-008 não toca UI. A tela pública é a US-016.
 ---

@@ -10,11 +10,13 @@ invariante de programa de Teacher e Student nunca roda no caminho real.
 """
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from django.db import transaction
 from django.http import HttpRequest
 
+from apps.accounts.models import User, validar_senha
 from apps.accounts.services import assign_role_group
 from apps.core import audit
 from apps.core.exceptions import DomainError
@@ -31,6 +33,7 @@ from apps.programs.models import (
 from .models import (
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
+    IsolatedEnrollmentCycle,
     Student,
     Teacher,
 )
@@ -194,3 +197,105 @@ def create_enrollment_adjustment(
         ],
     )
     return solicitacao
+
+
+# Uma pessoa de fora da UFMG cria a conta uma vez por edital; cinco
+# tentativas por hora sobra para quem errou o formulário e não serve de
+# torneira para script.
+LIMITE_DE_SIGNUP_POR_IP = 5
+JANELA_DE_SIGNUP_EM_SEGUNDOS = 3600
+
+
+def programa_com_inscricao_aberta(
+    *, at: datetime, program_id: int | None = None
+) -> Program:
+    """Resolve o tenant do auto-registro pelo edital, e não pelo chamador.
+
+    É o substituto de `current_program()` na única rota pública de escrita
+    do projeto: sem sessão não há Person de onde tirar o programa, e
+    aceitar `program_id` livre faria a rota criar conta em qualquer tenant
+    a qualquer momento. Só existe candidato onde existe inscrição aberta.
+    """
+    abertos = set(
+        IsolatedEnrollmentCycle.objects.active()
+        .filter(submission_opens_at__lte=at, submission_closes_at__gt=at)
+        .values_list("program_id", flat=True)
+    )
+    if program_id is not None:
+        abertos &= {program_id}
+    if not abertos:
+        raise DomainError(
+            "Não há edital de disciplina isolada com inscrições abertas.",
+            code="no_open_cycle",
+        )
+    if len(abertos) > 1:
+        raise DomainError(
+            "Há mais de um edital aberto: informe program_id.",
+            code="program_required",
+        )
+    return Program.objects.get(pk=next(iter(abertos)))
+
+
+@transaction.atomic
+def signup_isolated_candidate(
+    *,
+    program: Program,
+    full_name: str,
+    email: str,
+    password: str,
+    phone_number: str = "",
+    request: HttpRequest | None = None,
+) -> bool:
+    """Cria a conta do candidato — tudo ou nada.
+
+    Devolve True quando a pessoa nasceu agora e False quando já existia. O
+    router ignora o valor de propósito: os dois casos respondem o mesmo
+    corpo, senão a rota conta a quem perguntar quais e-mails têm conta.
+
+    Sem confirmação de e-mail: o projeto não tem SMTP, e quem faz o papel
+    de porteiro é o deferimento manual da secretaria (US-012).
+    """
+    # A força da senha é cobrada antes da consulta: se dependesse do
+    # desvio, a mensagem de senha fraca denunciaria o e-mail inédito.
+    validar_senha(password, User(username=email, first_name=full_name, email=email))
+
+    email = email.strip().lower()
+    if Person.objects.filter(program=program, primary_email=email).exists():
+        audit.record(
+            "academic.isolated.signup",
+            request=request,
+            program=program,
+            email=email,
+            created=False,
+        )
+        return False
+
+    person = create_person_with_user(
+        program=program,
+        full_name=full_name,
+        email=email,
+        phone_number=phone_number,
+        request=request,
+    )
+    user = person.user
+    # create_person_with_user sempre garante a conta; o None é só o caso de
+    # registro histórico, que não passa por aqui.
+    assert user is not None
+
+    # Conta que já existe com senha utilizável é de alguém que se cadastrou
+    # em outro programa: definir a senha aqui seria tomar a conta dessa
+    # pessoa. Ela entra no edital com a senha que já tem.
+    if not user.has_usable_password():
+        user.set_initial_password(password)
+        user.save(update_fields=["password"])
+
+    assign_role_group(user, group_name="Candidato", request=request)
+
+    audit.record(
+        "academic.isolated.signup",
+        request=request,
+        target=person,
+        email=email,
+        created=True,
+    )
+    return True

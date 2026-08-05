@@ -1507,6 +1507,38 @@
           }
         ]
       }
+    },
+    "/academic/isolated/signup": {
+      "post": {
+        "operationId": "apps_academic_router_isolated_signup",
+        "summary": "Isolated Signup",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedSignupOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedSignupIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
     }
   },
   "components": {
@@ -3349,6 +3381,61 @@
           "note"
         ],
         "title": "EnrollmentAdjustmentRejectIn",
+        "type": "object"
+      },
+      "IsolatedSignupOut": {
+        "description": "Resposta única do auto-registro.\n\nCorpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem\nexatamente isto, senão a rota vira um oráculo de quem tem conta.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "IsolatedSignupOut",
+        "type": "object"
+      },
+      "IsolatedSignupIn": {
+        "description": "Auto-registro do candidato a disciplina isolada.\n\nNão tem `program_id` obrigatório pela mesma razão dos demais schemas de\nentrada — o tenant não é escolha livre de quem chama. Aqui não há\nsessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;\no campo só existe (opcional) para desempatar quando mais de um programa\nestá com edital aberto no mesmo instante.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "phone_number": {
+            "default": "",
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "program_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program Id"
+          }
+        },
+        "required": [
+          "full_name",
+          "email",
+          "password"
+        ],
+        "title": "IsolatedSignupIn",
         "type": "object"
       }
     },

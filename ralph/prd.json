@@ -146,8 +146,8 @@
         "Tests pass (criar conta nova; repetir o mesmo e-mail não duplica Person nem devolve erro distinguível; rate limit dispara)"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Sem sessão não há current_program(): o tenant sai dos ciclos com inscrição aberta (programa_com_inscricao_aberta), e program_id do payload só desempata entre os já abertos. Consequência: a rota só funciona durante a janela de inscrição, e responde no_open_cycle fora dela. Conta que já existe com senha utilizável nunca tem a senha redefinida — seria takeover pelo formulário público."
     },
     {
       "id": "US-009",

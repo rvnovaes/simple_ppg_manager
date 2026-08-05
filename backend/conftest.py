@@ -6,6 +6,7 @@ verifica que a migration continua criando os papéis certos.
 
 import pytest
 from django.contrib.auth.models import Group
+from django.core.cache import cache
 from django.test import Client
 
 # Import direto do model (e não get_user_model) para o mypy conseguir tipar
@@ -45,6 +46,18 @@ def client_secretaria(client: Client, secretaria: User) -> Client:
 def client_sem_permissao(client: Client, sem_permissao: User) -> Client:
     client.force_login(sem_permissao)
     return client
+
+
+@pytest.fixture(autouse=True)
+def cache_limpo() -> None:
+    """Cada teste começa com o cache vazio.
+
+    O cache local por processo (o padrão) sobrevive ao rollback do banco:
+    sem isto, o contador de `apps.core.ratelimit` vaza de um teste para o
+    seguinte e a suíte falha conforme a ORDEM em que roda — o pior tipo de
+    teste intermitente.
+    """
+    cache.clear()
 
 
 @pytest.fixture(autouse=True)

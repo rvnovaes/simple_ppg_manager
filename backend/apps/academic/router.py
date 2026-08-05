@@ -8,12 +8,16 @@ negócio aqui.
 from django.db import transaction
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_protect
 from ninja import Router, Status
+from ninja.decorators import decorate_view
 from ninja.pagination import paginate
 
 from apps.core import audit
 from apps.core.exceptions import NotAllowed
 from apps.core.permissions import require_perm
+from apps.core.ratelimit import enforce_rate_limit
 from apps.core.tenancy import current_program
 from apps.people.models import Person
 from apps.programs.models import (
@@ -30,6 +34,8 @@ from .schemas import (
     EnrollmentAdjustmentRejectIn,
     EnrollmentAdjustmentRequestIn,
     EnrollmentAdjustmentRequestOut,
+    IsolatedSignupIn,
+    IsolatedSignupOut,
     StudentIn,
     StudentOut,
     StudentPatch,
@@ -38,10 +44,14 @@ from .schemas import (
     TeacherPatch,
 )
 from .services import (
+    JANELA_DE_SIGNUP_EM_SEGUNDOS,
+    LIMITE_DE_SIGNUP_POR_IP,
     conferir_programa,
     create_enrollment_adjustment,
     create_student,
     create_teacher,
+    programa_com_inscricao_aberta,
+    signup_isolated_candidate,
 )
 
 router = Router(tags=["academic"])
@@ -468,3 +478,43 @@ def reject_enrollment_request(
             note=solicitacao.decision_note,
         )
     return solicitacao
+
+
+@router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})
+@decorate_view(csrf_protect)
+def isolated_signup(request: HttpRequest, payload: IsolatedSignupIn):
+    # público: é o único endpoint de escrita sem sessão do projeto, e tem
+    # de ser — quem se inscreve em disciplina isolada não tem vínculo com a
+    # UFMG e portanto não tem conta para autenticar. Sem ele, a secretaria
+    # cadastraria à mão cada candidato do edital, que é exatamente o
+    # trabalho que este módulo existe para tirar dela.
+    #
+    # As três travas que substituem a sessão: só funciona enquanto há
+    # edital aberto (programa_com_inscricao_aberta), limite de tentativas
+    # por IP e csrf_protect explícito — auth=None desliga junto a checagem
+    # de CSRF que o SessionAuth faria, mesma armadilha do login.
+    enforce_rate_limit(
+        request,
+        scope="isolated-signup",
+        limit=LIMITE_DE_SIGNUP_POR_IP,
+        window_seconds=JANELA_DE_SIGNUP_EM_SEGUNDOS,
+    )
+    program = programa_com_inscricao_aberta(
+        at=timezone.now(), program_id=payload.program_id
+    )
+    signup_isolated_candidate(
+        program=program,
+        full_name=payload.full_name,
+        email=str(payload.email),
+        password=payload.password,
+        phone_number=payload.phone_number,
+        request=request,
+    )
+    # Corpo idêntico nos dois desfechos: dizer "e-mail já cadastrado" aqui
+    # transformaria a rota num verificador de contas para qualquer um.
+    return {
+        "detail": (
+            "Cadastro recebido. Use seu e-mail e sua senha para entrar e "
+            "concluir a inscrição."
+        )
+    }

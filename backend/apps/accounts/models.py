@@ -16,6 +16,20 @@ from django.core.exceptions import ValidationError
 from apps.core.exceptions import DomainError, InvalidStateTransition
 
 
+def validar_senha(raw_password: str, user: "User") -> None:
+    """Aplica os validadores de senha do Django como erro de negócio.
+
+    Módulo e não método porque o auto-registro do candidato precisa
+    validar a senha ANTES de decidir se cria a conta — respondendo o mesmo
+    corpo para e-mail novo e e-mail já cadastrado, ele não pode deixar a
+    cobrança de força da senha depender desse desvio.
+    """
+    try:
+        validate_password(raw_password, user)
+    except ValidationError as exc:
+        raise DomainError(" ".join(exc.messages), code="senha_invalida") from exc
+
+
 class User(AbstractUser):
     class Meta(AbstractUser.Meta):
         verbose_name = "usuário"
@@ -36,8 +50,5 @@ class User(AbstractUser):
             raise InvalidStateTransition(
                 "Esta conta já tem senha definida; use a recuperação de senha."
             )
-        try:
-            validate_password(raw_password, self)
-        except ValidationError as exc:
-            raise DomainError(" ".join(exc.messages), code="senha_invalida") from exc
+        validar_senha(raw_password, self)
         self.set_password(raw_password)

@@ -432,6 +432,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Isolated Signup */
+        post: operations["apps_academic_router_isolated_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1138,6 +1155,45 @@ export interface components {
         EnrollmentAdjustmentRejectIn: {
             /** Note */
             note: string;
+        };
+        /**
+         * IsolatedSignupOut
+         * @description Resposta única do auto-registro.
+         *
+         *     Corpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem
+         *     exatamente isto, senão a rota vira um oráculo de quem tem conta.
+         */
+        IsolatedSignupOut: {
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * IsolatedSignupIn
+         * @description Auto-registro do candidato a disciplina isolada.
+         *
+         *     Não tem `program_id` obrigatório pela mesma razão dos demais schemas de
+         *     entrada — o tenant não é escolha livre de quem chama. Aqui não há
+         *     sessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;
+         *     o campo só existe (opcional) para desempatar quando mais de um programa
+         *     está com edital aberto no mesmo instante.
+         */
+        IsolatedSignupIn: {
+            /** Full Name */
+            full_name: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            /** Password */
+            password: string;
+            /** Program Id */
+            program_id?: number | null;
         };
     };
     responses: never;
@@ -1916,6 +1972,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrollmentAdjustmentRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_isolated_signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedSignupIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedSignupOut"];
                 };
             };
         };
