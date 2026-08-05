@@ -149,3 +149,21 @@ Started: qua. 05 ago 2026 19:02:47 -03
   - Enum novo exposto na borda precisa de nome único no projeto inteiro — ver o padrão consolidado no topo. As US-009/010/011 vão expor `Action` (incluir/excluir) na tela; ele hoje é `EnrollmentAdjustmentItem.Action` e ainda não colide, mas colidirá se outro model ganhar um `Action`.
   - `EnrollmentAdjustmentRequestOut.status` é `str` no schema, não o enum — a tela do aluno (US-009) precisa mapear `open/approved/rejected` para Aberta/Aprovada/Recusada à mão, no padrão da função `rotulo()` de `alunos/+page.svelte`.
 ---
+
+## 2026-08-05 - US-009
+- Tela `frontend/src/routes/(app)/acertos/+page.svelte`: seletor de período letivo, catálogo de disciplinas ativas com botões Incluir/Excluir por disciplina (clicar de novo na mesma ação desmarca — evita um terceiro botão "nenhuma"), justificativa opcional, e lista das solicitações do próprio aluno com Aberta/Aprovada/Recusada e o motivo da recusa em destaque quando `status === 'rejected'`.
+- Item "Acertos" em `(app)/+layout.svelte`, condicionado a `sessao.pode('academic.add_enrollmentadjustmentrequest')` — só o Discente o vê.
+- **Endpoint novo, exigido pela AC do orientador**: `GET /api/v1/academic/students/me` em `apps/academic/router.py` devolve os vínculos de aluno da própria sessão (`Person.objects.active().filter(user=..., program=...)`). Sem ele a tela não teria como saber, antes do formulário, se o aluno tem orientador — o Discente NÃO tem `academic.view_student` (papel definido em `academic/0003`), e dar essa permissão abriria a listagem inteira do programa. A permissão da rota é `academic.add_enrollmentadjustmentrequest`: quem abre acerto é exatamente quem precisa saber com qual vínculo abre. Sem paginação (uma pessoa tem um ou dois vínculos).
+- O impedimento na tela espelha os três casos do backend, na mesma ordem do model: sem vínculo, modalidade não regular (`regular_students_only`), sem orientador (`advisor_required`). Com impedimento, o botão "Nova solicitação" nem é renderizado e o formulário não abre.
+- Arquivos alterados: `backend/apps/academic/router.py`, `backend/apps/academic/tests/test_api_acerto.py` (4 testes novos), `frontend/src/routes/(app)/acertos/+page.svelte` (novo), `frontend/src/routes/(app)/+layout.svelte`, `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados por `make gen-api`).
+- `make ready` verde: prettier/eslint/ruff, mypy (75 arquivos), svelte-check (181 arquivos, 0 erros), pytest 260 passed (eram 256).
+- Sem migração nesta US — nada aplicado no banco compartilhado :5433.
+- **Verificação de browser NÃO feita — pendente de conferência manual**, mesma razão da US-008: o nginx (:8080) faz proxy para o Vite fixo em :5173 e quem está de pé lá é o checkout principal. Para conferir: parar o Vite do outro checkout, `make web` daqui, abrir http://localhost:8080/acertos logado como discente com orientador.
+- **Learnings for future iterations:**
+  - **Papel do usuário limita o que a tela dele consegue LER, não só escrever.** Antes de projetar tela de discente/docente, confira as permissões do Group em `academic/0003_papeis_dos_cadastros.py` + `academic/0005_papeis_do_acerto.py`. A saída certa quando falta permissão é uma rota estreita nova (`/students/me`), não estender o Group para uma listagem ampla.
+  - Rota `/students/me` convive com `/students/{int:student_id}/` sem ambiguidade: o conversor `int` já recusa `me`, então a ordem de registro é indiferente.
+  - `eslint` recusa `const { [id]: _removida, ...resto } = obj` (`no-unused-vars` pega o binding com underscore). Para remover chave de um `Record` em runa: copiar com spread e `delete`.
+  - `EnrollmentAdjustmentItemIn.action` é exposto no `schema.d.ts` como `components['schemas']['Action']` — nome genérico e curto, exatamente o risco de colisão anotado na US-008. Se outro model ganhar um `Action`, renomeie para classe de módulo com nome único ANTES de gerar os tipos.
+  - `AcademicTermOut` já traz `label` ('2026/1'); ordenar período é `b.year - a.year || b.half - a.half`, nunca comparar o label como string.
+  - A US-010 (tela do orientador) tem `/academic/enrollment-requests/` já escopado por papel: para o docente, a mesma rota devolve as dos orientandos dele, sem parâmetro extra. Filtrar `status === 'open'` no front basta.
+---
