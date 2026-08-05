@@ -1041,11 +1041,8 @@ class IsolatedEnrollmentRequest(models.Model):
         janela de propósito — as duas primeiras não tocam o banco, então
         o erro barato sai antes da consulta.
 
-        Falta ainda uma cobrança deste passo, dependente de model que não
-        existe: a documentação obrigatória completa (`missing_documents`,
-        US-006). Ela entra na US que cria o model de que depende —
-        escrita aqui, tocaria um acessor reverso inexistente e não
-        passaria no mypy nem em runtime.
+        A documentação obrigatória é a última cobrança, e não a primeira,
+        pelo mesmo motivo: ela consulta os anexos.
         """
         self._exigir_status(
             self.Status.DRAFT,
@@ -1061,8 +1058,48 @@ class IsolatedEnrollmentRequest(models.Model):
                 "A inscrição precisa ter uma ou duas disciplinas.",
                 code="invalid_item_count",
             )
+        if self.missing_documents():
+            raise DomainError(
+                "A inscrição só pode ser enviada com toda a documentação "
+                "obrigatória anexada.",
+                code="missing_documents",
+            )
         self.status = self.Status.SUBMITTED
         self.submitted_at = at
+
+    def required_document_kinds(self) -> list[str]:
+        """Tipos de documento que este requerimento precisa ter anexados.
+
+        Servidor da UFMG junta contracheque e autorização da chefia: é o
+        que sustenta a isenção da taxa (`defer()`) e a liberação do
+        horário. O comprovante da GRU fica de fora de propósito — ele só
+        existe depois do deferimento, quando a secretaria emite a guia.
+        """
+        obrigatorios = [
+            RequestDocumentKind.IDENTITY,
+            RequestDocumentKind.DIPLOMA,
+            RequestDocumentKind.LATTES,
+            RequestDocumentKind.ADDRESS,
+        ]
+        if self.is_ufmg_staff:
+            obrigatorios += [
+                RequestDocumentKind.PAYSLIP,
+                RequestDocumentKind.SUPERVISOR_AUTH,
+            ]
+        return [str(kind) for kind in obrigatorios]
+
+    def missing_documents(self) -> list[str]:
+        """Os tipos obrigatórios que ainda faltam anexar, na ordem do edital.
+
+        Requerimento sem pk não tem anexo nenhum por definição, e o
+        acessor reverso levantaria `ValueError` nele — a saída antecipada
+        mantém o invariante testável em memória, sem banco.
+        """
+        exigidos = self.required_document_kinds()
+        if self.pk is None:
+            return exigidos
+        anexados = set(self.documents.values_list("kind", flat=True))
+        return [kind for kind in exigidos if kind not in anexados]
 
     def defer(self, *, note: str = "") -> None:
         """Defere o requerimento.
@@ -1250,3 +1287,81 @@ class IsolatedEnrollmentItem(models.Model):
                 "do requerimento.",
                 code="cycle_mismatch",
             )
+
+
+def caminho_do_documento(instance: "RequestDocument", filename: str) -> str:
+    """Onde o anexo é gravado dentro do MEDIA_ROOT.
+
+    Particionado por ciclo e por requerimento porque a operação do
+    edital é por lote: a secretaria arquiva, copia ou apaga um semestre
+    inteiro, e um diretório plano com milhares de arquivos torna isso
+    manual. Função de módulo, e não lambda, porque a migração precisa
+    conseguir serializar a referência.
+    """
+    return (
+        f"isoladas/ciclo-{instance.request.cycle_id}/"
+        f"requerimento-{instance.request_id}/{filename}"
+    )
+
+
+class RequestDocumentKind(models.TextChoices):
+    """Os documentos que o edital cobra do candidato.
+
+    Classe de módulo com nome único: dois enums aninhados de mesmo nome
+    colidem no gerador de OpenAPI e o último registrado sobrescreve o
+    outro, sem erro no backend.
+    """
+
+    IDENTITY = "identity", "Identidade e CPF"
+    DIPLOMA = "diploma", "Diploma de graduação ou certidão de conclusão"
+    LATTES = "lattes", "Currículo Lattes em PDF"
+    ADDRESS = "address", "Comprovante de endereço"
+    PAYSLIP = "payslip", "Contracheque de servidor da UFMG"
+    SUPERVISOR_AUTH = "supervisor_auth", "Autorização da chefia"
+    PAYMENT_RECEIPT = "payment_receipt", "Comprovante de pagamento da GRU"
+
+
+class RequestDocument(models.Model):
+    """Um documento anexado a um requerimento de isolada.
+
+    Um por tipo (`UniqueConstraint`): reenviar o comprovante de endereço
+    é substituir o anterior, não empilhar duas versões e deixar a
+    secretaria adivinhar qual vale.
+
+    Sem FK `program` direta, como `IsolatedEnrollmentItem` e pelo mesmo
+    motivo (ADR-007 dec. 5): o anexo não é alvo de AuditLog próprio —
+    quem é auditado é o requerimento, que carrega o tenant — e o
+    `on_delete=CASCADE` diz que ele não existe fora dele.
+    """
+
+    Kind = RequestDocumentKind
+
+    request = models.ForeignKey(
+        IsolatedEnrollmentRequest,
+        on_delete=models.CASCADE,
+        related_name="documents",
+        verbose_name="requerimento",
+    )
+    kind = models.CharField("tipo", max_length=20, choices=Kind)
+    file = models.FileField("arquivo", upload_to=caminho_do_documento)
+    uploaded_at = models.DateTimeField("anexado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "documento do requerimento"
+        verbose_name_plural = "documentos do requerimento"
+        ordering = ["kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "kind"],
+                name="unique_documento_por_requerimento_e_tipo",
+            ),
+        ]
+        permissions = [
+            # Baixar o anexo é mais do que ver o requerimento: são dados
+            # pessoais do candidato (documento de identidade,
+            # contracheque). Quem lista a fila não precisa disso.
+            ("download_requestdocument", "Pode baixar documento do requerimento"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} de {self.request}"

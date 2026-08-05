@@ -14,6 +14,7 @@ from apps.academic.models import (
     IsolatedEnrollmentCycle,
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
+    RequestDocumentKind,
     Student,
     Teacher,
 )
@@ -388,6 +389,36 @@ FORA_DO_RECURSO = datetime(2026, 2, 20, tzinfo=UTC)
 # em `test_isolada_itens.py`. Os dois casos abaixo continuam aqui porque
 # estado e janela são checados antes da contagem, e nenhum deles chega
 # ao banco.
+
+
+def test_documentacao_obrigatoria_do_candidato_comum():
+    """Requerimento sem pk não tem anexo nenhum: falta tudo o que é
+    exigido, e o comprovante da GRU não está entre os exigidos — ele só
+    existe depois do deferimento.
+    """
+    faltando = _requerimento().missing_documents()
+
+    assert faltando == [
+        RequestDocumentKind.IDENTITY,
+        RequestDocumentKind.DIPLOMA,
+        RequestDocumentKind.LATTES,
+        RequestDocumentKind.ADDRESS,
+    ]
+    assert RequestDocumentKind.PAYMENT_RECEIPT not in faltando
+
+
+def test_documentacao_do_servidor_da_ufmg_inclui_contracheque_e_autorizacao():
+    faltando = _requerimento(is_ufmg_staff=True).missing_documents()
+
+    assert RequestDocumentKind.PAYSLIP in faltando
+    assert RequestDocumentKind.SUPERVISOR_AUTH in faltando
+
+
+def test_documentacao_do_candidato_comum_nao_pede_contracheque_nem_autorizacao():
+    faltando = _requerimento().missing_documents()
+
+    assert RequestDocumentKind.PAYSLIP not in faltando
+    assert RequestDocumentKind.SUPERVISOR_AUTH not in faltando
 
 
 def test_inscrever_fora_da_janela_levanta():

@@ -15,81 +15,14 @@ from apps.academic.models import (
     IsolatedEnrollmentCycle,
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
-    Teacher,
+)
+from apps.academic.tests.conftest import (
+    DENTRO_DA_INSCRICAO,
+    anexar_documentos_obrigatorios,
+    criar_requerimento,
 )
 from apps.core.exceptions import DomainError
-from apps.people.models import Person
-from apps.programs.models import AcademicTerm, Discipline, Program
-
-DENTRO_DA_INSCRICAO = datetime(2026, 2, 5, tzinfo=UTC)
-
-
-@pytest.fixture
-def periodo(db) -> AcademicTerm:
-    return AcademicTerm.objects.create(
-        year=2026, half=1, starts_on=date(2026, 3, 2), ends_on=date(2026, 7, 18)
-    )
-
-
-@pytest.fixture
-def ciclo(program: Program, periodo: AcademicTerm) -> IsolatedEnrollmentCycle:
-    return IsolatedEnrollmentCycle.objects.create(
-        program=program,
-        term=periodo,
-        submission_opens_at=datetime(2026, 2, 1, tzinfo=UTC),
-        submission_closes_at=datetime(2026, 2, 10, tzinfo=UTC),
-        result_published_on=date(2026, 2, 12),
-        appeal_opens_at=datetime(2026, 2, 12, tzinfo=UTC),
-        appeal_closes_at=datetime(2026, 2, 15, tzinfo=UTC),
-        final_result_on=date(2026, 2, 17),
-        payment_closes_at=datetime(2026, 2, 25, tzinfo=UTC),
-    )
-
-
-@pytest.fixture
-def docente(program: Program) -> Teacher:
-    pessoa = Person.objects.create(
-        program=program, full_name="Bruno Reis", primary_email="bruno@example.com"
-    )
-    return Teacher.objects.create(
-        program=program,
-        person=pessoa,
-        category=Teacher.Category.PERMANENT,
-        academic_degree=Teacher.AcademicDegree.DOCTORATE,
-        accredited_since=date(2020, 3, 1),
-    )
-
-
-@pytest.fixture
-def oferta(
-    program: Program, ciclo: IsolatedEnrollmentCycle, docente: Teacher
-) -> DisciplineOffering:
-    disciplina = Discipline.objects.create(
-        program=program, code="DIR001", name="Teoria do Direito"
-    )
-    return DisciplineOffering.objects.create(
-        program=program, cycle=ciclo, discipline=disciplina, teacher=docente, seats=2
-    )
-
-
-def _requerimento(
-    *, program: Program, ciclo: IsolatedEnrollmentCycle, nome: str, **kwargs
-) -> IsolatedEnrollmentRequest:
-    pessoa = Person.objects.create(
-        program=program,
-        full_name=nome,
-        primary_email=f"{nome.split()[0].lower()}@example.com",
-    )
-    return IsolatedEnrollmentRequest.objects.create(
-        program=program, cycle=ciclo, person=pessoa, **kwargs
-    )
-
-
-@pytest.fixture
-def requerimento(
-    program: Program, ciclo: IsolatedEnrollmentCycle
-) -> IsolatedEnrollmentRequest:
-    return _requerimento(program=program, ciclo=ciclo, nome="Carla Reis")
+from apps.programs.models import AcademicTerm, Discipline
 
 
 def test_item_duplicado_na_mesma_oferta_e_rejeitado(requerimento, oferta):
@@ -103,8 +36,8 @@ def test_item_duplicado_na_mesma_oferta_e_rejeitado(requerimento, oferta):
 
 
 def test_duas_pessoas_no_mesmo_rank_da_mesma_oferta_e_rejeitado(program, ciclo, oferta):
-    outro = _requerimento(program=program, ciclo=ciclo, nome="Davi Melo")
-    requerimento = _requerimento(program=program, ciclo=ciclo, nome="Elisa Nunes")
+    outro = criar_requerimento(program=program, ciclo=ciclo, nome="Davi Melo")
+    requerimento = criar_requerimento(program=program, ciclo=ciclo, nome="Elisa Nunes")
     IsolatedEnrollmentItem.objects.create(request=requerimento, offering=oferta, rank=1)
 
     with pytest.raises(IntegrityError), transaction.atomic():
@@ -119,7 +52,7 @@ def test_varios_itens_sem_classificacao_convivem_na_mesma_oferta(
     """
     for nome in ("Davi Melo", "Elisa Nunes", "Felipe Cruz"):
         IsolatedEnrollmentItem.objects.create(
-            request=_requerimento(program=program, ciclo=ciclo, nome=nome),
+            request=criar_requerimento(program=program, ciclo=ciclo, nome=nome),
             offering=oferta,
         )
 
@@ -134,7 +67,7 @@ def test_vagas_contam_deferido_e_matriculado_e_ignoram_inscrito(program, ciclo, 
         IsolatedEnrollmentRequest.Status.CANCELLED,
     )
     for indice, situacao in enumerate(situacoes):
-        pedido = _requerimento(
+        pedido = criar_requerimento(
             program=program, ciclo=ciclo, nome=f"Pessoa{indice} Silva"
         )
         pedido.status = situacao
@@ -152,7 +85,7 @@ def test_vagas_disponiveis_nunca_ficam_negativas(program, ciclo, oferta):
     negativa não significa nada para quem lê a tela.
     """
     for indice in range(3):
-        pedido = _requerimento(
+        pedido = criar_requerimento(
             program=program, ciclo=ciclo, nome=f"Pessoa{indice} Souza"
         )
         pedido.status = IsolatedEnrollmentRequest.Status.DEFERRED
@@ -167,6 +100,7 @@ def test_vagas_disponiveis_nunca_ficam_negativas(program, ciclo, oferta):
 
 def test_inscrever_com_uma_disciplina_muda_status_e_carimba(requerimento, oferta):
     IsolatedEnrollmentItem.objects.create(request=requerimento, offering=oferta)
+    anexar_documentos_obrigatorios(requerimento)
 
     requerimento.submit(at=DENTRO_DA_INSCRICAO)
 
