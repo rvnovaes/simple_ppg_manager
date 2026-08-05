@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from apps.academic.models import (
+    DisciplineOffering,
     EnrollmentAdjustmentRequest,
     IsolatedEnrollmentCycle,
     Student,
@@ -16,7 +17,7 @@ from apps.academic.models import (
 )
 from apps.core.exceptions import DomainError, InvalidStateTransition
 from apps.people.models import Person
-from apps.programs.models import AcademicTerm, Program
+from apps.programs.models import AcademicTerm, Discipline, Program
 
 
 def _professor(*, program: Program, person: Person) -> Teacher:
@@ -251,3 +252,68 @@ def test_janela_de_recurso_responde_dentro_e_fora():
     assert ciclo.appeal_open(datetime(2026, 2, 13, tzinfo=UTC))
     assert not ciclo.appeal_open(datetime(2026, 2, 11, tzinfo=UTC))
     assert not ciclo.appeal_open(datetime(2026, 2, 15, tzinfo=UTC))
+
+
+def _oferta(**kwargs) -> DisciplineOffering:
+    """Oferta coerente; cada teste troca um relacionado de programa."""
+    programa = kwargs.pop("program", None) or Program(pk=1, acronym="PPGD")
+    padrao = {
+        "program": programa,
+        "cycle": _ciclo(pk=1, program=programa),
+        "discipline": Discipline(pk=1, program=programa, code="DIR001", name="Teoria"),
+        "teacher": _professor(
+            program=programa,
+            person=Person(pk=1, program=programa, full_name="Ana Lima"),
+        ),
+        "seats": 10,
+    }
+    return DisciplineOffering(**{**padrao, **kwargs})
+
+
+def test_clean_aceita_oferta_com_tudo_no_mesmo_programa():
+    _oferta().clean()
+
+
+def test_clean_rejeita_docente_de_outro_programa():
+    outro = Program(pk=2, acronym="PPGA")
+    oferta = _oferta(
+        teacher=_professor(
+            program=outro,
+            person=Person(pk=2, program=outro, full_name="Bruno Sá"),
+        ),
+    )
+
+    with pytest.raises(DomainError) as exc:
+        oferta.clean()
+
+    assert exc.value.code == "program_mismatch"
+    assert exc.value.status_code == 400
+
+
+def test_clean_rejeita_disciplina_de_outro_programa():
+    outro = Program(pk=2, acronym="PPGA")
+    oferta = _oferta(
+        discipline=Discipline(pk=2, program=outro, code="ADM001", name="Gestão"),
+    )
+
+    with pytest.raises(DomainError) as exc:
+        oferta.clean()
+
+    assert exc.value.code == "program_mismatch"
+
+
+def test_clean_rejeita_ciclo_de_outro_programa():
+    outro = Program(pk=2, acronym="PPGA")
+    oferta = _oferta(cycle=_ciclo(pk=2, program=outro))
+
+    with pytest.raises(DomainError) as exc:
+        oferta.clean()
+
+    assert exc.value.code == "program_mismatch"
+
+
+def test_clean_sem_relacionado_obrigatorio_nao_levanta():
+    """Obrigatoriedade é da borda e do NOT NULL, não deste invariante."""
+    programa = Program(pk=1, acronym="PPGD")
+
+    DisciplineOffering(program=programa, seats=5).clean()

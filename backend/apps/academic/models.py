@@ -747,3 +747,104 @@ class IsolatedEnrollmentCycle(models.Model):
 
     def appeal_open(self, at: datetime) -> bool:
         return self.appeal_opens_at <= at < self.appeal_closes_at
+
+
+class DisciplineOfferingQuerySet(models.QuerySet):
+    def for_program(self, program) -> "DisciplineOfferingQuerySet":
+        return self.filter(program=program)
+
+    def for_cycle(self, cycle: IsolatedEnrollmentCycle) -> "DisciplineOfferingQuerySet":
+        return self.filter(cycle=cycle)
+
+
+class DisciplineOffering(models.Model):
+    """Disciplina oferecida às isoladas num ciclo, com vagas e responsável.
+
+    A oferta é a disciplina do catálogo recortada por um semestre: o mesmo
+    `Discipline` reaparece a cada ciclo com outro número de vagas e, às
+    vezes, outro docente. Uma oferta por disciplina por ciclo — repetir a
+    disciplina no mesmo edital dividiria as vagas em duas contagens que
+    ninguém consegue somar.
+
+    `teacher` é obrigatório porque a classificação dos candidatos
+    (US-011) é ato dele: sem responsável definido a oferta trava o fluxo,
+    e é melhor travar no cadastro do que na hora do deferimento.
+
+    A FK `program` é direta mesmo sendo alcançável por `cycle`
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None`.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="programa",
+    )
+    cycle = models.ForeignKey(
+        IsolatedEnrollmentCycle,
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="ciclo",
+    )
+    discipline = models.ForeignKey(
+        "programs.Discipline",
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="disciplina",
+    )
+    teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="docente responsável",
+    )
+    seats = models.PositiveSmallIntegerField("vagas")
+
+    objects = DisciplineOfferingQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "oferta de disciplina"
+        verbose_name_plural = "ofertas de disciplina"
+        ordering = ["discipline__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cycle", "discipline"],
+                name="unique_oferta_por_ciclo_e_disciplina",
+            ),
+        ]
+        permissions = [
+            # Classificar é ato do docente responsável e nada mais: quem
+            # ordena os candidatos não precisa poder editar a oferta, e
+            # quem edita a oferta (secretaria) não classifica ninguém.
+            ("rank_disciplineoffering", "Pode classificar candidatos da oferta"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.discipline} ({self.cycle})"
+
+    def clean(self) -> None:
+        """Ciclo, disciplina e docente têm de ser todos do mesmo programa.
+
+        Cada um deles carrega a própria FK de programa, então nada impede
+        no banco montar uma oferta que mistura tenants — e a mistura só
+        apareceria lá na frente, com candidato inscrito em disciplina de
+        outro programa. É invariante, não detalhe de formulário.
+        """
+        super().clean()
+        outros = []
+        for campo in ("cycle", "discipline", "teacher"):
+            try:
+                relacionado = getattr(self, campo)
+            except ObjectDoesNotExist:
+                # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+                continue
+            outros.append(relacionado.program_id)
+        if self.program_id is None or not outros:
+            return
+        if any(program_id != self.program_id for program_id in outros):
+            raise DomainError(
+                "O ciclo, a disciplina e o docente da oferta precisam ser do "
+                "mesmo programa.",
+                code="program_mismatch",
+            )

@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from apps.core.admin import AuditedModelAdmin
 
-from .models import IsolatedEnrollmentCycle, Student, Teacher
+from .models import DisciplineOffering, IsolatedEnrollmentCycle, Student, Teacher
 
 
 @admin.register(Teacher)
@@ -66,3 +66,18 @@ class IsolatedEnrollmentCycleAdmin(AuditedModelAdmin):
     list_filter = ("program", "is_active", "term")
     list_select_related = ("program", "term")
     raw_id_fields = ("term",)
+
+
+@admin.register(DisciplineOffering)
+class DisciplineOfferingAdmin(AuditedModelAdmin):
+    """Quebra-vidro: a rotina da secretaria é a tela Svelte (ADR-006)."""
+
+    list_display = ("cycle", "discipline", "teacher", "seats", "program")
+    list_filter = ("program", "cycle")
+    search_fields = (
+        "discipline__code",
+        "discipline__name",
+        "teacher__person__full_name",
+    )
+    list_select_related = ("program", "cycle", "discipline", "teacher")
+    raw_id_fields = ("cycle", "discipline", "teacher")
