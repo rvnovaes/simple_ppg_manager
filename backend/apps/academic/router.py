@@ -24,7 +24,7 @@ from apps.programs.models import (
     ResearchLine,
 )
 
-from .models import EnrollmentAdjustmentRequest, Student, Teacher
+from .models import AdjustmentStatus, EnrollmentAdjustmentRequest, Student, Teacher
 from .schemas import (
     EnrollmentAdjustmentApproveIn,
     EnrollmentAdjustmentRejectIn,
@@ -313,7 +313,7 @@ def _aluno_da_sessao(
 @paginate
 def list_enrollment_requests(
     request: HttpRequest,
-    status: EnrollmentAdjustmentRequest.Status | None = None,
+    status: AdjustmentStatus | None = None,
     term_id: int | None = None,
 ):
     require_perm(request, "academic.view_enrollmentadjustmentrequest")

@@ -471,6 +471,21 @@ class EnrollmentAdjustmentRequestQuerySet(models.QuerySet):
         )
 
 
+class AdjustmentStatus(models.TextChoices):
+    """Situação da solicitação de acerto.
+
+    Mora fora do model, com nome único, porque o gerador de OpenAPI batiza
+    o schema do enum com o `__name__` da classe: dois `Status` aninhados
+    colidem e o último registrado sobrescreve o outro — foi assim que
+    `Student.Status` virou `open/approved/rejected` no `schema.d.ts`.
+    `EnrollmentAdjustmentRequest.Status` continua valendo pelo alias.
+    """
+
+    OPEN = "open", "Aberta"
+    APPROVED = "approved", "Aprovada"
+    REJECTED = "rejected", "Recusada"
+
+
 class EnrollmentAdjustmentRequest(models.Model):
     """Pedido de acerto de matrícula de um aluno num período letivo.
 
@@ -484,10 +499,7 @@ class EnrollmentAdjustmentRequest(models.Model):
     com `program=None` e o rastro perde a chave de tenant.
     """
 
-    class Status(models.TextChoices):
-        OPEN = "open", "Aberta"
-        APPROVED = "approved", "Aprovada"
-        REJECTED = "rejected", "Recusada"
+    Status = AdjustmentStatus
 
     program = models.ForeignKey(
         "programs.Program",

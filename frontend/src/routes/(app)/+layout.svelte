@@ -44,6 +44,11 @@
 							Professores
 						</a>
 						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/alunos')}>Alunos</a>
+						{#if sessao.pode('programs.view_discipline')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/disciplinas')}>
+								Disciplinas
+							</a>
+						{/if}
 					</nav>
 				</div>
 				<div class="flex items-center gap-4">

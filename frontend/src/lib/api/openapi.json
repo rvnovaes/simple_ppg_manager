@@ -476,6 +476,170 @@
         ]
       }
     },
+    "/programs/disciplines/": {
+      "get": {
+        "operationId": "apps_programs_router_list_disciplines",
+        "summary": "List Disciplines",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "is_active",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedDisciplineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_programs_router_create_discipline",
+        "summary": "Create Discipline",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisciplineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisciplineIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/disciplines/{discipline_id}/": {
+      "patch": {
+        "operationId": "apps_programs_router_update_discipline",
+        "summary": "Update Discipline",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discipline_id",
+            "schema": {
+              "title": "Discipline Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisciplineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisciplinePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/programs/terms/": {
       "get": {
         "operationId": "apps_programs_router_list_academic_terms",
@@ -1101,6 +1265,216 @@
           }
         ]
       }
+    },
+    "/academic/enrollment-requests/": {
+      "get": {
+        "operationId": "apps_academic_router_list_enrollment_requests",
+        "summary": "List Enrollment Requests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AdjustmentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "term_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Term Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedEnrollmentAdjustmentRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_create_enrollment_request",
+        "summary": "Create Enrollment Request",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentAdjustmentRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollmentAdjustmentRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/enrollment-requests/{request_id}/approve": {
+      "post": {
+        "operationId": "apps_academic_router_approve_enrollment_request",
+        "summary": "Approve Enrollment Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentAdjustmentRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollmentAdjustmentApproveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/enrollment-requests/{request_id}/reject": {
+      "post": {
+        "operationId": "apps_academic_router_reject_enrollment_request",
+        "summary": "Reject Enrollment Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentAdjustmentRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollmentAdjustmentRejectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1490,6 +1864,123 @@
           }
         },
         "title": "CollectiveProjectPatch",
+        "type": "object"
+      },
+      "DisciplineOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "code",
+          "name",
+          "is_active"
+        ],
+        "title": "DisciplineOut",
+        "type": "object"
+      },
+      "PagedDisciplineOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DisciplineOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedDisciplineOut",
+        "type": "object"
+      },
+      "DisciplineIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "DisciplineIn",
+        "type": "object"
+      },
+      "DisciplinePatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "DisciplinePatch",
         "type": "object"
       },
       "AcademicTermOut": {
@@ -2577,6 +3068,235 @@
           }
         },
         "title": "StudentPatch",
+        "type": "object"
+      },
+      "AdjustmentStatus": {
+        "description": "Situação da solicitação de acerto.\n\nMora fora do model, com nome único, porque o gerador de OpenAPI batiza\no schema do enum com o `__name__` da classe: dois `Status` aninhados\ncolidem e o último registrado sobrescreve o outro — foi assim que\n`Student.Status` virou `open/approved/rejected` no `schema.d.ts`.\n`EnrollmentAdjustmentRequest.Status` continua valendo pelo alias.",
+        "enum": [
+          "open",
+          "approved",
+          "rejected"
+        ],
+        "title": "AdjustmentStatus",
+        "type": "string"
+      },
+      "EnrollmentAdjustmentItemOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "discipline_id": {
+            "title": "Discipline Id",
+            "type": "integer"
+          },
+          "discipline_code": {
+            "title": "Discipline Code",
+            "type": "string"
+          },
+          "discipline_name": {
+            "title": "Discipline Name",
+            "type": "string"
+          },
+          "action": {
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "discipline_id",
+          "discipline_code",
+          "discipline_name",
+          "action"
+        ],
+        "title": "EnrollmentAdjustmentItemOut",
+        "type": "object"
+      },
+      "EnrollmentAdjustmentRequestOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "integer"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          },
+          "term_id": {
+            "title": "Term Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "justification": {
+            "title": "Justification",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EnrollmentAdjustmentItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "student_id",
+          "student_name",
+          "term_id",
+          "status",
+          "justification",
+          "decision_note",
+          "decided_at",
+          "created_at",
+          "items"
+        ],
+        "title": "EnrollmentAdjustmentRequestOut",
+        "type": "object"
+      },
+      "PagedEnrollmentAdjustmentRequestOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EnrollmentAdjustmentRequestOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedEnrollmentAdjustmentRequestOut",
+        "type": "object"
+      },
+      "Action": {
+        "enum": [
+          "add",
+          "drop"
+        ],
+        "title": "Action",
+        "type": "string"
+      },
+      "EnrollmentAdjustmentItemIn": {
+        "description": "Uma mudança pedida: incluir ou excluir uma disciplina.",
+        "properties": {
+          "discipline_id": {
+            "title": "Discipline Id",
+            "type": "integer"
+          },
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          }
+        },
+        "required": [
+          "discipline_id",
+          "action"
+        ],
+        "title": "EnrollmentAdjustmentItemIn",
+        "type": "object"
+      },
+      "EnrollmentAdjustmentRequestIn": {
+        "description": "Abertura de um acerto de matrícula.\n\nSem `program_id`: o programa é o da requisição (current_program).\n`student_id` é opcional e existe só para a tela ser explícita — o\naluno vem sempre da sessão, e informar o de outra pessoa é 403.",
+        "properties": {
+          "student_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          },
+          "term_id": {
+            "title": "Term Id",
+            "type": "integer"
+          },
+          "justification": {
+            "default": "",
+            "title": "Justification",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EnrollmentAdjustmentItemIn"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "term_id",
+          "items"
+        ],
+        "title": "EnrollmentAdjustmentRequestIn",
+        "type": "object"
+      },
+      "EnrollmentAdjustmentApproveIn": {
+        "description": "Aprovação: a nota é opcional — quem aprova não deve satisfação.",
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "EnrollmentAdjustmentApproveIn",
+        "type": "object"
+      },
+      "EnrollmentAdjustmentRejectIn": {
+        "description": "Recusa: o motivo é o que o aluno lê para saber o que corrigir.\n\nA obrigatoriedade real é do model (`reject` levanta\n`rejection_requires_note`): aqui o campo é exigido na borda, mas\nstring em branco só é barrada lá, com `code` estável.",
+        "properties": {
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "EnrollmentAdjustmentRejectIn",
         "type": "object"
       }
     },

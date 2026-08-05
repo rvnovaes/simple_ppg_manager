@@ -143,7 +143,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "US nova, exigida pelo ADR-006: cadastro usado por usuário de negócio vai para o front."
     },
     {
