@@ -94,8 +94,8 @@
         "Tests pass: em memória, Student REGULAR sem deadline recebe o prazo calculado (2 anos MASTERS, 4 anos DOCTORATE), incluindo admission_date em 29/02; com banco, as três CheckConstraint rejeitam regular sem project, isolada com advisor preenchido e isolada sem term; com banco, dois Student para a mesma Person em períodos diferentes são criados sem violar constraint; isolada com status=LEAVE é rejeitada pela constraint"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Depende de US-002 (CollectiveProject), US-003 (AcademicTerm) e US-004 (Teacher). Esta é a US que o ADR-007 reescreveu por inteiro em relação à versão anterior do PRD."
+      "passes": true,
+      "notes": "Student + 3 CheckConstraint + default_deadline() + admin + migração 0002_student. Testes: 6 em memória, 6 com banco. make ready verde (48 testes)."
     },
     {
       "id": "US-006",

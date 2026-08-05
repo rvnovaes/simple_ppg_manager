@@ -111,3 +111,35 @@ Started: qua. 05 ago 2026 16:58:54 -03
   - `filter_horizontal` é o par natural de `raw_id_fields` no Admin: sem ele o M2M
     vira um `<select multiple>` com a tabela inteira.
 ---
+
+## 2026-08-05 - US-005 (Model Student com modalidade e situação separadas)
+- `Student` no app `academic`: FK `program` direta, FK `person` (related_name
+  `student_records` — FK e NÃO OneToOne, ADR-007 dec. 2), `registration_number`
+  (null+unique), `modality` (REGULAR/ISOLATED/ELECTIVE) e `status`
+  (ACTIVE/LEAVE/EXCLUDED) como campos separados, campos de grau todos null
+  (`level`, `project`, `advisor`, `admission_date`, `deadline`, `defense_date`) e
+  `term` (FK AcademicTerm).
+- 3 CheckConstraint: `student_regular_requires_degree_fields`,
+  `student_non_regular_requires_term`, `student_leave_only_when_regular`.
+- `default_deadline()` usa helper `_somar_anos()` (date.replace + fallback dia 28)
+  — sem dependência nova; `save()` preenche o prazo do regular quando None.
+- `clean()` valida program contra person, project e advisor; `term` fica de fora
+  (institucional). `StudentAdmin(AuditedModelAdmin)` com modality/status em
+  list_display e list_filter.
+- Migração `academic/0002_student.py` gerada, lida (só CreateModel) e aplicada.
+- `make ready` verde: ruff, mypy 60 arquivos, svelte-check 0 erros, 48 testes.
+- Arquivos: backend/apps/academic/models.py, admin.py, services.py,
+  tests/test_models.py, tests/test_student_constraints.py (novo),
+  migrations/0002_student.py
+- **Learnings for future iterations:**
+  - Django 5.2: `models.CheckConstraint(condition=...)`, não `check=` (deprecado).
+  - Ruff DJ001 barra `null=True` em CharField; quando a constraint precisa
+    distinguir ausente de "" (caso do `level`), use `# noqa: DJ001` com comentário
+    justificando. Campo com `unique=True` não é flagado.
+  - mypy não estreita `self.fk` a partir de `if self.fk_id:` — atribua
+    `x = self.fk` e teste `if x is not None`. FK anulável devolve None sem query.
+  - Teste de CheckConstraint precisa de `pytest.raises(IntegrityError)` DENTRO de
+    `transaction.atomic()`, senão a transação do teste fica quebrada.
+  - Fixture `program` do conftest raiz devolve o PPGD criado pela data migration
+    `programs.0002` — reutilize em vez de criar programa novo.
+---
