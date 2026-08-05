@@ -467,3 +467,41 @@ Started: qua. 05 ago 2026 16:58:54 -03
   - `ralph/CLAUDE.md`, na seção "Ambiente desta worktree", descreve portas e serviços de
     OUTRO projeto (sanfili, :3103/:5103). Ignorar; o `CLAUDE.md` da raiz é a verdade.
 ---
+
+## 2026-08-05 - US-015
+- Tela Svelte "Professores" (`/professores`): lista com filtro por categoria
+  (Permanente/Colaborador/Visitante), formulário de criar/editar com todos os campos de
+  `Teacher` e seleção múltipla (checkbox) de linhas de pesquisa e projetos coletivos.
+- Busca por e-mail antes de criar: `GET /people/?email=...` no blur do campo (e em botão
+  explícito). Achando a pessoa, a tela oferece reaproveitá-la e o POST manda `person_id`;
+  não achando, avisa que cadastrará uma nova.
+- Ação "Definir senha inicial" (US-007) só aparece com `accounts.change_user` E enquanto a
+  conta não tiver senha; depois de definida some da linha.
+- Backend: `PersonBrief` ganhou `user_id` e `needs_initial_password` (resolver que consulta
+  `user.has_usable_password()`); listagens de professor e aluno passaram a
+  `select_related("person", "person__user")` para não fazer N+1.
+- Coordenação (só `academic.view_teacher`) vê tudo em leitura: sem botão de criar, editar
+  nem de senha.
+- Arquivos: `backend/apps/academic/{schemas,router}.py`,
+  `backend/apps/academic/tests/test_api_professores.py`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}`,
+  `frontend/src/routes/(app)/professores/+page.svelte` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`.
+- `make gen-api` + `make ready` verde: ruff, prettier/eslint, mypy 71 arquivos,
+  svelte-check 175 arquivos 0 erros, 181 testes.
+- **Learnings for future iterations:**
+  - Verificação no navegador segue bloqueada no loop autônomo: o plugin browser-use responde
+    `permission-blocked: wait for the user to click Allow`. O caminho de dados foi conferido
+    por HTTP contra o nginx :8080 (login secretaria, busca por e-mail vazia e depois com
+    resultado, POST de professor com pessoa nova, set-initial-password, PATCH de categoria,
+    e `permissions` da coordenação com só `academic.view_teacher`).
+  - Senha de dev de `secretaria`/`coordenacao` neste banco: `ppgd-dev-2026` (redefinida por
+    shell nesta iteração; o banco de dev não tinha senha conhecida).
+  - O corpo do POST de professor exige `phone_number` mesmo no caminho `person_id`
+    (o schema tem default `""`, mas o TS gerado o marca como obrigatório): mandar `""`.
+  - Campo que a tela precisa e o schema de saída não tem (aqui: "esta conta já tem senha?")
+    resolve-se com resolver no schema Ninja, não com uma segunda chamada por linha da lista.
+    Resolver que navega FK pede `select_related` na listagem, senão volta o N+1.
+  - `eslint-plugin-svelte` aceita `Record<number, T>` em `$derived.by`; `new Map()` continua
+    proibido (mesma pegadinha da US-014).
+---
