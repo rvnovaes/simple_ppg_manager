@@ -176,7 +176,7 @@
         "Verify in browser using dev-browser skill: golden path (aluno cria -> orientador aprova) e caminho de recusa (orientador recusa com motivo -> aluno vê o motivo)"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
