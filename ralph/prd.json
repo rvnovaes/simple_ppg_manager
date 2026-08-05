@@ -36,7 +36,7 @@
         "Tests pass: teste de invariante em memória sem banco, no padrão de Person.archive() em apps/people/models.py — aprovar solicitação já decidida levanta erro; recusar sem motivo levanta erro; aprovar/recusar uma solicitação OPEN muda o status e carimba decided_at"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Depende de apps.academic.models.Student e apps.programs.models.AcademicTerm, entregues por ralph/prd.json (US-005 e US-003)."
     },
     {

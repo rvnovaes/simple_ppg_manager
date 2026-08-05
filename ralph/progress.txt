@@ -27,3 +27,18 @@ Started: qua. 05 ago 2026 19:02:47 -03
   - `apps/programs/tests/` separa `test_models.py` (invariantes) de `test_api_*.py` (um arquivo por recurso). A US-004 deve criar `test_api_disciplinas.py` seguindo `test_api_periodos.py`.
   - US-001 não pedia teste (só typecheck); o invariante de `duplicate_code` fica coberto quando a US-004 exercitar o endpoint.
 ---
+
+## 2026-08-05 - US-002
+- Implementados `EnrollmentAdjustmentRequest` e `EnrollmentAdjustmentItem` no app `academic`: FK `program` direta (PROTECT), `student` (PROTECT), `term` obrigatória (PROTECT), `status` OPEN/APPROVED/REJECTED, `justification`, `decision_note`, `decided_at`, `created_at`; item com `request` (CASCADE, related_name="items"), `discipline` (PROTECT), `action` ADD/DROP e `UniqueConstraint(request, discipline, action)`.
+- Métodos de domínio `approve(*, note="")` e `reject(*, note)`: ambos exigem status OPEN (senão `InvalidStateTransition`, 409), carimbam `decided_at` com `timezone.now()`; `reject` levanta `DomainError(code="rejection_requires_note")` quando o motivo é vazio ou só espaço em branco.
+- `EnrollmentAdjustmentRequestQuerySet` com `.for_program()` e `.open()` — a US-007 deve escopar por ele, não por `.filter(program=...)` solto no router.
+- **Divergência resolvida contra o critério de aceite**: a US pedia `clean()` garantindo `program == student.program == term.program`, mas `AcademicTerm` NÃO tem FK `program` (ADR-007 dec. 4, período letivo é institucional). `clean()` compara só `program == student.program` e a docstring registra por que `term` fica de fora — mesmo tratamento que `Student.clean()` já dá.
+- Arquivos alterados: `backend/apps/academic/models.py`, `backend/apps/academic/tests/test_models.py`, `backend/apps/academic/migrations/0004_enrollmentadjustmentrequest_enrollmentadjustmentitem.py` (nova, lida antes do commit).
+- `make ready` verde: prettier/eslint/ruff, mypy (71 arquivos), svelte-check (177 arquivos, 0 erros), pytest 187 passed (6 testes novos de invariante, em memória, sem banco).
+- **`make migrate` rodado no banco compartilhado :5433** — aplicou a pendente `programs.0006_discipline` (US-001) e a `academic.0004`. O schema que `/opt/simple_ppg_manager` enxerga mudou.
+- Sem verificação de browser: US-002 não toca UI.
+- **Learnings for future iterations:**
+  - Model sem `program` no `clean()` que compare com `term`: não existe `term.program`. Qualquer US que peça coerência de tenant com período letivo está pedindo o impossível — o certo é omitir e documentar.
+  - `ruff format` reescreve `raise X(\n "msg"\n)` de uma linha só se couber; rode `make ready` ANTES de dar `git add`, ou o commit sai com o arquivo pré-formatação.
+  - Teste de invariante em memória com FK: basta `Model(pk=1, ...)` nas pontas; nada é salvo e `clean()` só toca `*_id` e atributos já em memória.
+  - Não existe `python` no PATH desta worktree, só `uv run python`. Heredoc com `python - <<PY` falha; use as ferramentas de edição.
