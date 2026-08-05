@@ -10,6 +10,7 @@ negócio aqui.
 """
 
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Router, Status
@@ -19,7 +20,7 @@ from apps.core import audit
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
 
-from .models import AcademicTerm, CollectiveProject, Program, ResearchLine
+from .models import AcademicTerm, CollectiveProject, Discipline, Program, ResearchLine
 from .schemas import (
     AcademicTermIn,
     AcademicTermOut,
@@ -27,6 +28,9 @@ from .schemas import (
     CollectiveProjectIn,
     CollectiveProjectOut,
     CollectiveProjectPatch,
+    DisciplineIn,
+    DisciplineOut,
+    DisciplinePatch,
     ProgramOut,
     ResearchLineIn,
     ResearchLineOut,
@@ -161,6 +165,66 @@ def update_collective_project(
             fields=sorted(campos),
         )
     return projeto
+
+
+@router.get("/disciplines/", response=list[DisciplineOut])
+@paginate
+def list_disciplines(
+    request: HttpRequest, is_active: bool | None = None, search: str | None = None
+):
+    require_perm(request, "programs.view_discipline")
+    disciplinas = Discipline.objects.for_program(current_program(request))
+    if is_active is not None:
+        disciplinas = disciplinas.filter(is_active=is_active)
+    if search:
+        # Busca da tela do catálogo: uma caixa só, código ou nome. Filtro
+        # de conveniência — o escopo de tenant já foi aplicado acima.
+        disciplinas = disciplinas.filter(
+            Q(code__icontains=search) | Q(name__icontains=search)
+        )
+    return disciplinas
+
+
+@router.post("/disciplines/", response={201: DisciplineOut})
+def create_discipline(request: HttpRequest, payload: DisciplineIn):
+    require_perm(request, "programs.add_discipline")
+    program = current_program(request)
+    disciplina = Discipline(program=program, **payload.model_dump())
+    with transaction.atomic():
+        disciplina.clean()
+        disciplina.save()
+        audit.record(
+            "programs.discipline.create",
+            request=request,
+            target=disciplina,
+            code=disciplina.code,
+            name=disciplina.name,
+        )
+    return Status(201, disciplina)
+
+
+@router.patch("/disciplines/{int:discipline_id}/", response=DisciplineOut)
+def update_discipline(
+    request: HttpRequest, discipline_id: int, payload: DisciplinePatch
+):
+    require_perm(request, "programs.change_discipline")
+    program = current_program(request)
+    disciplina = get_object_or_404(
+        Discipline.objects.for_program(program), pk=discipline_id
+    )
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    for campo, valor in campos.items():
+        setattr(disciplina, campo, valor)
+    with transaction.atomic():
+        disciplina.clean()
+        disciplina.save(update_fields=list(campos) or None)
+        audit.record(
+            "programs.discipline.update",
+            request=request,
+            target=disciplina,
+            fields=sorted(campos),
+        )
+    return disciplina
 
 
 # Período letivo é institucional (ADR-007 dec. 4): nenhuma rota abaixo

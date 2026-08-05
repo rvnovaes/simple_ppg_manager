@@ -64,6 +64,30 @@ class CollectiveProjectOut(Schema):
     is_active: bool
 
 
+class DisciplineIn(Schema):
+    # Sem program_id, pelo mesmo motivo de ResearchLineIn: o programa da
+    # disciplina é o da requisição (current_program).
+    code: str
+    name: str
+    is_active: bool = True
+
+
+class DisciplinePatch(Schema):
+    """Atualização parcial: só os campos presentes no corpo são aplicados."""
+
+    code: str | None = None
+    name: str | None = None
+    is_active: bool | None = None
+
+
+class DisciplineOut(Schema):
+    id: int
+    program_id: int
+    code: str
+    name: str
+    is_active: bool
+
+
 class AcademicTermIn(Schema):
     # Sem program_id, e não por omissão: período letivo é institucional
     # (ADR-007 dec. 4), não pertence a programa nenhum.
