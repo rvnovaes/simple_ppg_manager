@@ -11,6 +11,9 @@ Started: qua. 05 ago 2026 19:02:47 -03
 - **Verbose names em português** em todo campo e no `Meta` (`verbose_name`, `verbose_name_plural`).
 - **Ambiente**: a stack Docker é compartilhada com `/opt/simple_ppg_manager` e pode estar parada. `make up`/`docker compose up` são proibidos aqui. Se o Postgres de :5433 estiver fora, religue só o container existente com `docker start simple_ppg_manager-db-1` — isso não recria nada.
 - **`make migrations` funciona sem banco** (só emite RuntimeWarning); `make ready` não — precisa do Postgres de pé para o pytest.
+- **Papéis são data migrations encadeadas, nunca editadas**: `programs.0002` cria Secretaria/Coordenação, `academic.0003` cria Docente/Discente, `academic.0005` estende os quatro. Migração já aplicada não se edita — permissão nova entra em migração NOVA que só acrescenta. O `desfazer` remove só o que aquela migração concedeu e apaga apenas os grupos que ela mesma criou.
+- **Permissão de grupo é testada pelo resultado no banco**, não pelo dicionário do módulo: `apps/academic/tests/test_papeis.py` lê `Group.objects.get(name=papel).permissions`. Toda US que mexe em papel acrescenta caso lá.
+- **Permissões nascem antes do sinal `post_migrate`** dentro de uma data migration: é obrigatório o `ContentType.objects.get_or_create` + `Permission.objects.get_or_create` do padrão, senão a permissão não existe ainda.
 
 ---
 
@@ -42,3 +45,17 @@ Started: qua. 05 ago 2026 19:02:47 -03
   - `ruff format` reescreve `raise X(\n "msg"\n)` de uma linha só se couber; rode `make ready` ANTES de dar `git add`, ou o commit sai com o arquivo pré-formatação.
   - Teste de invariante em memória com FK: basta `Model(pk=1, ...)` nas pontas; nada é salvo e `clean()` só toca `*_id` e atributos já em memória.
   - Não existe `python` no PATH desta worktree, só `uv run python`. Heredoc com `python - <<PY` falha; use as ferramentas de edição.
+---
+
+## 2026-08-05 - US-003
+- Nova data migration `academic.0005_papeis_do_acerto`, que só ESTENDE os quatro grupos já existentes (nenhum grupo é criado aqui): Discente ganha `academic.add_enrollmentadjustmentrequest`, `academic.view_enrollmentadjustmentrequest` e `programs.view_discipline`; Docente ganha `view_`/`change_enrollmentadjustmentrequest` e `programs.view_discipline`; Secretaria ganha `view_enrollmentadjustmentrequest` + `view_`/`add_`/`change_discipline`; Coordenação ganha `view_enrollmentadjustmentrequest` e `programs.view_discipline`. Nenhum `delete_*`.
+- `desfazer` retira apenas as permissões concedidas por esta migração e não apaga nenhum grupo — todos preexistem a ela.
+- Cinco testes novos em `apps/academic/tests/test_papeis.py`: catálogo legível por todo papel, só Secretaria mantém o catálogo, todo papel acompanha o acerto, só Discente abre solicitação, só Docente decide.
+- Arquivos alterados: `backend/apps/academic/migrations/0005_papeis_do_acerto.py` (nova, lida antes do commit), `backend/apps/academic/tests/test_papeis.py`.
+- `make ready` verde: prettier/eslint/ruff, mypy (71 arquivos), svelte-check (177 arquivos, 0 erros), pytest 198 passed (eram 187).
+- **`make migrate` rodado no banco compartilhado :5433** — `academic.0005` aplicada. Os grupos que `/opt/simple_ppg_manager` enxerga mudaram.
+- Sem verificação de browser: US-003 não toca UI.
+- **Learnings for future iterations:**
+  - `test_papeis.py` tem `test_nenhum_papel_apaga_dado` e `test_papel_nao_abre_o_admin` parametrizados sobre TODOS os papéis. Conceder um `delete_*` ou qualquer permissão sobre `User` além do `change_user` da Secretaria quebra a suíte na hora — é a rede de segurança da Seção 5, não um teste decorativo.
+  - Dependência de data migration que concede permissão precisa apontar para a migração que CRIA o model (aqui `academic.0004` e `programs.0006_discipline`), senão o `ContentType` fica órfão do model real.
+  - A US-004 já pode usar `require_perm(request, "programs.view_discipline")` etc.: as permissões existem em dev e nos testes.

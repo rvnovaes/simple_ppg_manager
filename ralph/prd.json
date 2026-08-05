@@ -55,7 +55,7 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Na versão anterior esta US criava os grupos Docente e Discente, o que gerava dependência circular com a PRD de cadastros básicos."
     },
     {
