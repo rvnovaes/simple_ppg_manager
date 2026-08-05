@@ -53,8 +53,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Os TextChoices nasceram como classes de módulo (IsolatedRequestStatus/IsolatedPaymentStatus) com alias no model, porque dois `Status` aninhados colidem no OpenAPI. clean() de program_mismatch acrescentado por simetria com DisciplineOffering."
     },
     {
       "id": "US-004",

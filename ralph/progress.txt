@@ -63,3 +63,16 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - O ruff formata `search_fields` longo quebrando em várias linhas — rodar `make lint` antes de conferir o diff evita reescrita depois do commit.
   - Sem verificação de browser: US-002 não toca UI.
 ---
+
+## 2026-08-05 - US-003
+- Implementado o model `IsolatedEnrollmentRequest` no app `academic`: FKs diretas `program`, `cycle` (`IsolatedEnrollmentCycle`, `related_name="requests"`) e `person` (`people.Person`, e não `Student` — quem se inscreve ainda não é aluno), `status`, `payment_status`, `is_ufmg_staff`, `gru_url`, `decision_note`/`decided_at`, `appeal_note`/`appealed_at`, `submitted_at`, `created_at`, `UniqueConstraint(cycle, person)` chamada `unique_requerimento_isolada_por_ciclo_e_pessoa` e `IsolatedEnrollmentRequestQuerySet` com `.for_program()`/`.for_cycle()`.
+- `IsolatedRequestStatus` (DRAFT/SUBMITTED/DEFERRED/REJECTED/CANCELLED/ENROLLED) e `IsolatedPaymentStatus` (PENDING/PAID/EXEMPT) nasceram como classes **de módulo** com nome único e entram no model por alias (`Status`/`PaymentStatus`) — dois `Status` aninhados colidem no gerador de OpenAPI.
+- `clean()` acrescentado por simetria com `DisciplineOffering`: ciclo e candidato têm de ser do mesmo programa do requerimento (`DomainError(code="program_mismatch")`).
+- Arquivos alterados: `backend/apps/academic/models.py`, `backend/apps/academic/tests/test_models.py`, `backend/apps/academic/migrations/0008_isolatedenrollmentrequest.py` (nova, lida antes do commit — só cria tabela).
+- `make ready` verde: prettier/eslint/ruff, mypy (75 arquivos), svelte-check (185 arquivos, 0 erros), pytest 279 passed.
+- **`make migrate` RODADO no banco compartilhado :5433** — `academic.0008_isolatedenrollmentrequest` aplicada. Só acrescenta tabela; o outro checkout não perde nada.
+- **Learnings for future iterations:**
+  - As transições de estado (`submit`, `defer`, `reject`, `cancel`, `appeal`, `enroll`) são a US-004 e ainda NÃO existem: US-004 só acrescenta métodos, sem migração. `submit()` vai depender de `missing_documents()` (US-006) e da contagem de `items` (US-005) — ambos posteriores. Mesma armadilha da US-002: método que toca acessor reverso de model inexistente não passa no mypy. Se a US-004 esbarrar nisso, mova o critério para a US que cria o model, como já foi feito com `seats_taken()`.
+  - `payment_status` é campo separado de propósito: deferimento é ato da secretaria, pagamento é ato do candidato, e é a combinação que libera `enroll()`.
+  - Sem verificação de browser: US-003 não toca UI.
+---
