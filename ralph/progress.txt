@@ -380,3 +380,38 @@ Started: qua. 05 ago 2026 16:58:54 -03
     `@model_validator(mode="after")`, e o service recebe `person=` ou `dados_da_pessoa=`
     já resolvidos — o router faz o `get_object_or_404` escopado.
 ---
+
+## 2026-08-05 - US-013 (Endpoints — Aluno)
+- `StudentIn`/`StudentPatch`/`StudentOut` em `apps/academic/schemas.py`: `StudentOut`
+  embute `PersonBrief` e expõe `modality` e `status` como campos separados; `StudentIn`
+  valida na borda (422) o que as CheckConstraint garantem no banco — regular exige
+  `level`, `project_id` e `admission_date` (deadline calculado no `save()` quando ausente),
+  isolada/eletiva exigem `term_id` e recusam todos os campos de grau, e trancamento só
+  vale para regular.
+- `create_student` em `services.py`: mesma regra de pessoa do `create_teacher`
+  (person_id OU pessoa nova), `clean()` antes do `save()`, `assign_role_group(...,
+  "Discente")` só quando `modality=REGULAR`, `AuditLog academic.student.create`.
+- Router: `GET/POST /api/v1/academic/students/` e `PATCH .../{id}/`, escopados por
+  `current_program`, filtros opcionais modality/status/level/term_id/advisor_id. No PATCH,
+  mudança de situação grava `status_anterior`/`status_novo` no payload da auditoria.
+- `Student._conferir_modalidade()` (model) espelha as CheckConstraint no caminho do
+  domínio: PATCH incoerente vira DomainError 400 em vez de IntegrityError 500.
+- `list_people` ganhou filtro `email` (`primary_email__iexact`), para a tela achar a
+  Person antes de esbarrar na UniqueConstraint (program, primary_email).
+- `make ready` verde: ruff, mypy 71 arquivos, svelte-check 0 erros, 179 testes.
+- Arquivos: backend/apps/academic/{models,schemas,services,router}.py,
+  backend/apps/academic/tests/test_api_alunos.py, backend/apps/people/router.py,
+  backend/apps/people/tests/test_api.py, frontend/src/lib/api/{openapi.json,schema.d.ts}
+- **Learnings for future iterations:**
+  - Ordem dentro de `clean()` importa para os testes de invariante em memória: a checagem
+    de tenant (`program_mismatch`) vem primeiro; checagem de coerência de campos entra
+    depois, senão um objeto montado só com `program`/`person` no teste nível (a) falha
+    com o código errado.
+  - Regra que a CheckConstraint garante precisa de par: validator no schema Ninja (422 no
+    POST, onde a modalidade vem no corpo) E método do model (400 no PATCH, que pode
+    quebrar a coerência sem tocar na modalidade). Só o schema deixa o PATCH virar 500.
+  - FK opcional no payload (`project_id`, `advisor_id`, `term_id`) é resolvida no router
+    com `get_object_or_404` sobre `Model.objects.for_program(program)`; id inexistente ou
+    de outro tenant dá 404 antes da escrita, e o service recebe o objeto pronto.
+  - `AcademicTerm` é institucional: a busca por `term_id` é global, sem `for_program`.
+---

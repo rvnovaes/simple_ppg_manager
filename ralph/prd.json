@@ -239,7 +239,7 @@
         "Tests pass, inclusive: criar dois Student para a mesma Person em períodos diferentes funciona pela API"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
