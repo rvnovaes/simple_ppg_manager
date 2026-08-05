@@ -154,6 +154,7 @@ desktop.ini
 # (CLAUDE.md, AGENTS.md e docs/adr/ SÃO versionados — são a governança do projeto)
 # -----------------------------------------------------------------------------
 .claude/settings.local.json
+.claude/worktrees/
 .aider*
 .cursorignore
 
