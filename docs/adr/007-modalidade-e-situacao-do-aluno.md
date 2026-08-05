@@ -46,7 +46,10 @@ Dois fatos adicionais do mesmo levantamento reforçam o problema:
 - `status` — `ACTIVE` / `LEAVE` / `EXCLUDED`
   ("Ativo" / "Trancado" / "Excluído"). Muda livremente, sem validação de
   transição (decisão mantida do levantamento anterior); toda troca gera
-  `AuditLog`.
+  `AuditLog`. Única restrição: **`LEAVE` só é válido em
+  `modality=REGULAR`** — trancar não se aplica a isolada nem eletiva, que
+  duram um semestre e terminam em `EXCLUDED`. Garantido por
+  `CheckConstraint`.
 
 `EXCLUDED` deixa de significar só desistência: para isolada é o estado
 final normal e esperado ao fim do semestre.
@@ -82,10 +85,15 @@ semestre. Como texto, o semestre seria digitado em três lugares e
 divergiria ("2026/1" vs "2026-1" vs "1/2026"), fazendo a contagem errar
 em silêncio.
 
-`AcademicTerm` mora em `apps/programs` (é estrutura do programa, como
-`Program` e `ResearchLine`) e é **por programa**, não global — o sistema
-é multi-tenant desde a primeira migração e um calendário compartilhado
-entre programas seria a única exceção a essa regra.
+`AcademicTerm` mora em `apps/programs` e é **institucional — sem FK
+`program`**. O calendário 2026/1 é o mesmo da UFMG inteira; mantê-lo por
+programa produziria "PPGD 2026/1" e "PPGA 2026/1" divergentes, e a
+contagem de "quantas isoladas neste semestre" erraria em silêncio.
+
+Esta é a **única exceção** à decisão 5 abaixo, e é deliberada. A
+consequência — `AuditLog` com `program=None` nas escritas de
+`AcademicTerm` — é aqui a resposta **correta**, não uma perda: a entidade
+não pertence a programa nenhum.
 
 `Student.term` é obrigatório quando `modality` é `ISOLATED` ou
 `ELECTIVE`, e nulo em `REGULAR` (aluno de grau atravessa vários
@@ -93,10 +101,10 @@ semestres; o recorte dele é `admission_date`/`deadline`).
 
 **5. Todo model de negócio novo carrega a FK `program` diretamente.**
 
-Vale para `CollectiveProject`, `AcademicTerm`, `Teacher`, `Student` e
-para os models do acerto de matrícula, mesmo quando o programa poderia
-ser alcançado por navegação (`person.program`,
-`research_line.program`). São dois motivos:
+Vale para `CollectiveProject`, `Teacher`, `Student` e para os models do
+acerto de matrícula, mesmo quando o programa poderia ser alcançado por
+navegação (`person.program`, `research_line.program`). **`AcademicTerm`
+é a exceção**, pelo motivo dado na decisão 4. São dois motivos:
 
 - É a regra da Seção 1 do CLAUDE.md, já registrada no docstring de
   `apps/programs/models.py`: adicionar a chave depois, com dados em
@@ -108,7 +116,12 @@ ser alcançado por navegação (`person.program`,
 
 A coerência com o pai (`student.program == student.person.program`,
 `project.program == project.research_line.program`) é garantida em
-`clean()`/no service que cria o registro.
+`clean()`.
+
+**Atenção de implementação**: o Django **não** chama `clean()` em
+`.save()`/`.create()` — só em formulários. O service que cria o registro
+precisa chamar `full_clean()` explicitamente, senão o invariante existe
+no código e nunca roda no caminho real.
 
 ## Consequências
 

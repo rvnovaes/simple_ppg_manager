@@ -84,16 +84,24 @@ projetos.
 eletiva possam ser recortados por semestre.
 
 **Acceptance Criteria:**
-- [ ] Model `AcademicTerm` no app `programs`: `program` (FK,
-      on_delete=PROTECT, related_name="terms"), `year` (PositiveSmallInteger),
+- [ ] Model `AcademicTerm` no app `programs`, **institucional — sem FK
+      `program`** (ADR-007, decisão 4): `year` (PositiveSmallInteger),
       `half` (PositiveSmallInteger, choices `1`/`2`), `starts_on`
       (DateField), `ends_on` (DateField), `is_active` (BooleanField,
       default True).
-- [ ] `UniqueConstraint` em (`program`, `year`, `half`).
+      O calendário 2026/1 é o mesmo da UFMG inteira; um cadastro por
+      programa produziria "PPGD 2026/1" e "PPGA 2026/1" divergentes.
+      É a **única exceção** à regra de FK `program` direta desta PRD, e
+      é deliberada.
+- [ ] `UniqueConstraint` em (`year`, `half`).
 - [ ] `__str__` devolve o rótulo canônico `"2026/1"` — é a única forma de
       escrever um semestre no sistema (ADR-007, decisão 4).
 - [ ] Método `clean()` garante `ends_on > starts_on`; levanta
       `DomainError` (`code="invalid_term_range"`).
+- [ ] Como o model não tem FK `program`, o `AuditLog` das escritas de
+      `AcademicTerm` grava `program=None` — e isso está **correto**, não
+      é o defeito que a decisão 5 do ADR-007 evita: a entidade é
+      institucional, não pertence a programa nenhum.
 - [ ] Registrado no Django Admin do app `programs`.
 - [ ] Migração criada e revisada.
 - [ ] Typecheck passes.
@@ -170,6 +178,11 @@ vida acadêmica dele no programa.
       `modality` é `ISOLATED` ou `ELECTIVE`, `term` é NOT NULL e
       `level`, `project`, `advisor`, `admission_date`, `deadline` e
       `defense_date` são NULL.
+- [ ] `CheckConstraint` `student_leave_only_when_regular`: `status =
+      LEAVE` ("Trancado") só é permitido quando `modality = REGULAR`.
+      Trancar não se aplica a isolada nem a eletiva — o vínculo dura um
+      semestre e termina em `EXCLUDED` (confirmado pelo usuário no
+      levantamento de isoladas).
 - [ ] Regra de `deadline`: quando `modality = REGULAR` e `deadline` não
       for informado, calcular como `admission_date` + 2 anos (`level ==
       MASTERS`) ou + 4 anos (`level == DOCTORATE`); implementar como
@@ -183,12 +196,20 @@ vida acadêmica dele no programa.
       (CLAUDE.md, contexto do time: não introduzir biblioteca nova sem
       discutir).
 - [ ] Método `clean()` garante `program == person.program` e, quando
-      preenchidos, `project.program`, `advisor.program` e `term.program`
-      iguais a `program`; levanta `DomainError`
-      (`code="program_mismatch"`).
+      preenchidos, `project.program` e `advisor.program` iguais a
+      `program`; levanta `DomainError` (`code="program_mismatch"`).
+      **Não** valida `term.program`: `AcademicTerm` é institucional e não
+      tem programa (US-003).
+- [ ] **O service que cria/edita `Student` chama `full_clean()` antes de
+      salvar.** O Django não executa `clean()` em `.save()`/`.create()` —
+      só em formulários. Sem essa chamada explícita, o invariante de
+      programa acima nunca roda no caminho real (o `services.py`). Vale o
+      mesmo para `Teacher` (US-004), `CollectiveProject` (US-002) e
+      `AcademicTerm` (US-003).
 - [ ] Sem regra de transição bloqueada em `status` (troca livre entre
-      quaisquer valores) — não implementar método de validação de
-      transição para este campo. Toda troca é auditada (US-013).
+      quaisquer valores dentro do que a constraint permite) — não
+      implementar método de validação de transição para este campo. Toda
+      troca é auditada (US-013).
 - [ ] Registrado no Django Admin do app `academic` (com `modality` e
       `status` em `list_display` e `list_filter`).
 - [ ] Migração criada e revisada.
@@ -197,9 +218,9 @@ vida acadêmica dele no programa.
       - em memória, sem banco: `Student` REGULAR sem `deadline` informado
         recebe o prazo calculado (2 anos para MASTERS, 4 para DOCTORATE),
         inclusive o caso de `admission_date` em 29/02;
-      - com banco: as duas `CheckConstraint` rejeitam os casos inválidos
+      - com banco: as três `CheckConstraint` rejeitam os casos inválidos
         (regular sem `project`; isolada com `advisor` preenchido; isolada
-        sem `term`);
+        sem `term`; isolada com `status = LEAVE`);
       - com banco: **duas `Student` para a mesma `Person`**, em períodos
         diferentes, são criadas sem violar constraint (é o caso do aluno
         de isolada que volta — ADR-007, decisão 2).
@@ -358,14 +379,14 @@ coletivos vinculados a uma linha de pesquisa pela API.
 
 ### US-011: Endpoints — Período Letivo
 **Description:** Como secretaria, quero cadastrar e editar os períodos
-letivos do programa pela API.
+letivos pela API.
 
 **Acceptance Criteria:**
 - [ ] Schemas Ninja explícitos `AcademicTermIn`/`AcademicTermOut` em
       `apps/programs/schemas.py` (`AcademicTermOut` inclui o rótulo
       canônico `"2026/1"` como campo `label`).
-- [ ] `GET /api/v1/programs/terms/` (paginado, escopado por
-      `current_program(request)`, `require_perm` com
+- [ ] `GET /api/v1/programs/terms/` (paginado, **sem escopo de programa**
+      — `AcademicTerm` é institucional, US-003 —, `require_perm` com
       `programs.view_academicterm`).
 - [ ] `POST /api/v1/programs/terms/` (`require_perm` com
       `programs.add_academicterm`; registra `AuditLog`
@@ -536,7 +557,8 @@ alunos, com o formulário se adaptando à modalidade do vínculo.
    depois.
 8. O sistema deve permitir trocar a situação do aluno livremente entre
    Ativo, Trancado e Excluído, sem validação de transição, registrando
-   cada troca em `AuditLog`.
+   cada troca em `AuditLog` — com a única restrição de que **Trancado só
+   vale para a modalidade Regular**.
 9. O sistema deve permitir que o número de matrícula fique em branco na
    criação e seja preenchido depois, quando a UFMG o gerar.
 10. O sistema deve colocar o professor no grupo Docente e o aluno regular
@@ -618,6 +640,9 @@ alunos, com o formulário se adaptando à modalidade do vínculo.
   `apps.core.audit.record()` — que infere o programa com
   `getattr(target, "program", None)` — gravaria `AuditLog` com
   `program=None` em todos eles.
+  **Exceção única e deliberada: `AcademicTerm`**, que é institucional
+  (o calendário é o da UFMG inteira, não de um programa). Ali o
+  `program=None` no `AuditLog` é a resposta correta, não uma perda.
 - `Teacher.person` é `OneToOneField`; `Student.person` é `ForeignKey`
   (ADR-007, decisão 2). Nenhum dos dois substitui os campos que já vivem
   em `Person` (`full_name`, `primary_email`, `phone_number`, `status`
@@ -673,13 +698,11 @@ alunos, com o formulário se adaptando à modalidade do vínculo.
 - **`delete` para a Secretaria.** Esta PRD assume **sem delete** — só
   add/change/view. Se cadastro errado precisar sumir de verdade (e não
   virar `EXCLUDED`), é decisão a tomar antes de rodar a US-006.
-- **`AcademicTerm` por programa ou institucional.** Esta PRD adota **por
-  programa**, coerente com o multi-tenant. Se na prática o calendário for
-  o mesmo da UFMG inteira, dá duplicação de cadastro entre programas
-  futuros — barato de mudar hoje, caro depois.
-- **`TRANCADO` para Isolada/Eletiva.** O enum de `status` é o mesmo para
-  as três modalidades. Trancar uma isolada provavelmente não faz sentido,
-  mas não há constraint proibindo. Fica sem regra até alguém reclamar.
+- ~~**`AcademicTerm` por programa ou institucional.**~~ **RESOLVIDO**: é
+  institucional, sem FK `program` (US-003). O calendário 2026/1 é o mesmo
+  da UFMG inteira.
+- ~~**`TRANCADO` para Isolada/Eletiva.**~~ **RESOLVIDO**: só vale para
+  Regular, garantido por `CheckConstraint` (US-005).
 - **Retenção dos documentos e quem pode baixá-los** — pertence ao módulo
   de inscrição em isolada, mas precisa estar decidido antes dele: os
   anexos incluem identidade e CPF, mais sensíveis que os campos que esta
@@ -696,7 +719,10 @@ pelo ADR-007 e pela revisão cruzada com o código:
 | 2 | `Student.status` de 5 valores vira `modality` (3) + `status` (3) | ADR-007 / grill isoladas Q5 |
 | 3 | `level`, `project`, `admission_date`, `deadline` viram condicionais por modalidade, com `CheckConstraint` | ADR-007 |
 | 4 | Nova entidade `AcademicTerm` (US-003) | ADR-007 / grill isoladas Q4 |
-| 5 | FK `program` direta em `CollectiveProject`, `AcademicTerm`, `Teacher` e `Student` | corrige `AuditLog` com `program=None` |
+| 5 | FK `program` direta em `CollectiveProject`, `Teacher` e `Student` (não em `AcademicTerm`) | corrige `AuditLog` com `program=None` |
+| 5b | `AcademicTerm` é **institucional**, sem FK `program` | grill isoladas Q19–22 (resposta direta do usuário) |
+| 13 | `CheckConstraint` restringindo `LEAVE` à modalidade Regular | grill isoladas Q19–22 |
+| 14 | Service chama `full_clean()` antes de salvar | `clean()` não roda em `.save()`/`.create()` |
 | 6 | Nova US-007: grupo automático + senha inicial | usuários criados não conseguiam logar |
 | 7 | Nova US-008: `current_program()` | "todas do programa" não tinha implementação possível |
 | 8 | Grupos Docente/Discente passam a ser criados aqui, não em `prd-matricula` | a US-007 precisa deles no cadastro |

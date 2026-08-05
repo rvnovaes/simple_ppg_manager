@@ -28,11 +28,76 @@ os chama de "aluno" e os colocou como status de `Student`. É essa tensão
 que o ADR-007 tem que resolver.
 
 ## Summary / key decisions
-- **Disciplina eletiva**: cursada por **aluno da UFMG de outro curso ou
-  programa**. Logo, essa pessoa **tem** número de registro (o do curso
-  dela, gerado pela UFMG).
-- **Disciplina isolada**: cursada por **"um aluno sem número de
-  registro"** (palavras do usuário). É o traço distintivo entre as duas.
+*TL;DR consolidado ao fim da sessão. Escopo validado: **apenas ISOLADA**.
+A modalidade ELETIVA foi adiada explicitamente pelo usuário (Q10).*
+
+**As duas modalidades**
+- **Isolada**: pessoa **sem vínculo com a UFMG**. O protocolo oficial
+  exige *não ser aluno de Graduação nem de Pós-graduação da UFMG*. Chega
+  sem número de registro; a UFMG gera um **a cada semestre** que ela
+  cursa.
+- **Eletiva**: aluno da UFMG **de outro curso ou programa** — já tem
+  número de registro. Populações mutuamente exclusivas. **Fluxo não
+  levantado.**
+
+**Decisões de modelagem**
+1. **`Student.person` é `ForeignKey`, não `OneToOneField`** (Q3). A mesma
+   pessoa que faz isolada em dois semestres gera **dois vínculos**, cada
+   um com seu próprio `registration_number`. ⚠️ Corrige erro em
+   `tasks/prd-cadastros-basicos.md` (US-004).
+2. **Dois campos, não um** (Q5): `modality` (Regular / Isolada / Eletiva —
+   não muda) e `status` (Ativo / Trancado / Excluído — muda). Um campo só
+   apagaria a informação de que alguém era de isolada assim que virasse
+   Excluído. ⚠️ Substitui a lista única do grill anterior.
+3. **`project`, `level`, `deadline`, `advisor`, `defense_date` só são
+   exigidos quando `modality=Regular`** — regra explícita e checável
+   (candidata a `CheckConstraint` condicional), não "às vezes
+   obrigatório". `TRANCADO` idem: só para Regular.
+4. **Período letivo é entidade** (Q4), **global da instituição, sem FK de
+   programa** — exceção consciente ao padrão multi-tenant, a declarar no
+   ADR.
+5. **Oferta de disciplina no período** (Q13, Q25): disciplina × período ×
+   **nº de vagas** × **docente responsável**.
+6. **Uma inscrição por pessoa por período, com 1 ou 2 disciplinas**
+   (Q17). Documentação anexada uma vez, **uma GRU** para as duas (Q18).
+
+**O fluxo (todo dentro do sistema)**
+Candidato se auto-registra e se inscreve (janela de **um único dia**) →
+anexa documentação → **docente responsável classifica os candidatos da sua
+disciplina em ordem de prioridade** → secretaria defere/indefere dentro do
+limite de vagas → publica lista → **recurso** (secretaria julga, aceita
+documento faltante, **não** derruba a classificação docente, **não**
+dispensa a GRU) → deferido paga GRU pelo link da UFMG e **envia o
+comprovante pelo próprio login** → secretaria lança a matrícula na UFMG e
+preenche o número → fim do semestre, **secretaria encerra o período** e os
+vínculos viram Excluídos.
+
+**Regras duras**
+- **Sem classificação do docente, ninguém é matriculado** naquela
+  disciplina. Portão absoluto, sem caminho alternativo (Q27).
+- Deferimento é **por classificação docente**, não por ordem de chegada.
+  Documentação incompleta desclassifica e **a vaga passa ao próximo da
+  lista**.
+- **Servidor da UFMG é isento** da GRU mediante **contracheque +
+  autorização da chefia**.
+- Taxa **nunca** é devolvida.
+
+**Cortes deliberados**
+- **Sem SMTP / sem notificação por e-mail** (Q9) — a pessoa descobre o
+  resultado voltando ao sistema. É isso que torna a conta própria (Q8)
+  estrutural, e não conveniência.
+- **Sem agendador de tarefas** (Q15, Q23) — nada expira sozinho; a
+  secretaria cancela inscrição e encerra período manualmente.
+- **Sem nota, frequência ou aprovação** (Q16) — desempenho é da UFMG.
+- **Sem geração de GRU nem conciliação financeira** (Q12) — o sistema
+  guarda o link, o estado (pendente/pago/isento) e o comprovante.
+- **Documentos guardados indefinidamente** (Q27), visíveis **só pela
+  Secretaria**. Decisão explícita do usuário; declarar no ADR.
+
+**Papéis**
+Candidato (auto-registro, papel novo) · **Docente** (classifica) ·
+**Secretaria** (defere, julga recurso, lança matrícula, encerra período) ·
+**Coordenação** (só leitura, sem papel ativo neste módulo).
 
 ## Q&A log
 
@@ -272,20 +337,386 @@ que o ADR-007 tem que resolver.
 - Flags: retenção/descarte dos documentos após o semestre (LGPD) -> a
   definir. Quem pode baixar o documento (só secretaria?) -> a definir.
 
+### Q12 — a GRU entra no sistema, e em que momento?
+- Asked: pagamento antes ou depois do deferimento? A secretaria precisa
+  acompanhar quem pagou dentro do nosso sistema?
+- Captured: o pagamento vem **depois**. Sequência nas palavras do usuário:
+  *"depois que a secretaria valida a documentação e a quantidade de vagas
+  disponíveis para a disciplina. A UFMG gera um link específico para
+  pagamento de GRU em disciplina isolada. Uma vez pago, o comprovante
+  deverá ser enviado pelo login do aluno."*
+- Fatos novos:
+  - **VAGAS**: a secretaria valida "a quantidade de vagas disponíveis
+    **para a disciplina**". Existe capacidade por disciplina — peça nova,
+    não prevista em nenhum PRD. -> Q13.
+  - **A GRU é gerada pela UFMG**, não pelo nosso sistema — é um **link
+    específico** para pagamento de GRU em disciplina isolada. Confirma a
+    recomendação de o sistema não gerar nem conciliar pagamento.
+  - **O comprovante é enviado pelo próprio aluno, pelo login dele.** Isso
+    torna a decisão da Q8 (conta própria) **estrutural, não conveniência**:
+    sem conta, não há como a pessoa enviar o comprovante depois. Registrar
+    isso no ADR como a justificativa mais forte da Q8.
+- **Máquina de estados da inscrição em isolada** (derivada, confirmar na
+  Q14):
+  1. pessoa se inscreve e anexa documentação
+  2. secretaria valida documentação **e vagas** → defere ou indefere
+  3. (se não isento) UFMG gera link de GRU → pessoa paga
+  4. pessoa envia o comprovante **pelo login dela**
+  5. secretaria envia pra UFMG → UFMG gera número de matrícula
+  6. secretaria preenche o número → vínculo de aluno criado
+  7. fim do semestre → excluído
+  Ramo de isenção: servidor da UFMG (contracheque anexado) pula os passos
+  3 e 4.
+- Flags: onde fica o link da GRU? (a secretaria cola no sistema para a
+  pessoa ver ao logar?) -> a confirmar.
+
+### Q13 — o sistema guarda quantas vagas cada disciplina tem?
+- Asked: as vagas moram no nosso sistema (por disciplina e por período) ou
+  a secretaria consulta fora?
+- Captured: **"guardar as vagas no sistema"** — confirmado.
+- Consequência: **entra a entidade "oferta de disciplina no período"**
+  (`DisciplineOffering` ou similar): disciplina × período letivo × número
+  de vagas. É a mesma entidade que eu tinha conseguido evitar na Q7 —
+  agora ela entra por outro caminho, e com justificativa própria.
+  Não implica (ainda) em ter professor responsável pela oferta: isso
+  continua fora, porque ninguém aprova por disciplina (Q7).
+- Regra de negócio que o sistema passa a poder checar sozinho: **não
+  deferir inscrição além do número de vagas da oferta**. Candidata a
+  invariante em método do model (padrão ADR-002), não só aviso de tela.
+- Justificativa registrada: a secretaria já vai estar dentro do sistema
+  deferindo uma a uma; se o número de vagas estivesse numa planilha à
+  parte, ela conferiria manualmente a cada deferimento — e é aí que se
+  defere a mais. Com o número aqui, a tela mostra "3 de 5 vagas ocupadas"
+  no momento da decisão.
+- Flags: contagem de vaga ocupada — conta a partir do **deferimento** ou
+  só quando a matrícula se completa (número da UFMG preenchido)? Importa
+  porque entre um e outro a pessoa pode não pagar a GRU e a vaga ficaria
+  presa. -> a confirmar.
+
+### Q14 — quando a vaga conta como ocupada, e o que a libera?
+- Asked: vaga ocupada a partir do deferimento ou da matrícula concluída?
+  Existe prazo formal de pagamento que o sistema deva fazer valer?
+- Captured: o usuário **reafirmou a sequência** em vez de responder o caso
+  de borda, e a sequência confirma o que já estava registrado:
+  *"o aluno pede a isolada e envia os documentos. a secretaria verifica a
+  documentação e as vagas e defere se estiver ok. Depois o aluno paga a
+  GRU"*.
+  Ou seja: a **checagem de vagas é pré-condição do deferimento** — a
+  secretaria confere vagas *antes* de deferir. Isso sustenta contar a vaga
+  como ocupada **no deferimento** (senão a conferência que ela faz não
+  significaria nada para o próximo deferimento).
+- Flags: continua **em aberto** o caso de borda — o que acontece com a
+  vaga se a pessoa é deferida e nunca paga a GRU. -> Q15.
+
+### Q15 — deferida mas nunca paga: o que libera a vaga?
+- Asked: a secretaria cancela manualmente (devolvendo a vaga), ou existe
+  prazo formal que o sistema deva aplicar sozinho?
+- Captured: **"basta isso, sem prazo automático"** — confirmado. A
+  secretaria tem uma ação de **cancelar a inscrição**, que devolve a vaga.
+  **Nenhuma expiração automática**, nenhum prazo de pagamento aplicado
+  pelo sistema.
+- Consequência: **não entra agendador de tarefas** (Celery/cron/qdispatch)
+  no projeto por causa disso. Mantém a stack como está — decisão alinhada
+  com a Seção 2 do CLAUDE.md (menos peças móveis). Registrar no ADR
+  explicitamente, porque "expira sozinho depois de X dias" é exatamente o
+  tipo de requisito que reaparece depois e arrasta infraestrutura nova.
+- Estado novo na máquina: **CANCELADA** (pela secretaria), distinta de
+  INDEFERIDA (recusada na análise da documentação/vagas).
+
+### Q16 — o sistema registra o resultado da disciplina?
+- Asked: nota/frequência/aprovação da isolada ficam no nosso sistema ou só
+  na UFMG?
+- Captured: **"fica só na UFMG"** — confirmado. O PPGD Manager **não**
+  registra nota, frequência nem aprovação.
+- Consequência: o vínculo de isolada no nosso sistema é um registro de
+  **inscrição e matrícula**, não de **desempenho**. Mantém a regra que já
+  vale para o aluno regular: desempenho acadêmico é da UFMG, fonte única.
+- Contrapartida aceita conscientemente: quando essa pessoa depois prestar
+  o processo seletivo, o sistema saberá **que** ela cursou isolada e
+  **quais** disciplinas pediu, mas não se foi aprovada — a secretaria
+  consulta a UFMG se precisar.
+
+### Q17 — uma inscrição com duas disciplinas, ou duas inscrições?
+- Asked: uma inscrição carregando até 2 disciplinas, ou uma inscrição por
+  disciplina? E a GRU é uma por inscrição ou uma por disciplina?
+- Captured: **"uma inscrição com duas disciplinas"** — confirmado.
+  Uma inscrição por pessoa por período, carregando 1 ou 2 disciplinas,
+  com a documentação anexada **uma vez**, deferida de uma vez.
+  Mesmo desenho do acerto de matrícula: um pedido com N itens.
+- Justificativa registrada: a documentação é **da pessoa**, não da
+  disciplina — pedir os mesmos quatro documentos duas vezes seria
+  retrabalho para ela e para a secretaria conferir. A checagem de vagas
+  continua funcionando porque é por disciplina: uma inscrição com duas
+  disciplinas consome uma vaga em **cada** oferta.
+- Regra derivada: **limite de 2 itens por inscrição**, e uma inscrição
+  ativa por pessoa por período. Invariante candidato a método do model.
+- Flags: **a pergunta sobre a GRU (uma por inscrição ou uma por
+  disciplina) NÃO foi respondida** -> Q18.
+
+### Q18 — a GRU é uma por inscrição ou uma por disciplina?
+- Asked: pessoa com duas isoladas paga uma guia ou duas?
+- Captured: **"a gru é uma por inscrição que dá direito de fazer duas
+  disciplinas"** — confirmado. **Uma GRU por inscrição**, cobrindo até as
+  duas disciplinas.
+- Consequência de modelagem: o estado de pagamento (**pendente / pago /
+  isento**) e o **comprovante** são atributos da **inscrição**, não do
+  item de disciplina. O item de disciplina carrega só qual disciplina e a
+  vaga que ele consome. Não existe o caso "paga numa disciplina e
+  pendente na outra".
+- Reforça a decisão da Q17: a inscrição é a unidade de tudo — uma
+  documentação, um deferimento, uma GRU, um comprovante.
+
+### Q19–Q22 — quatro pontos menores (perguntados em bloco)
+- **Link da GRU**: fica **registrado no sistema**. Ao deferir, a secretaria
+  cola o link gerado pela UFMG; a pessoa loga, vê "deferida" e o link para
+  pagar. É o que fecha o ciclo sem e-mail, já que SMTP ficou fora (Q9).
+  → campo de URL na inscrição, preenchido no deferimento.
+- **Acesso aos documentos**: **só a Secretaria** pode visualizar/baixar os
+  arquivos anexados. A Coordenação vê a inscrição e seu status, mas **não
+  abre os arquivos** — menor exposição de dado sensível (LGPD).
+  → permissão separada para download de documento, não basta `view` da
+  inscrição.
+- **TRANCADO**: **não se aplica** a isolada, só a aluno **Regular**.
+  Isolada dura um semestre e termina em Excluído. → as situações válidas
+  são restritas por modalidade; candidato à mesma `CheckConstraint`
+  condicional da Q5.
+- **Período letivo**: **global da instituição, sem FK de programa** — o
+  calendário 2026/1 é o mesmo da UFMG inteira. Evita "PPGD 2026/1" e
+  "PPGA 2026/1" duplicados. **Exceção consciente ao padrão multi-tenant**
+  do resto do sistema (todo dado de negócio carrega FK de programa,
+  Seção 1 do CLAUDE.md) — registrar essa exceção explicitamente no ADR,
+  com este motivo, senão parece descuido em revisão futura.
+
+### Q23 — quem marca o aluno de isolada como excluído no fim do semestre?
+- Asked: derivar do fim do período letivo (calculado), ou a secretaria
+  encerra explicitamente?
+- Captured: **"secretaria encerra o semestre"** — confirmado. Existe uma
+  ação explícita de **encerrar o período letivo**, que marca como
+  Excluídos todos os vínculos de isolada daquele período de uma vez.
+- Consequência: `situação` continua sendo **dado digitado, não calculado**
+  — coerente com o resto do sistema e mais óbvio para quem for mexer no
+  código depois. O preço aceito é que, se a secretaria esquecer de
+  encerrar, o sistema mostra como ativo quem já terminou.
+- É uma operação **multi-model / em lote** (encerra o período e atualiza N
+  vínculos) → é caso legítimo de `services.py` com `transaction.atomic()`,
+  pelo critério da Seção 3 do CLAUDE.md, e precisa de `AuditLog` próprio
+  (um evento de encerramento, não N eventos soltos).
+
+### Q24 — janela de inscrição + PROTOCOLO OFICIAL fornecido pelo usuário
+- Asked: existe janela de inscrição? algo que não tocamos?
+- Captured: o usuário colou o **protocolo oficial de requerimento de
+  isoladas do PPGD** (edital vigente, datas de agosto/2026). Este é o
+  documento de referência da sessão — **vale mais que minhas inferências
+  anteriores**. Conteúdo integral extraído abaixo.
+
+#### Exigências (critérios de elegibilidade)
+1. **Existência de vaga** (há lista publicada de disciplinas com nº de vagas).
+2. **NÃO ser aluno de curso de Graduação ou de Pós-graduação da UFMG.**
+   → regra de elegibilidade dura, repetida em destaque no protocolo:
+   *"Alunos com vínculo em cursos (Graduação e Pós-graduação) da UFMG não
+   poderão solicitar matrícula em disciplina isolada."* Confirma que
+   ISOLADA e ELETIVA são populações **mutuamente exclusivas**.
+3. **Autorização do professor responsável pela disciplina**, ou
+   recomendação do orientador, no caso de pós-graduando de programa
+   *stricto sensu* **externo à UFMG**.
+
+#### Documentos (lista oficial — corrige e refina a Q11)
+1. cópia simples de documento de identificação **e CPF** (passaporte com
+   visto válido, **se estrangeiro**);
+2. cópia de **diploma de graduação OU certidão de conclusão**;
+3. **currículo Lattes em PDF** (não "currículo" genérico);
+4. comprovante de endereço;
+5. no caso de servidor da UFMG: cópia de contracheque **E AUTORIZAÇÃO DA
+   CHEFIA** ← a Q11 tinha capturado só o contracheque. São **dois**
+   documentos.
+
+#### Recomendação docente — CORRIGE A Q7
+O protocolo diz: *"para aprovação da matrícula é necessária a recomendação
+do professor responsável pela disciplina (esta recomendação será feita em
+formulário próprio, enviado pelo respectivo professor ou professora à
+Secretaria do PPGD, com indicação de **ordem decrescente de prioridade** a
+ser considerada dentro do limite de vagas disponíveis. Cabe à **pessoa
+interessada entrar em contato com o docente** solicitando sua inclusão
+nesse formulário)."*
+- O docente **participa**, ao contrário do que a Q7 concluiu. A Q7 não
+  está errada no essencial — **quem defere é a secretaria** —, mas a
+  recomendação docente é **insumo obrigatório** da decisão.
+- **Existe "professor responsável pela disciplina"** — a entidade que eu
+  tinha declarado desnecessária na Q7 e que já havia voltado pela Q13
+  (oferta com vagas). Agora está confirmada por duas vias.
+- **O deferimento NÃO é por ordem de chegada**: é por **ordem de
+  prioridade definida pelo professor**, dentro do limite de vagas. Isso
+  invalida a lógica simples de "vaga ocupada no deferimento" da Q14 —
+  existe uma **classificação**.
+- O formulário do docente hoje é **externo ao sistema** (o professor envia
+  à Secretaria). O contato do docente está na seção Docentes do site, e é
+  **a pessoa candidata** que corre atrás do docente.
+
+#### Lista de espera / desclassificação
+*"O candidato que não apresentar a documentação completa será
+desclassificado, sendo a **vaga transferida para o próximo da lista**."*
+→ Existe **lista classificada com repasse de vaga**. Não capturado antes.
+
+#### RECURSO — etapa inteira não capturada
+Existe **interposição de recurso**, com link próprio, e uma **lista de
+deferidos após recurso**. Nenhuma pergunta desta sessão tocou nisso.
+
+#### Agenda oficial (2026/2 — datas reais)
+| Etapa | Data |
+|---|---|
+| Protocolo / envio de documentos | **10/08/2026, exclusivamente neste dia, até 23:59** |
+| Análise dos documentos pelo PPGD | 10 a 11/08/2026 |
+| Listagem de requerimentos DEFERIDOS | 11/08/2026 |
+| Interposição de recurso | 12/08/2026 (link próprio) |
+| Listagem de DEFERIDOS APÓS RECURSO / resultado final | 13/08/2026 |
+| Envio do comprovante da GRU | 13/08 até 23:59 de 16/08/2026 |
+
+→ A janela de inscrição é de **UM ÚNICO DIA**. Confirma a Q24: janela
+existe, é rígida e curta, e o sistema tem que fazê-la valer.
+→ **Inconsistência no próprio protocolo**: o texto corrido diz *"Até o dia
+12 de agosto será divulgada a lista dos aprovados que poderão pagar a
+GRU"*, mas a agenda diz deferidos em 11/08 e resultado final em 13/08.
+Não é erro meu de leitura — é divergência do documento. -> confirmar com
+a secretaria qual data vale.
+
+#### Acesso por PROTOCOLO — CONFLITA COM A Q8
+*"deverá enviar no sistema de inscrições (**com acesso pelo protocolo
+recebido no ato da inscrição**) o comprovante de pagamento"*.
+→ Hoje o acesso de retorno é por **número de protocolo**, não por conta
+com login. A Q8 decidiu "conta própria". Não é necessariamente
+contradição — pode ser mudança deliberada de processo —, mas **precisa
+ser decisão consciente**, não descuido. -> Q25.
+
+#### Outros pontos do protocolo
+- **Uma taxa para até duas disciplinas** — confirma exatamente a Q17/Q18.
+- **GRU só deve ser paga após a publicação do deferimento**; o protocolo
+  alerta em destaque para conferir antes de pagar.
+- **Taxa nunca é devolvida**, em nenhuma hipótese.
+- *"a matrícula será lançada pela própria Secretaria, com base nas
+  informações contidas nos documentos apresentados"* — confirma a Q12.
+- **Servidor da UFMG é isento** mediante cópia do **último** contracheque.
+- Sem comprovante de pagamento, **a secretaria não efetiva a matrícula**.
+
+### Q25 — o formulário de recomendação do professor entra no sistema?
+- Asked: o docente ordena a prioridade dentro do sistema, ou continua em
+  formulário externo com a secretaria digitando a classificação?
+- Captured: **"dentro do sistema"** — confirmado. O professor responsável
+  pela disciplina passa a **ver os requerimentos da disciplina dele e
+  ordenar a prioridade na tela**.
+- Consequências (grandes, registrar no ADR):
+  - **Entra a relação "professor responsável pela oferta"** —
+    definitivamente. A oferta de disciplina no período (Q13) precisa saber
+    **quem é o docente responsável**, senão não há como mostrar a ele os
+    requerimentos que lhe cabem.
+  - **Entra um terceiro papel ativo no fluxo**: candidato → **docente
+    (classifica)** → secretaria (defere). O fluxo deixa de ter dois atores
+    (Q7) e passa a ter três.
+  - Precisa de um modelo de **classificação/prioridade** por oferta: a
+    ordem que o docente define entre os candidatos daquela disciplina.
+  - Risco operacional aceito conscientemente: a janela é de **um dia**
+    (protocolo) e a análise ocorre em 24–48h — depende de os docentes
+    entrarem no sistema nesse prazo. Se não entrarem, a secretaria precisa
+    de um caminho alternativo. -> flag.
+  - **A pessoa candidata continua tendo que procurar o docente por fora**
+    (o protocolo diz que cabe a ela solicitar sua inclusão) — o sistema
+    não substitui esse contato, só o registro da classificação.
+
+### Q26 — como funciona o recurso?
+- Asked: quem julga? o que pode ser contestado? pode juntar documento novo?
+- Captured (palavras do usuário): *"a secretaria analisa os motivos do
+  aluno, aprecia documentos faltantes mas o que importa é a recomendação
+  do professor. Não pode abrir mão do pagamento da GRU e envio"*.
+- Decompondo:
+  1. **Quem julga: a SECRETARIA** — não a coordenação. Minha recomendação
+     de escalar para a coordenação estava errada; a coordenação **continua
+     sem papel ativo** em todo este módulo (só leitura).
+  2. **Pode juntar documento novo**: sim — a secretaria "aprecia
+     documentos faltantes". O recurso é, na prática, a **segunda chance de
+     completar a documentação**.
+  3. **A recomendação do professor é DECISIVA e não é recorrível.**
+     *"o que importa é a recomendação do professor"* — o recurso conserta
+     documentação, **não** derruba a classificação docente. Quem ficou
+     fora por ordem de prioridade não entra por recurso.
+  4. **O recurso não dispensa a GRU**: mesmo deferido em recurso, a pessoa
+     **paga e envia o comprovante** dentro do prazo, como todo mundo.
+- Consequência de modelagem: o recurso é uma **reabertura da mesma
+  inscrição** para anexar documento e argumentar, e não um objeto novo com
+  vida própria — o resultado dele é apenas mudar o estado da inscrição de
+  Indeferida para Deferida (ou manter). O estado final continua sendo o da
+  inscrição.
+- Reforça a Q25: se a recomendação docente é o que decide e não é
+  recorrível, ela **tem** que estar no sistema e ser auditável — é o ponto
+  de maior consequência de todo o fluxo.
+
+### Q27 — recurso no sistema, retenção de documentos, docente ausente
+- Asked: (1) o recurso é feito no sistema? (2) por quanto tempo os
+  documentos ficam guardados? (3) o que acontece se o docente não
+  classificar no prazo?
+- Captured:
+  1. **"o recurso é no sistema"** — confirmado. O recurso é feito dentro
+     do PPGD Manager, não por link externo separado. Consolida: inscrição,
+     classificação docente, deferimento, recurso, comprovante de GRU —
+     tudo no mesmo sistema.
+  2. **"os documentos ficam para sempre no sistema"** — decisão explícita
+     do usuário, tomada **depois** de eu levantar a implicação de LGPD.
+     Não é omissão nem default: é escolha. **Retenção indefinida** de
+     identidade, CPF, diploma, comprovante de endereço e contracheque,
+     inclusive de quem nunca virou aluno. → O ADR deve **declarar isso por
+     escrito**, junto com a restrição de acesso já decidida (só
+     Secretaria abre os arquivos), para que a política seja explícita e
+     defensável, e não implícita.
+  3. **"se o professor não enviar a lista ninguém será matriculado"** —
+     regra dura e sem exceção. A recomendação docente é um **portão
+     absoluto**: sem ela, **nenhum** requerimento daquela disciplina é
+     deferido. Não existe caminho alternativo, não existe a secretaria
+     classificar no lugar do docente, não existe deferir sem
+     classificação.
+     → Consequência de produto: o sistema deve **avisar com destaque** a
+     secretaria sobre ofertas sem classificação enquanto a janela está
+     aberta, porque o custo do silêncio é a disciplina inteira ficar sem
+     ninguém matriculado. É a informação mais crítica da tela dela.
+     → Fecha a flag "e se o docente não classificar" — a resposta é que o
+     processo simplesmente não anda, por desenho.
+
 ## Open flags (pending input)
-- Retenção e descarte dos documentos anexados após o fim do semestre
-  (LGPD) -> a definir com o time; não é decisão técnica isolada.
-- Quem pode visualizar/baixar os documentos anexados (só Secretaria?
-  Coordenação também?) -> a confirmar.
-- **ELETIVA: fluxo inteiro em aberto** (usuário adiou explicitamente na
-  Q10). Sabe-se só que é aluno da UFMG de outro curso/programa e que
-  portanto já tem número de matrícula. Perguntas não feitas: passa pela
-  secretaria? limite de disciplinas? excluída ao fim do semestre?
-  -> próxima sessão de grill.
-- `TRANCADO` se aplica a Isolada/Eletiva ou só a Regular? -> a confirmar.
-- App e escopo do período letivo (global da instituição ou por programa?)
-  -> a decidir; recomendação a fazer.
-- Tela de cadastro de aluno precisa buscar `Person` existente por e-mail
-  antes de criar uma nova, senão a secretaria bate na UniqueConstraint de
-  `(program, primary_email)` ao recadastrar quem volta -> requisito de UX
-  a incluir no PRD revisado.
+*Revisado ao fim da sessão — só o que continua realmente em aberto.*
+
+1. **Conta própria × número de protocolo** — a Q8 decidiu auto-registro
+   com conta, mas o protocolo oficial descreve o processo atual como
+   acesso *"pelo protocolo recebido no ato da inscrição"*. Levantei o
+   conflito, mas a pergunta acabou não sendo respondida (a resposta
+   seguinte tratou do formulário docente). **Precisa de decisão
+   consciente**: manter a conta (e mudar o processo) ou reproduzir o
+   protocolo. -> usuário.
+2. **ELETIVA: fluxo inteiro em aberto** — adiado explicitamente na Q10.
+   Sabe-se só que é aluno da UFMG de outro curso/programa, que já tem
+   número de registro, e que é população mutuamente exclusiva da isolada.
+   Não levantado: passa pela secretaria? tem limite? paga GRU? é excluída
+   ao fim do semestre? precisa de recomendação docente?
+   -> próxima sessão de grill.
+3. **Divergência de datas dentro do próprio protocolo** — o texto corrido
+   diz que a lista de aprovados sai até 12/08; a agenda diz deferidos em
+   11/08 e resultado final em 13/08. -> confirmar com a secretaria qual
+   vale.
+4. **Em qual app mora o período letivo** — decidido que é global (sem FK
+   de programa), mas não em que app. Recomendação a fazer: `programs`,
+   junto de Program/ResearchLine/Discipline. -> baixa relevância, decidir
+   ao escrever o ADR.
+5. **Como a pessoa candidata encontra o docente** — o protocolo diz que
+   cabe a ela procurá-lo, e o contato está na seção Docentes do site. Se
+   a classificação passa a ser no sistema (Q25), esse contato prévio
+   continua por fora? Vale checar se o fluxo novo não deixa a pessoa sem
+   saber que precisa falar com o professor. -> usuário.
+
+## Ações decorrentes (fora desta sessão)
+- ⚠️ **Corrigir `tasks/prd-cadastros-basicos.md`** (já commitado, não
+  implementado): `Student.person` deve ser `ForeignKey`, não
+  `OneToOneField` (Q3); separar `modality` de `status` (Q5); tornar
+  `project`/`level`/`deadline`/`advisor` condicionais à modalidade
+  Regular. Enquanto não corrigir, `ralph/prd.json` está com o desenho
+  errado.
+- **Escrever o ADR-007** com as decisões desta sessão.
+- **Requisito de UX para o PRD revisado**: a tela de cadastro de aluno
+  precisa **buscar `Person` existente por e-mail** antes de criar uma
+  nova, senão a secretaria bate na `UniqueConstraint (program,
+  primary_email)` ao recadastrar quem volta em outro semestre (Q3).
