@@ -246,6 +246,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/teachers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Teachers */
+        get: operations["apps_academic_router_list_teachers"];
+        put?: never;
+        /** Create Teacher Endpoint */
+        post: operations["apps_academic_router_create_teacher_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/teachers/{teacher_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Teacher */
+        patch: operations["apps_academic_router_update_teacher"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -525,6 +560,142 @@ export interface components {
              * @default
              */
             phone_number: string;
+        };
+        /**
+         * Category
+         * @enum {string}
+         */
+        Category: "permanent" | "collaborator" | "visiting";
+        /** PagedTeacherOut */
+        PagedTeacherOut: {
+            /** Items */
+            items: components["schemas"]["TeacherOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * PersonBrief
+         * @description Pessoa por trás do vínculo, no mínimo que a tela exibe.
+         */
+        PersonBrief: {
+            /** Id */
+            id: number;
+            /** Full Name */
+            full_name: string;
+            /** Primary Email */
+            primary_email: string;
+            /** Phone Number */
+            phone_number: string;
+        };
+        /** TeacherOut */
+        TeacherOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            person: components["schemas"]["PersonBrief"];
+            /** Category */
+            category: string;
+            /**
+             * Accredited Since
+             * Format: date
+             */
+            accredited_since: string;
+            /** Accredited Until */
+            accredited_until: string | null;
+            /** Academic Degree */
+            academic_degree: string;
+            /** Lattes Url */
+            lattes_url: string;
+            /** Home Institution */
+            home_institution: string;
+            /** Research Line Ids */
+            research_line_ids: number[];
+            /** Project Ids */
+            project_ids: number[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * AcademicDegree
+         * @enum {string}
+         */
+        AcademicDegree: "doctorate" | "postdoctorate" | "habilitation";
+        /**
+         * TeacherIn
+         * @description Criação de professor.
+         *
+         *     O payload traz OU `person_id` (pessoa que já existe no programa) OU os
+         *     dados de uma pessoa nova — nunca os dois. Sem `program_id`: o programa
+         *     é o da requisição (current_program), nunca o que o chamador escolher.
+         */
+        TeacherIn: {
+            /** Person Id */
+            person_id?: number | null;
+            /** Full Name */
+            full_name?: string | null;
+            /** Primary Email */
+            primary_email?: string | null;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            category: components["schemas"]["Category"];
+            /**
+             * Accredited Since
+             * Format: date
+             */
+            accredited_since: string;
+            /** Accredited Until */
+            accredited_until?: string | null;
+            academic_degree: components["schemas"]["AcademicDegree"];
+            /**
+             * Lattes Url
+             * @default
+             */
+            lattes_url: string;
+            /**
+             * Home Institution
+             * @default
+             */
+            home_institution: string;
+            /**
+             * Research Line Ids
+             * @default []
+             */
+            research_line_ids: number[];
+            /**
+             * Project Ids
+             * @default []
+             */
+            project_ids: number[];
+        };
+        /**
+         * TeacherPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         *
+         *     A pessoa não muda por aqui: trocar a pessoa de um vínculo docente é
+         *     apagar o histórico de quem orientou quem, não editar um campo.
+         */
+        TeacherPatch: {
+            category?: components["schemas"]["Category"] | null;
+            /** Accredited Since */
+            accredited_since?: string | null;
+            /** Accredited Until */
+            accredited_until?: string | null;
+            academic_degree?: components["schemas"]["AcademicDegree"] | null;
+            /** Lattes Url */
+            lattes_url?: string | null;
+            /** Home Institution */
+            home_institution?: string | null;
+            /** Research Line Ids */
+            research_line_ids?: number[] | null;
+            /** Project Ids */
+            project_ids?: number[] | null;
         };
     };
     responses: never;
@@ -954,6 +1125,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_teachers: {
+        parameters: {
+            query?: {
+                category?: components["schemas"]["Category"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedTeacherOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_teacher_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeacherIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeacherOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_teacher: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teacher_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeacherPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeacherOut"];
                 };
             };
         };

@@ -729,6 +729,153 @@
           }
         ]
       }
+    },
+    "/academic/teachers/": {
+      "get": {
+        "operationId": "apps_academic_router_list_teachers",
+        "summary": "List Teachers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Category"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedTeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_create_teacher_endpoint",
+        "summary": "Create Teacher Endpoint",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeacherIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/teachers/{teacher_id}/": {
+      "patch": {
+        "operationId": "apps_academic_router_update_teacher",
+        "summary": "Update Teacher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teacher_id",
+            "schema": {
+              "title": "Teacher Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeacherPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1395,6 +1542,358 @@
           "primary_email"
         ],
         "title": "PersonIn",
+        "type": "object"
+      },
+      "Category": {
+        "enum": [
+          "permanent",
+          "collaborator",
+          "visiting"
+        ],
+        "title": "Category",
+        "type": "string"
+      },
+      "PagedTeacherOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TeacherOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedTeacherOut",
+        "type": "object"
+      },
+      "PersonBrief": {
+        "description": "Pessoa por trás do vínculo, no mínimo que a tela exibe.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "primary_email": {
+            "title": "Primary Email",
+            "type": "string"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "primary_email",
+          "phone_number"
+        ],
+        "title": "PersonBrief",
+        "type": "object"
+      },
+      "TeacherOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "person": {
+            "$ref": "#/components/schemas/PersonBrief"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "accredited_since": {
+            "format": "date",
+            "title": "Accredited Since",
+            "type": "string"
+          },
+          "accredited_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Until"
+          },
+          "academic_degree": {
+            "title": "Academic Degree",
+            "type": "string"
+          },
+          "lattes_url": {
+            "title": "Lattes Url",
+            "type": "string"
+          },
+          "home_institution": {
+            "title": "Home Institution",
+            "type": "string"
+          },
+          "research_line_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Research Line Ids",
+            "type": "array"
+          },
+          "project_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "person",
+          "category",
+          "accredited_since",
+          "accredited_until",
+          "academic_degree",
+          "lattes_url",
+          "home_institution",
+          "research_line_ids",
+          "project_ids",
+          "created_at"
+        ],
+        "title": "TeacherOut",
+        "type": "object"
+      },
+      "AcademicDegree": {
+        "enum": [
+          "doctorate",
+          "postdoctorate",
+          "habilitation"
+        ],
+        "title": "AcademicDegree",
+        "type": "string"
+      },
+      "TeacherIn": {
+        "description": "Criação de professor.\n\nO payload traz OU `person_id` (pessoa que já existe no programa) OU os\ndados de uma pessoa nova — nunca os dois. Sem `program_id`: o programa\né o da requisição (current_program), nunca o que o chamador escolher.",
+        "properties": {
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "primary_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Email"
+          },
+          "phone_number": {
+            "default": "",
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "accredited_since": {
+            "format": "date",
+            "title": "Accredited Since",
+            "type": "string"
+          },
+          "accredited_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Until"
+          },
+          "academic_degree": {
+            "$ref": "#/components/schemas/AcademicDegree"
+          },
+          "lattes_url": {
+            "default": "",
+            "title": "Lattes Url",
+            "type": "string"
+          },
+          "home_institution": {
+            "default": "",
+            "title": "Home Institution",
+            "type": "string"
+          },
+          "research_line_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Research Line Ids",
+            "type": "array"
+          },
+          "project_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "category",
+          "accredited_since",
+          "academic_degree"
+        ],
+        "title": "TeacherIn",
+        "type": "object"
+      },
+      "TeacherPatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.\n\nA pessoa não muda por aqui: trocar a pessoa de um vínculo docente é\napagar o histórico de quem orientou quem, não editar um campo.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accredited_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Since"
+          },
+          "accredited_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Until"
+          },
+          "academic_degree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcademicDegree"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lattes_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lattes Url"
+          },
+          "home_institution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Institution"
+          },
+          "research_line_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Ids"
+          },
+          "project_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Ids"
+          }
+        },
+        "title": "TeacherPatch",
         "type": "object"
       }
     },
