@@ -14,6 +14,9 @@ Started: qua. 05 ago 2026 19:02:47 -03
 - **Papéis são data migrations encadeadas, nunca editadas**: `programs.0002` cria Secretaria/Coordenação, `academic.0003` cria Docente/Discente, `academic.0005` estende os quatro. Migração já aplicada não se edita — permissão nova entra em migração NOVA que só acrescenta. O `desfazer` remove só o que aquela migração concedeu e apaga apenas os grupos que ela mesma criou.
 - **Permissão de grupo é testada pelo resultado no banco**, não pelo dicionário do módulo: `apps/academic/tests/test_papeis.py` lê `Group.objects.get(name=papel).permissions`. Toda US que mexe em papel acrescenta caso lá.
 - **Permissões nascem antes do sinal `post_migrate`** dentro de uma data migration: é obrigatório o `ContentType.objects.get_or_create` + `Permission.objects.get_or_create` do padrão, senão a permissão não existe ainda.
+- **CRUD de recurso do programa tem forma fixa** (ver `research-lines` e `disciplines` em `apps/programs/router.py`): `require_perm` na 1ª linha; `current_program(request)` na 2ª; escopo entra na busca via `get_object_or_404(Model.objects.for_program(program), pk=...)` — objeto de outro tenant vira 404, nunca 403; `model.clean()` + `save()` + `audit.record()` dentro de um só `transaction.atomic()`; PATCH usa `model_dump(exclude_unset=True, exclude_none=True)` e `save(update_fields=list(campos) or None)`.
+- **Schema `XIn` nunca tem `program_id`**: o tenant vem de `current_program`. Como o Ninja descarta campo extra, mandar `program_id` no corpo é silenciosamente ignorado — e existe teste garantindo isso em cada recurso.
+- **Suíte de API por recurso tem um conjunto canônico de casos** (copiar de `test_api_linhas.py`/`test_api_disciplinas.py`): 201+auditoria, payload não escolhe tenant, duplicata 400 com `code` estável, sem permissão 403, sem sessão 401, listagem escopada, PATCH 200+auditoria, PATCH de outro programa 404, PATCH mantendo o próprio valor único, escrita sem CSRF 403.
 
 ---
 
@@ -59,3 +62,18 @@ Started: qua. 05 ago 2026 19:02:47 -03
   - `test_papeis.py` tem `test_nenhum_papel_apaga_dado` e `test_papel_nao_abre_o_admin` parametrizados sobre TODOS os papéis. Conceder um `delete_*` ou qualquer permissão sobre `User` além do `change_user` da Secretaria quebra a suíte na hora — é a rede de segurança da Seção 5, não um teste decorativo.
   - Dependência de data migration que concede permissão precisa apontar para a migração que CRIA o model (aqui `academic.0004` e `programs.0006_discipline`), senão o `ContentType` fica órfão do model real.
   - A US-004 já pode usar `require_perm(request, "programs.view_discipline")` etc.: as permissões existem em dev e nos testes.
+---
+
+## 2026-08-05 - US-004
+- Endpoints do catálogo de disciplinas em `apps/programs/router.py`: `GET /api/v1/programs/disciplines/` (paginado, escopado por `current_program`, filtro opcional `is_active` e busca `search` sobre `code`/`name` com `Q(...)|Q(...)` e `icontains`), `POST` (require_perm `programs.add_discipline`, `program` vem de `current_program` e não do payload, AuditLog `programs.discipline.create`) e `PATCH /{id}/` (require_perm `programs.change_discipline`, AuditLog `programs.discipline.update`).
+- Schemas explícitos `DisciplineIn`/`DisciplinePatch`/`DisciplineOut` em `apps/programs/schemas.py` — nenhum deles tem `program_id` de entrada.
+- 17 testes novos em `apps/programs/tests/test_api_disciplinas.py`, no molde de `test_api_linhas.py`, incluindo os dois casos que só o catálogo tem: mesmo código em programa diferente é permitido (a unicidade é por tenant) e busca insensível a caixa por código OU nome.
+- Arquivos alterados: `backend/apps/programs/router.py`, `backend/apps/programs/schemas.py`, `backend/apps/programs/tests/test_api_disciplinas.py` (novo).
+- `make ready` verde: prettier/eslint/ruff, mypy (72 arquivos), svelte-check (177 arquivos, 0 erros), pytest 215 passed (eram 198).
+- Sem migração nesta US — nada aplicado no banco compartilhado :5433.
+- Sem verificação de browser: US-004 é só backend. A US-008 (tela do catálogo) precisa rodar `make gen-api` antes de tipar a tela, porque estas rotas ainda não estão em `frontend/src/lib/api/schema.d.ts`.
+- **Learnings for future iterations:**
+  - `Discipline.objects.for_program()` (US-001) foi usado tanto na listagem quanto no `get_object_or_404` do PATCH — é o que faz disciplina de outro programa devolver 404 em vez de 403.
+  - Busca de tela ganha o nome de parâmetro `search`; filtro de estado usa o nome do próprio campo (`is_active`). O Ninja converte `?is_active=false` para `False` sozinho; testar os dois valores separadamente evita o falso positivo de `bool("false") == True`.
+  - `clean()` do model, chamado no router antes do `save()`, é o que transforma a UniqueConstraint em 400 `duplicate_code`. Sem essa linha o teste de duplicata pega IntegrityError 500.
+  - O router de `programs` não tem rota de DELETE em nenhum recurso, e nenhum papel tem permissão de delete (US-003) — desativar (`is_active=False`) é a única forma de tirar algo de circulação.
