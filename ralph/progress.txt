@@ -1,3 +1,29 @@
 # Ralph Progress Log
 Started: qua. 05 ago 2026 19:02:47 -03
 ---
+
+## Codebase Patterns
+- **Models do app `programs`**: todo model de negócio tem `program = FK(Program, on_delete=PROTECT, related_name=...)` direta (ADR-007 dec. 5). Exceção única: `AcademicTerm`, institucional, sem FK de programa.
+- **QuerySet nomeado por model**: padrão é `class XQuerySet(models.QuerySet)` com `.active()` e `.for_program(program)`, ligado via `objects = XQuerySet.as_manager()`. Query fora de manager precisa de justificativa (Seção 8 do CLAUDE.md raiz).
+- **`clean()` duplica a UniqueConstraint de propósito**: a constraint do banco barra, mas `clean()` levanta `DomainError(..., code="...")` para a violação virar 400 com code estável em vez de IntegrityError virando 500. Ver `ResearchLine.clean()` e `AcademicTerm.clean()`.
+- **`clean()` sai cedo quando campo obrigatório está ausente** (`if not self.code or self.program_id is None: return`) — obrigatoriedade é cobrança do schema Ninja e do NOT NULL, não do invariante.
+- **Admin**: todo ModelAdmin herda de `apps.core.admin.AuditedModelAdmin` (gera AuditLog na escrita pelo Admin). Docstring declara "Quebra-vidro: a rotina da secretaria é a tela Svelte (ADR-006)".
+- **Verbose names em português** em todo campo e no `Meta` (`verbose_name`, `verbose_name_plural`).
+- **Ambiente**: a stack Docker é compartilhada com `/opt/simple_ppg_manager` e pode estar parada. `make up`/`docker compose up` são proibidos aqui. Se o Postgres de :5433 estiver fora, religue só o container existente com `docker start simple_ppg_manager-db-1` — isso não recria nada.
+- **`make migrations` funciona sem banco** (só emite RuntimeWarning); `make ready` não — precisa do Postgres de pé para o pytest.
+
+---
+
+## 2026-08-05 - US-001
+- Implementado o model `Discipline` (catálogo de disciplinas do programa) no app `programs`: FK `program` direta com `on_delete=PROTECT` e `related_name="disciplines"`, `code`, `name`, `is_active`, `UniqueConstraint(program, code)` chamada `unique_disciplina_por_programa`, `DisciplineQuerySet` com `.active()`/`.for_program()` e `clean()` levantando `DomainError(code="duplicate_code")`.
+- Registrado `DisciplineAdmin(AuditedModelAdmin)` como quebra-vidro de sysadmin (ADR-006) — o caminho de uso da secretaria é a tela Svelte da US-008.
+- Arquivos alterados: `backend/apps/programs/models.py`, `backend/apps/programs/admin.py`, `backend/apps/programs/migrations/0006_discipline.py` (nova, lida antes do commit).
+- `make ready` verde: prettier/eslint/ruff, mypy (71 arquivos), svelte-check (177 arquivos, 0 erros), pytest 181 passed.
+- **Migração ainda NÃO aplicada no banco compartilhado :5433** — `make migrate` não foi rodado. A próxima iteração deve rodá-lo antes de qualquer teste que dependa da tabela em dev (o pytest não precisa: cria e derruba o próprio banco).
+- Sem verificação de browser: US-001 não toca UI.
+- **Learnings for future iterations:**
+  - A stack Docker estava toda parada (`Exited`) no início da iteração. `make ready` falha sem o Postgres. Religar só o `db` com `docker start simple_ppg_manager-db-1` resolve sem violar a proibição de `docker compose up`.
+  - `Discipline` já nasceu com `DisciplineQuerySet.for_program()`; a US-004 (endpoints do catálogo) deve usar isso no escopo por `current_program(request)` em vez de `.filter(program=...)` solto no router.
+  - `apps/programs/tests/` separa `test_models.py` (invariantes) de `test_api_*.py` (um arquivo por recurso). A US-004 deve criar `test_api_disciplinas.py` seguindo `test_api_periodos.py`.
+  - US-001 não pedia teste (só typecheck); o invariante de `duplicate_code` fica coberto quando a US-004 exercitar o endpoint.
+---
