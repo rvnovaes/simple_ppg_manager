@@ -128,7 +128,7 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Os grupos Secretaria, Coordenação, Docente e Discente já existem (ralph/prd.json US-006); esta migração só cria Candidato e estende os demais."
     },
     {

@@ -132,3 +132,28 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - Nenhum admin registrado para `RequestDocument`, seguindo US-003/US-005 — o caminho é a tela Svelte (US-016/US-019); a permissão `download_requestdocument` só será concedida na US-007.
   - Sem verificação de browser: US-006 não toca UI.
 ---
+
+## 2026-08-05 - US-007 (Papel Candidato e permissões do fluxo)
+- Criada data migration `academic/migrations/0011_papeis_da_isolada.py`: grupo
+  Candidato (add/view/change_isolatedenrollmentrequest + view_disciplineoffering)
+  e extensão de Secretaria (edital completo + change no requerimento +
+  download_requestdocument), Docente (view do requerimento + view da oferta +
+  rank_disciplineoffering) e Coordenação (só view em requerimento, ciclo, oferta).
+- As permissões customizadas `rank_disciplineoffering` e `download_requestdocument`
+  já estavam declaradas em `Meta.permissions` desde US-002 e US-006 — nada a fazer
+  no models.py.
+- `apps/academic/tests/test_papeis.py`: +9 casos do fluxo da isolada; `PAPEIS`
+  continua com os quatro papéis antigos e `TODOS_OS_PAPEIS` (com Candidato) passou
+  a alimentar os invariantes gerais (nada de `delete_*`, nada sobre User).
+- Migração aplicada no banco compartilhado :5433 (`make migrate`).
+- `make ready` verde: 333 testes, mypy 78 arquivos, svelte-check 0 erros.
+- **Learnings for future iterations:**
+  - O helper das data migrations de papel (`codename.split("_", 1)[1]`) já serve
+    para permissão customizada: `rank_disciplineoffering` resolve o model
+    `disciplineoffering` e `download_requestdocument` resolve `requestdocument`.
+    Não precisa de caso especial — só declarar em `Meta.permissions` antes.
+  - `PAPEIS` em `test_papeis.py` é usado por testes de módulos anteriores
+    (catálogo, acerto). Papel novo que não participa desses fluxos NÃO entra
+    nessa lista; use uma lista separada para os invariantes universais, senão
+    testes de US antigas quebram sem motivo.
+---
