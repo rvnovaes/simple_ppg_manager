@@ -1,0 +1,35 @@
+## Codebase Patterns
+- Model de negócio SEMPRE com FK `program` direta (ADR-007 dec. 5): `apps.core.audit.record()`
+  infere o tenant via `getattr(target, "program", None)` — sem a FK o AuditLog sai com
+  `program=None`.
+- Convenção de model: verbose_name/verbose_name_plural em português minúsculo, labels de campo
+  em português, `ordering`, `UniqueConstraint` com nome em português (`unique_x_por_programa`),
+  QuerySet nomeado (`XQuerySet` com `.active()`/`.for_program()`) exposto via
+  `objects = XQuerySet.as_manager()`.
+- Todo ModelAdmin de dado de negócio herda de `apps.core.admin.AuditedModelAdmin`.
+- Regra de negócio em método do model; `DomainError`/subclasses de `apps.core.exceptions`;
+  router chama `apps.core.permissions.require_perm(request, "app.codename")` na primeira linha.
+- Ambiente: `make db` sobe o Postgres (host 5433) — pytest e migrate precisam dele.
+  `make ready` (lint + typecheck + test) é pré-condição de commit.
+
+# Ralph Progress Log
+Started: qua. 05 ago 2026 16:58:54 -03
+---
+
+## 2026-08-05 - US-001 (Model de Linha de Pesquisa)
+- Criado `ResearchLine` no app `programs`: FK `program` (PROTECT, related_name
+  `research_lines`), `name`, `is_active`, UniqueConstraint (program, name) com nome
+  `unique_linha_por_programa`, `ResearchLineQuerySet` com `.active()`/`.for_program()`.
+- Registrado no Admin como `ResearchLineAdmin(AuditedModelAdmin)`.
+- Migração `0003_researchline.py` gerada, lida (só CreateModel, sem risco) e aplicada.
+- `make ready` verde: ruff, mypy 48 arquivos, svelte-check 0 erros, 26 testes.
+- Arquivos: backend/apps/programs/models.py, backend/apps/programs/admin.py,
+  backend/apps/programs/migrations/0003_researchline.py
+- **Learnings for future iterations:**
+  - Branch `ralph/cadastros-basicos` criada a partir de `main`. O trecho de
+    `ralph/CLAUDE.md` que manda partir de `origin/develop-sanfili` e a seção
+    "Ambiente desta worktree" (portas 3103/5103, serviços `sanfili*`) são
+    boilerplate de OUTRO projeto — não valem aqui. Vale o `CLAUDE.md` da raiz:
+    `make db` (Postgres na 5433), `make up` + `make web`, UI em
+    http://localhost:8080. Não existe worktree separada: trabalho no checkout.
+  - Testes exigem Postgres de pé (`make db`); `--reuse-db` está em `addopts`.
