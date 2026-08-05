@@ -43,6 +43,7 @@
 						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/professores')}>
 							Professores
 						</a>
+						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/alunos')}>Alunos</a>
 					</nav>
 				</div>
 				<div class="flex items-center gap-4">
