@@ -1,12 +1,16 @@
 """Programa de pós-graduação — a chave de tenant do sistema — e a
-estrutura acadêmica que pertence a ele (linha de pesquisa).
+estrutura acadêmica que pertence a ele (linha de pesquisa, projeto
+coletivo).
 
 O sistema nasce para o PPGD, mas todo dado de negócio carrega a FK de
 programa desde a primeira migração (Seção 1 do CLAUDE.md). Adicionar a
 chave depois, com dados em produção, é caro; adicionar agora é de graça.
 """
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+
+from apps.core.exceptions import DomainError
 
 
 class ProgramQuerySet(models.QuerySet):
@@ -73,3 +77,62 @@ class ResearchLine(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class CollectiveProjectQuerySet(models.QuerySet):
+    def active(self) -> "CollectiveProjectQuerySet":
+        return self.filter(is_active=True)
+
+    def for_program(self, program: Program) -> "CollectiveProjectQuerySet":
+        return self.filter(program=program)
+
+
+class CollectiveProject(models.Model):
+    """Projeto coletivo de uma linha de pesquisa.
+
+    Uma linha tem vários projetos; o projeto é a unidade que professores e
+    alunos citam no vínculo.
+    """
+
+    program = models.ForeignKey(
+        Program,
+        on_delete=models.PROTECT,
+        related_name="collective_projects",
+        verbose_name="programa",
+    )
+    research_line = models.ForeignKey(
+        ResearchLine,
+        on_delete=models.PROTECT,
+        related_name="projects",
+        verbose_name="linha de pesquisa",
+    )
+    name = models.CharField("nome", max_length=200)
+    is_active = models.BooleanField("ativo", default=True)
+
+    objects = CollectiveProjectQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "projeto coletivo"
+        verbose_name_plural = "projetos coletivos"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def clean(self) -> None:
+        """A FK program é direta (ADR-007 dec. 5) e por isso pode divergir
+        de research_line.program. Divergir significa AuditLog com a chave de
+        tenant errada — é invariante, não detalhe de formulário.
+        """
+        super().clean()
+        try:
+            research_line = self.research_line
+        except ObjectDoesNotExist:
+            # Sem linha ainda: quem cobra a obrigatoriedade é o schema Ninja
+            # (borda) e o NOT NULL da coluna, não este invariante.
+            return
+        if self.program_id != research_line.program_id:
+            raise DomainError(
+                "O programa do projeto precisa ser o mesmo da linha de pesquisa.",
+                code="program_mismatch",
+            )

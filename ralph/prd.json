@@ -32,7 +32,7 @@
         "Tests pass (teste em memória, sem banco: clean() levanta DomainError quando o programa do projeto diverge do programa da linha)"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

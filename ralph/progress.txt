@@ -33,3 +33,29 @@ Started: qua. 05 ago 2026 16:58:54 -03
     `make db` (Postgres na 5433), `make up` + `make web`, UI em
     http://localhost:8080. Não existe worktree separada: trabalho no checkout.
   - Testes exigem Postgres de pé (`make db`); `--reuse-db` está em `addopts`.
+
+## 2026-08-05 - US-002 (Model de Projeto Coletivo)
+- `CollectiveProject` no app `programs`: FK `program` direta (PROTECT,
+  related_name `collective_projects`), FK `research_line` (PROTECT, related_name
+  `projects`), `name`, `is_active`, `CollectiveProjectQuerySet` com
+  `.active()`/`.for_program()`.
+- `clean()` levanta `DomainError(code="program_mismatch")` quando
+  `program_id != research_line.program_id`.
+- `CollectiveProjectAdmin(AuditedModelAdmin)` com `research_line` em `list_display`.
+- Migração `0004_collectiveproject.py` gerada, lida (só CreateModel, sem risco) e aplicada.
+- Testes novos em `backend/apps/programs/tests/test_models.py` (em memória, sem banco).
+- `make ready` verde: ruff, mypy 50 arquivos, svelte-check 0 erros, 29 testes.
+- Arquivos: backend/apps/programs/models.py, admin.py,
+  migrations/0004_collectiveproject.py, tests/__init__.py, tests/test_models.py
+- **Learnings for future iterations:**
+  - Teste de invariante que envolve FK roda sem banco atribuindo `pk=` à mão nos
+    objetos relacionados (`Program(pk=1)`); o `_id` da FK é preenchido a partir do pk
+    e a comparação `a_id != b_id` funciona em memória.
+  - `clean()` que lê uma FK precisa de `try/except ObjectDoesNotExist`
+    (`django.core.exceptions`): FK vazia levanta `RelatedObjectDoesNotExist` no acesso,
+    não devolve `None`.
+  - Sem FK obrigatória o app `programs` não tinha pacote `tests/` — criar com
+    `__init__.py`, senão o pytest não coleta.
+  - `make ready` roda `ruff format` e pode reformatar arquivos recém-escritos; escrever
+    já dentro de 88 colunas evita o retrabalho.
+---
