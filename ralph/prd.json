@@ -91,8 +91,8 @@
         "Tests pass (com banco: item duplicado na mesma oferta é rejeitado; dois itens com o mesmo rank na mesma oferta são rejeitados)"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "seats_taken() conta DEFERRED E ENROLLED, e não só DEFERRED como dizia o critério: contando só o deferido, a vaga reapareceria no instante em que a secretaria efetiva a matrícula (US-014) e a oferta aceitaria mais gente do que tem lugar. seats_available() nunca devolve negativo. A cobrança de itens em submit() vem depois das checagens de estado e janela, que não tocam o banco."
     },
     {
       "id": "US-006",

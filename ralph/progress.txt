@@ -33,6 +33,8 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **`clean()` que compara programa de vários relacionados** (ver `DisciplineOffering.clean()`): itera os nomes de campo, pega cada um com `getattr` dentro de `try/except ObjectDoesNotExist` (relacionado ausente é cobrança da borda, não do invariante) e compara os `program_id` com o próprio. Um único `code="program_mismatch"` para todos.
 - **Transição de estado é método do model que NÃO salva**: muda os campos em memória e devolve; quem persiste é o router, com `save(update_fields=[...])` no mesmo `transaction.atomic()` do `audit.record()`. Estado errado levanta `InvalidStateTransition` (409); regra violada dentro do estado certo (janela, motivo, pagamento) levanta `DomainError` (400) com `code` próprio. Ver `IsolatedEnrollmentRequest.submit()/defer()/reject()/cancel()/appeal()/enroll()`.
 - **Instante do edital entra por parâmetro; instante da decisão sai de `timezone.now()`**: `submit(at=...)`/`appeal(at=...)` recebem o momento porque a janela é do calendário e o teste precisa escolhê-lo; `defer()`/`reject()`/`cancel()` carimbam `decided_at` com o agora do servidor.
+- **Validação que conta linhas relacionadas vai depois das que não tocam o banco**: `self.items.count()` levanta `ValueError` em instância sem pk, então o teste do caso de sucesso migra para módulo com banco. Dentro do método, ponha estado e janela antes da contagem — assim os erros baratos continuam testáveis em memória. Ver `IsolatedEnrollmentRequest.submit()` (`test_models.py` para os erros, `test_isolada_itens.py` para o sucesso).
+- **`UniqueConstraint` com `condition=Q(campo__isnull=False)`** é o padrão para "único quando preenchido": vários nulos convivem (estado normal antes de alguém preencher) e a constraint só morde depois. Ver `unique_classificacao_por_oferta`.
 - **Ordem cronológica é invariante de `clean()`, não CheckConstraint**: `DomainError(code="invalid_cycle_dates")` sai 400 (erro do formulário da secretaria). A convenção do calendário é `<` dentro de cada janela (janela de duração zero não aceita ninguém) e `<=` entre o fechamento de uma fase e a abertura da seguinte (encadear no mesmo instante é legítimo).
 
 ---
@@ -92,4 +94,21 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - Transição de estado **não salva**: o método muda os campos em memória e quem persiste é o router, com `save(update_fields=[...])` dentro do mesmo `transaction.atomic()` do `audit.record()`. É o que permite testar o invariante sem banco.
   - `at` por parâmetro em `submit()`/`appeal()` (nunca `timezone.now()` dentro) é o que dispensa congelar o relógio no teste; já `defer()`/`reject()`/`cancel()` carimbam com `timezone.now()`, porque o instante da decisão é o agora do servidor e não uma data do edital.
   - Sem verificação de browser: US-004 não toca UI.
+---
+
+## 2026-08-05 - US-005
+- Implementado o model `IsolatedEnrollmentItem` no app `academic`: `request` (FK CASCADE, `related_name="items"`), `offering` (FK PROTECT para `DisciplineOffering`, `related_name="items"`), `rank` (`PositiveSmallIntegerField`, nulo até o docente classificar), `UniqueConstraint(request, offering)` e `UniqueConstraint(offering, rank)` com `condition=Q(rank__isnull=False)`.
+- `clean()` exige que `request.cycle == offering.cycle` (`DomainError(code="cycle_mismatch")`).
+- `DisciplineOffering.seats_taken()` / `seats_available()` entregues (critério herdado da US-002).
+- `IsolatedEnrollmentRequest.submit()` passou a exigir de 1 a 2 itens (`DomainError(code="invalid_item_count")`, constante de módulo `MAX_ISOLATED_ITEMS = 2`) — critério herdado da US-004.
+- Arquivos alterados: `backend/apps/academic/models.py`, `backend/apps/academic/tests/test_models.py`, `backend/apps/academic/tests/test_isolada_itens.py` (novo), `backend/apps/academic/migrations/0009_isolatedenrollmentitem.py` (nova, lida antes do commit — só cria tabela e as duas constraints), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (76 arquivos), svelte-check (185 arquivos, 0 erros), pytest 308 passed.
+- **`make migrate` RODADO no banco compartilhado :5433** — `academic.0009_isolatedenrollmentitem` aplicada. Só acrescenta tabela; o outro checkout não perde nada.
+- **Learnings for future iterations:**
+  - **`seats_taken()` conta DEFERRED E ENROLLED**, e não só DEFERRED como dizia o critério da `prd.json`. Contar só o deferido faria a vaga reaparecer no instante em que a secretaria efetiva a matrícula (US-014): a oferta aceitaria mais gente do que tem lugar. Inscrito NÃO conta — a vaga é da decisão da secretaria, senão a fila de inscritos esgotaria as vagas antes de alguém ser julgado. Cancelado devolve a vaga, que é o ponto de `cancel()`.
+  - **Método que conta linhas relacionadas quebra o teste em memória.** `submit()` passou a chamar `self.items.count()`, e acessor reverso em instância sem pk levanta `ValueError`. A ordem dentro de `submit()` é deliberada — estado, janela e só então a contagem — o que mantém os dois casos de erro baratos (`InvalidStateTransition` e `submission_window_closed`) sem banco, em `test_models.py`. O caso de sucesso migrou para `test_isolada_itens.py`, que usa banco. Quem acrescentar a cobrança de `missing_documents()` na US-006 vai enfrentar o mesmo: ponha-a depois da contagem e escreva o teste no módulo com banco.
+  - **`IsolatedEnrollmentItem` é o único model de negócio SEM FK `program` direta** e é exceção justificada ao ADR-007 dec. 5: o item não é alvo de `AuditLog` próprio (quem é auditado é o requerimento, que carrega o tenant) e o `on_delete=CASCADE` diz que ele não existe sem o requerimento. Escopo de tenant chega por `items__request__program` ou navegando do requerimento.
+  - **`UniqueConstraint` com `condition=Q(campo__isnull=False)`** é o padrão para "único quando preenchido": vários `rank` nulos convivem na mesma oferta (o estado normal antes da classificação) e a constraint só morde depois que o docente ordena.
+  - `programs.Discipline` NÃO tem campo `credits` — só `program`, `code`, `name`, `is_active`. Fixture de teste que o passa explode.
+  - Sem verificação de browser: US-005 não toca UI.
 ---
