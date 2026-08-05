@@ -78,6 +78,27 @@ class ResearchLine(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    def clean(self) -> None:
+        """Nome duplicado no mesmo programa já é barrado pela constraint do
+        banco; validar aqui é o que faz a violação chegar como 400 com code
+        estável em vez de IntegrityError virando 500.
+        """
+        super().clean()
+        if not self.name or self.program_id is None:
+            # Campo obrigatório ausente é cobrança do schema Ninja e do NOT
+            # NULL da coluna, não deste invariante.
+            return
+        duplicatas = ResearchLine.objects.filter(
+            program_id=self.program_id, name=self.name
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Já existe uma linha de pesquisa com este nome neste programa.",
+                code="duplicate_name",
+            )
+
 
 class CollectiveProjectQuerySet(models.QuerySet):
     def active(self) -> "CollectiveProjectQuerySet":

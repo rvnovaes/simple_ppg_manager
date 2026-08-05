@@ -196,6 +196,138 @@
         ]
       }
     },
+    "/programs/research-lines/": {
+      "get": {
+        "operationId": "apps_programs_router_list_research_lines",
+        "summary": "List Research Lines",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResearchLineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_programs_router_create_research_line",
+        "summary": "Create Research Line",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchLineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchLineIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/research-lines/{research_line_id}/": {
+      "patch": {
+        "operationId": "apps_programs_router_update_research_line",
+        "summary": "Update Research Line",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "research_line_id",
+            "schema": {
+              "title": "Research Line Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchLineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchLinePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/people/": {
       "get": {
         "operationId": "apps_people_router_list_people",
@@ -493,6 +625,102 @@
           }
         },
         "title": "Input",
+        "type": "object"
+      },
+      "PagedResearchLineOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchLineOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedResearchLineOut",
+        "type": "object"
+      },
+      "ResearchLineOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "name",
+          "is_active"
+        ],
+        "title": "ResearchLineOut",
+        "type": "object"
+      },
+      "ResearchLineIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ResearchLineIn",
+        "type": "object"
+      },
+      "ResearchLinePatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "ResearchLinePatch",
         "type": "object"
       },
       "PagedPersonOut": {

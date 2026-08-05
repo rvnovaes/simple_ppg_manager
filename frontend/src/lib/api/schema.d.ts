@@ -106,6 +106,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/programs/research-lines/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Research Lines */
+        get: operations["apps_programs_router_list_research_lines"];
+        put?: never;
+        /** Create Research Line */
+        post: operations["apps_programs_router_create_research_line"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/programs/research-lines/{research_line_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Research Line */
+        patch: operations["apps_programs_router_update_research_line"];
+        trace?: never;
+    };
     "/people/": {
         parameters: {
             query?: never;
@@ -221,6 +256,44 @@ export interface components {
              * @default 0
              */
             offset: number;
+        };
+        /** PagedResearchLineOut */
+        PagedResearchLineOut: {
+            /** Items */
+            items: components["schemas"]["ResearchLineOut"][];
+            /** Count */
+            count: number;
+        };
+        /** ResearchLineOut */
+        ResearchLineOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** ResearchLineIn */
+        ResearchLineIn: {
+            /** Name */
+            name: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * ResearchLinePatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        ResearchLinePatch: {
+            /** Name */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /** PagedPersonOut */
         PagedPersonOut: {
@@ -407,6 +480,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProgramOut"][];
+                };
+            };
+        };
+    };
+    apps_programs_router_list_research_lines: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedResearchLineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_create_research_line: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchLineIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_update_research_line: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                research_line_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchLinePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLineOut"];
                 };
             };
         };
