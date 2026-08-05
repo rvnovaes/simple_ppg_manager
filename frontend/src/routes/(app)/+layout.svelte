@@ -44,6 +44,11 @@
 							Professores
 						</a>
 						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/alunos')}>Alunos</a>
+						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>
+								Orientandos
+							</a>
+						{/if}
 						{#if sessao.pode('academic.add_enrollmentadjustmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/acertos')}>
 								Acertos
