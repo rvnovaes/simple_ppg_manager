@@ -35,6 +35,9 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Instante do edital entra por parâmetro; instante da decisão sai de `timezone.now()`**: `submit(at=...)`/`appeal(at=...)` recebem o momento porque a janela é do calendário e o teste precisa escolhê-lo; `defer()`/`reject()`/`cancel()` carimbam `decided_at` com o agora do servidor.
 - **Validação que conta linhas relacionadas vai depois das que não tocam o banco**: `self.items.count()` levanta `ValueError` em instância sem pk, então o teste do caso de sucesso migra para módulo com banco. Dentro do método, ponha estado e janela antes da contagem — assim os erros baratos continuam testáveis em memória. Ver `IsolatedEnrollmentRequest.submit()` (`test_models.py` para os erros, `test_isolada_itens.py` para o sucesso).
 - **`UniqueConstraint` com `condition=Q(campo__isnull=False)`** é o padrão para "único quando preenchido": vários nulos convivem (estado normal antes de alguém preencher) e a constraint só morde depois. Ver `unique_classificacao_por_oferta`.
+- **Fixture de fluxo longo mora em `apps/<app>/tests/conftest.py`**, e helper reutilizável (`criar_requerimento`, `anexar_documentos_obrigatorios`) é função do mesmo módulo, importada explicitamente (`from apps.academic.tests.conftest import ...`). O arranjo do edital (período, ciclo, docente, oferta, requerimento) é grande demais para duplicar por módulo — duplicado, sai de sincronia.
+- **Upload em teste não pode cair no checkout**: `conftest.py` da raiz do backend tem `media_temporaria` autouse, que aponta `settings.MEDIA_ROOT` para `tmp_path`. Teste de `FileField` novo não precisa fazer nada.
+- **Método que consulta relacionados fica testável em memória com saída antecipada por `pk is None`** (ver `missing_documents()`): instância sem pk não tem linha relacionada nenhuma por definição, então devolver o conjunto completo é a resposta correta, e não um atalho. Alternativa ao padrão anterior de migrar o teste para módulo com banco — use quando a resposta para "sem pk" for bem definida.
 - **Ordem cronológica é invariante de `clean()`, não CheckConstraint**: `DomainError(code="invalid_cycle_dates")` sai 400 (erro do formulário da secretaria). A convenção do calendário é `<` dentro de cada janela (janela de duração zero não aceita ninguém) e `<=` entre o fechamento de uma fase e a abertura da seguinte (encadear no mesmo instante é legítimo).
 
 ---
@@ -111,4 +114,21 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - **`UniqueConstraint` com `condition=Q(campo__isnull=False)`** é o padrão para "único quando preenchido": vários `rank` nulos convivem na mesma oferta (o estado normal antes da classificação) e a constraint só morde depois que o docente ordena.
   - `programs.Discipline` NÃO tem campo `credits` — só `program`, `code`, `name`, `is_active`. Fixture de teste que o passa explode.
   - Sem verificação de browser: US-005 não toca UI.
+---
+
+## 2026-08-05 - US-006
+- Implementado o model `RequestDocument` no app `academic`: `request` (FK CASCADE, `related_name="documents"`), `kind` (`RequestDocumentKind`, classe de módulo com alias `Kind` no model), `file` (`FileField` com `upload_to=caminho_do_documento`, particionado em `isoladas/ciclo-<id>/requerimento-<id>/`), `uploaded_at` (`auto_now_add`), `UniqueConstraint(request, kind)` chamada `unique_documento_por_requerimento_e_tipo` e permissão customizada `download_requestdocument` em `Meta.permissions`.
+- `IsolatedEnrollmentRequest.required_document_kinds()` (recorte puro: IDENTITY/DIPLOMA/LATTES/ADDRESS sempre, mais PAYSLIP/SUPERVISOR_AUTH quando `is_ufmg_staff`; PAYMENT_RECEIPT nunca) e `missing_documents()` (o que ainda falta anexar).
+- `submit()` passou a exigir documentação completa (`DomainError(code="missing_documents")`), última cobrança do método — critério herdado da US-004.
+- Fixtures do fluxo de isolada movidas de `test_isolada_itens.py` para `apps/academic/tests/conftest.py` (período, ciclo, docente, oferta, requerimento, `criar_requerimento`, `anexar_documentos_obrigatorios`, `DENTRO_DA_INSCRICAO`).
+- Arquivos alterados: `backend/apps/academic/models.py`, `backend/apps/academic/tests/conftest.py` (novo), `backend/apps/academic/tests/test_isolada_documentos.py` (novo), `backend/apps/academic/tests/test_isolada_itens.py`, `backend/apps/academic/tests/test_models.py`, `backend/conftest.py`, `backend/apps/academic/migrations/0010_requestdocument.py` (nova, lida antes do commit — só cria tabela e a constraint), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (78 arquivos), svelte-check (185 arquivos, 0 erros), pytest 319 passed.
+- **`make migrate` RODADO no banco compartilhado :5433** — `academic.0010_requestdocument` aplicada. Só acrescenta tabela; o outro checkout não perde nada.
+- **Learnings for future iterations:**
+  - `missing_documents()` sai cedo com a lista completa quando `self.pk is None`, e é isso que mantém o critério da US testável em memória sem `type: ignore` nem migrar tudo para módulo com banco. Foi a saída para o mesmo atrito que a US-005 resolveu movendo o teste — as duas valem, escolha pela pergunta "existe resposta correta para instância sem pk?".
+  - Dentro de `submit()` a ordem é estado, janela, contagem de itens, documentos: as duas primeiras não tocam o banco e continuam exercitadas em `test_models.py`; as duas últimas exigem banco e vivem em `test_isolada_itens.py`/`test_isolada_documentos.py`.
+  - **`FileField` grava de verdade no `MEDIA_ROOT` durante o pytest.** Foi acrescentada a fixture autouse `media_temporaria` em `backend/conftest.py`; sem ela o `backend/media/` do checkout enchia de lixo a cada rodada.
+  - `anexar_documentos_obrigatorios()` usa `required_document_kinds()` em vez de uma lista fixa: acrescentar documento obrigatório ao edital não quebra todo teste que só queria um requerimento válido.
+  - Nenhum admin registrado para `RequestDocument`, seguindo US-003/US-005 — o caminho é a tela Svelte (US-016/US-019); a permissão `download_requestdocument` só será concedida na US-007.
+  - Sem verificação de browser: US-006 não toca UI.
 ---

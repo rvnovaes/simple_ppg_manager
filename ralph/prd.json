@@ -110,7 +110,7 @@
         "Tests pass (em memória: missing_documents() inclui contracheque e autorização da chefia só quando is_ufmg_staff é True)"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
