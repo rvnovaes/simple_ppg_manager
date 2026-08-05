@@ -12,6 +12,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.core.exceptions import DomainError, InvalidStateTransition
+from apps.people.models import Person
 
 
 def _somar_anos(dia: date, anos: int) -> date:
@@ -429,12 +430,45 @@ class Student(models.Model):
             )
 
 
+# Papéis que acompanham o fluxo do programa inteiro. Aluno e orientador
+# enxergam só o que é deles, e por isso não estão aqui: quem não é
+# Secretaria nem Coordenação cai no escopo do próprio vínculo.
+PAPEIS_COM_VISAO_DO_PROGRAMA = ("Secretaria", "Coordenação")
+
+
 class EnrollmentAdjustmentRequestQuerySet(models.QuerySet):
     def for_program(self, program) -> "EnrollmentAdjustmentRequestQuerySet":
         return self.filter(program=program)
 
     def open(self) -> "EnrollmentAdjustmentRequestQuerySet":
         return self.filter(status=EnrollmentAdjustmentRequest.Status.OPEN)
+
+    def visible_to(self, user, program) -> "EnrollmentAdjustmentRequestQuerySet":
+        """O que esta sessão pode ler — sempre depois de `for_program`.
+
+        `view_enrollmentadjustmentrequest` é permissão de papel: os quatro
+        papéis a têm, mas ela diz que a pessoa acompanha acerto, não QUAIS
+        acertos. O recorte é aqui.
+
+        Secretaria e Coordenação (e o superusuário, que opera a
+        plataforma) veem o programa inteiro. Todo o resto vê a união do
+        que é seu como aluno e do que é seu como orientador — união, e não
+        dois ramos, porque nada impede que o mesmo User tenha os dois
+        vínculos.
+        """
+        if (
+            user.is_superuser
+            or user.groups.filter(name__in=PAPEIS_COM_VISAO_DO_PROGRAMA).exists()
+        ):
+            return self
+        pessoas = Person.objects.active().filter(user=user, program=program)
+        # Sem duplicata a corrigir: os dois lados do OU são FK direta
+        # (uma solicitação tem um aluno, que tem uma pessoa e um
+        # orientador), então o join não multiplica linha.
+        return self.filter(
+            models.Q(student__person__in=pessoas)
+            | models.Q(student__advisor__person__in=pessoas)
+        )
 
 
 class EnrollmentAdjustmentRequest(models.Model):

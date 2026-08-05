@@ -309,6 +309,34 @@ def _aluno_da_sessao(
     return aluno
 
 
+@router.get("/enrollment-requests/", response=list[EnrollmentAdjustmentRequestOut])
+@paginate
+def list_enrollment_requests(
+    request: HttpRequest,
+    status: EnrollmentAdjustmentRequest.Status | None = None,
+    term_id: int | None = None,
+):
+    require_perm(request, "academic.view_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    solicitacoes = (
+        # Duas camadas, nesta ordem: o tenant primeiro (não é opcional) e o
+        # papel depois. `visible_to` é quem recorta aluno/orientador de
+        # secretaria/coordenação — ver o método no model.
+        EnrollmentAdjustmentRequest.objects.for_program(program)
+        .visible_to(request.user, program)
+        # Sem o prefetch são duas consultas por solicitação: uma pelos
+        # itens, outra pela disciplina de cada item.
+        .select_related("student__person")
+        .prefetch_related("items__discipline")
+    )
+    # Filtros de conveniência da tela. Nenhum deles é escopo — esse já foi
+    # aplicado acima e não é opcional.
+    filtros = {"status": status, "term_id": term_id}
+    return solicitacoes.filter(
+        **{campo: valor for campo, valor in filtros.items() if valor is not None}
+    )
+
+
 @router.post("/enrollment-requests/", response={201: EnrollmentAdjustmentRequestOut})
 def create_enrollment_request(
     request: HttpRequest, payload: EnrollmentAdjustmentRequestIn

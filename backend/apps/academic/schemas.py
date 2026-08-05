@@ -322,6 +322,9 @@ class EnrollmentAdjustmentRequestOut(Schema):
     id: int
     program_id: int
     student_id: int
+    # O nome vem junto pelo mesmo motivo do código da disciplina: a tela da
+    # secretaria lista acerto de vários alunos e não deve buscar cada um.
+    student_name: str
     term_id: int
     status: str
     justification: str
@@ -329,6 +332,10 @@ class EnrollmentAdjustmentRequestOut(Schema):
     decided_at: datetime.datetime | None
     created_at: datetime.datetime
     items: list[EnrollmentAdjustmentItemOut]
+
+    @staticmethod
+    def resolve_student_name(obj: EnrollmentAdjustmentRequest) -> str:
+        return obj.student.person.full_name
 
     @staticmethod
     def resolve_items(
