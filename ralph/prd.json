@@ -19,7 +19,7 @@
         "Tests pass (em memória, sem banco: clean() rejeita datas fora de ordem; submission_open() responde corretamente dentro e fora da janela)"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Depende de programs.AcademicTerm, entregue por ralph/prd.json US-003."
     },
     {

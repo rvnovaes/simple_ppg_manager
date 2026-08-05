@@ -5,7 +5,7 @@ letivo) e de `people` (a pessoa por trás do vínculo). A dependência é
 sempre nesta direção — `programs` e `people` não conhecem `academic`.
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
@@ -638,3 +638,112 @@ class EnrollmentAdjustmentItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_action_display()} {self.discipline}"
+
+
+class IsolatedEnrollmentCycleQuerySet(models.QuerySet):
+    def for_program(self, program) -> "IsolatedEnrollmentCycleQuerySet":
+        return self.filter(program=program)
+
+    def active(self) -> "IsolatedEnrollmentCycleQuerySet":
+        return self.filter(is_active=True)
+
+
+class IsolatedEnrollmentCycle(models.Model):
+    """Edital de matrícula em disciplina isolada de um semestre.
+
+    O ciclo é o calendário do edital transformado em dado: enquanto as
+    datas moram aqui, é o sistema que recusa a inscrição fora do prazo, e
+    não a secretaria conferindo à mão. Um ciclo por período letivo por
+    programa — o edital é único no semestre.
+
+    A FK `program` é direta mesmo sendo alcançável por navegação
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None` e o rastro perde a chave de tenant. `term` não tem
+    programa para comparar — período letivo é institucional (ADR-007
+    dec. 4).
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="isolated_cycles",
+        verbose_name="programa",
+    )
+    term = models.ForeignKey(
+        "programs.AcademicTerm",
+        on_delete=models.PROTECT,
+        related_name="isolated_cycles",
+        verbose_name="período letivo",
+    )
+    submission_opens_at = models.DateTimeField("inscrições abrem em")
+    submission_closes_at = models.DateTimeField("inscrições encerram em")
+    # Data, e não instante: o edital publica o resultado num dia, sem hora.
+    result_published_on = models.DateField("resultado publicado em")
+    appeal_opens_at = models.DateTimeField("recursos abrem em")
+    appeal_closes_at = models.DateTimeField("recursos encerram em")
+    final_result_on = models.DateField("resultado final em")
+    payment_closes_at = models.DateTimeField("pagamento encerra em")
+    is_active = models.BooleanField("ativo", default=True)
+
+    objects = IsolatedEnrollmentCycleQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "ciclo de matrícula em isolada"
+        verbose_name_plural = "ciclos de matrícula em isolada"
+        ordering = ["-term__year", "-term__half"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["program", "term"],
+                name="unique_ciclo_isolada_por_programa_e_periodo",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Isoladas {self.term}"
+
+    def clean(self) -> None:
+        """As datas do edital só fazem sentido em ordem.
+
+        Uma janela de recurso que abre antes das inscrições fecharem, ou um
+        prazo de pagamento anterior ao resultado, deixaria `submit()` e
+        `appeal()` (US-004) aceitando e recusando pelas razões erradas pelo
+        resto do semestre. O erro é do formulário da secretaria, então é
+        400 (`DomainError`) e não 409.
+
+        `<=` entre fechamento e abertura da fase seguinte porque encadear
+        as duas no mesmo instante é legítimo; `<` dentro de cada janela
+        porque janela de duração zero não aceita ninguém.
+        """
+        super().clean()
+        campos = (
+            self.submission_opens_at,
+            self.submission_closes_at,
+            self.appeal_opens_at,
+            self.appeal_closes_at,
+            self.payment_closes_at,
+        )
+        if any(campo is None for campo in campos):
+            # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+            return
+        if not (
+            self.submission_opens_at
+            < self.submission_closes_at
+            <= self.appeal_opens_at
+            < self.appeal_closes_at
+            <= self.payment_closes_at
+        ):
+            raise DomainError(
+                "As datas do ciclo precisam estar em ordem: abertura e "
+                "encerramento das inscrições, janela de recurso e prazo de "
+                "pagamento.",
+                code="invalid_cycle_dates",
+            )
+
+    def submission_open(self, at: datetime) -> bool:
+        """A janela de inscrição inclui a abertura e exclui o fechamento —
+        quem chega no instante exato do prazo chegou tarde.
+        """
+        return self.submission_opens_at <= at < self.submission_closes_at
+
+    def appeal_open(self, at: datetime) -> bool:
+        return self.appeal_opens_at <= at < self.appeal_closes_at

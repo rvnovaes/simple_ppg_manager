@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from apps.core.admin import AuditedModelAdmin
 
-from .models import Student, Teacher
+from .models import IsolatedEnrollmentCycle, Student, Teacher
 
 
 @admin.register(Teacher)
@@ -48,3 +48,21 @@ class StudentAdmin(AuditedModelAdmin):
     list_select_related = ("person", "program", "term")
     raw_id_fields = ("person", "project", "advisor", "term")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(IsolatedEnrollmentCycle)
+class IsolatedEnrollmentCycleAdmin(AuditedModelAdmin):
+    """Quebra-vidro: a rotina da secretaria é a tela Svelte (ADR-006)."""
+
+    list_display = (
+        "term",
+        "submission_opens_at",
+        "submission_closes_at",
+        "result_published_on",
+        "payment_closes_at",
+        "is_active",
+        "program",
+    )
+    list_filter = ("program", "is_active", "term")
+    list_select_related = ("program", "term")
+    raw_id_fields = ("term",)

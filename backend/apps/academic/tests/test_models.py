@@ -4,11 +4,16 @@ Nível (a) da pirâmide (Seção 9): objeto em memória, sem banco e sem mock.
 Os pks são atribuídos à mão só para as FKs terem id — nada é salvo.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
-from apps.academic.models import EnrollmentAdjustmentRequest, Student, Teacher
+from apps.academic.models import (
+    EnrollmentAdjustmentRequest,
+    IsolatedEnrollmentCycle,
+    Student,
+    Teacher,
+)
 from apps.core.exceptions import DomainError, InvalidStateTransition
 from apps.people.models import Person
 from apps.programs.models import AcademicTerm, Program
@@ -169,3 +174,80 @@ def test_clean_rejeita_acerto_em_programa_diferente_do_do_aluno():
         acerto.clean()
 
     assert exc.value.code == "program_mismatch"
+
+
+def _ciclo(**kwargs) -> IsolatedEnrollmentCycle:
+    """Ciclo com o calendário em ordem; cada teste quebra uma data só."""
+    padrao = {
+        "program": Program(pk=1, acronym="PPGD"),
+        "term": AcademicTerm(pk=1, year=2026, half=1),
+        "submission_opens_at": datetime(2026, 2, 1, tzinfo=UTC),
+        "submission_closes_at": datetime(2026, 2, 10, tzinfo=UTC),
+        "result_published_on": date(2026, 2, 12),
+        "appeal_opens_at": datetime(2026, 2, 12, tzinfo=UTC),
+        "appeal_closes_at": datetime(2026, 2, 15, tzinfo=UTC),
+        "final_result_on": date(2026, 2, 17),
+        "payment_closes_at": datetime(2026, 2, 25, tzinfo=UTC),
+    }
+    return IsolatedEnrollmentCycle(**{**padrao, **kwargs})
+
+
+def test_clean_aceita_ciclo_com_as_datas_em_ordem():
+    _ciclo().clean()
+
+
+def test_clean_aceita_recurso_comecando_no_instante_em_que_a_inscricao_fecha():
+    """Encadear as duas fases no mesmo instante é o edital sem intervalo."""
+    _ciclo(appeal_opens_at=datetime(2026, 2, 10, tzinfo=UTC)).clean()
+
+
+def test_clean_rejeita_inscricao_que_fecha_antes_de_abrir():
+    ciclo = _ciclo(submission_closes_at=datetime(2026, 1, 20, tzinfo=UTC))
+
+    with pytest.raises(DomainError) as exc:
+        ciclo.clean()
+
+    assert exc.value.code == "invalid_cycle_dates"
+
+
+def test_clean_rejeita_recurso_que_abre_antes_de_a_inscricao_fechar():
+    ciclo = _ciclo(appeal_opens_at=datetime(2026, 2, 5, tzinfo=UTC))
+
+    with pytest.raises(DomainError) as exc:
+        ciclo.clean()
+
+    assert exc.value.code == "invalid_cycle_dates"
+
+
+def test_clean_rejeita_pagamento_que_fecha_antes_do_fim_do_recurso():
+    ciclo = _ciclo(payment_closes_at=datetime(2026, 2, 13, tzinfo=UTC))
+
+    with pytest.raises(DomainError) as exc:
+        ciclo.clean()
+
+    assert exc.value.code == "invalid_cycle_dates"
+
+
+def test_clean_sem_data_obrigatoria_nao_levanta():
+    """Data ausente é cobrança do schema Ninja e do NOT NULL, não daqui."""
+    _ciclo(appeal_closes_at=None).clean()
+
+
+def test_janela_de_inscricao_inclui_a_abertura_e_exclui_o_fechamento():
+    ciclo = _ciclo()
+
+    assert ciclo.submission_open(datetime(2026, 2, 1, tzinfo=UTC))
+    assert ciclo.submission_open(datetime(2026, 2, 5, tzinfo=UTC))
+    assert not ciclo.submission_open(datetime(2026, 2, 10, tzinfo=UTC))
+
+
+def test_janela_de_inscricao_recusa_instante_anterior_a_abertura():
+    assert not _ciclo().submission_open(datetime(2026, 1, 31, tzinfo=UTC))
+
+
+def test_janela_de_recurso_responde_dentro_e_fora():
+    ciclo = _ciclo()
+
+    assert ciclo.appeal_open(datetime(2026, 2, 13, tzinfo=UTC))
+    assert not ciclo.appeal_open(datetime(2026, 2, 11, tzinfo=UTC))
+    assert not ciclo.appeal_open(datetime(2026, 2, 15, tzinfo=UTC))
