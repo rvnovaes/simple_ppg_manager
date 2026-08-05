@@ -8,10 +8,10 @@ from datetime import date
 
 import pytest
 
-from apps.academic.models import Student, Teacher
-from apps.core.exceptions import DomainError
+from apps.academic.models import EnrollmentAdjustmentRequest, Student, Teacher
+from apps.core.exceptions import DomainError, InvalidStateTransition
 from apps.people.models import Person
-from apps.programs.models import Program
+from apps.programs.models import AcademicTerm, Program
 
 
 def _professor(*, program: Program, person: Person) -> Teacher:
@@ -100,5 +100,72 @@ def test_clean_rejeita_aluno_em_programa_diferente_do_da_pessoa():
 
     with pytest.raises(DomainError) as exc:
         aluno.clean()
+
+    assert exc.value.code == "program_mismatch"
+
+
+def _acerto(**kwargs) -> EnrollmentAdjustmentRequest:
+    programa = Program(pk=1, acronym="PPGD")
+    campos = {
+        "program": programa,
+        "student": _aluno(pk=1, program=programa),
+        "term": AcademicTerm(pk=1, year=2026, half=1),
+    }
+    campos.update(kwargs)
+    return EnrollmentAdjustmentRequest(**campos)
+
+
+def test_aprovar_solicitacao_aberta_muda_status_e_carimba_a_decisao():
+    acerto = _acerto()
+
+    acerto.approve(note="De acordo.")
+
+    assert acerto.status == EnrollmentAdjustmentRequest.Status.APPROVED
+    assert acerto.decision_note == "De acordo."
+    assert acerto.decided_at is not None
+
+
+def test_recusar_solicitacao_aberta_muda_status_e_carimba_a_decisao():
+    acerto = _acerto()
+
+    acerto.reject(note="Disciplina não é da linha do aluno.")
+
+    assert acerto.status == EnrollmentAdjustmentRequest.Status.REJECTED
+    assert acerto.decision_note == "Disciplina não é da linha do aluno."
+    assert acerto.decided_at is not None
+
+
+def test_aprovar_solicitacao_ja_decidida_levanta():
+    acerto = _acerto(status=EnrollmentAdjustmentRequest.Status.REJECTED)
+
+    with pytest.raises(InvalidStateTransition) as exc:
+        acerto.approve()
+
+    assert exc.value.status_code == 409
+
+
+def test_recusar_solicitacao_ja_decidida_levanta():
+    acerto = _acerto(status=EnrollmentAdjustmentRequest.Status.APPROVED)
+
+    with pytest.raises(InvalidStateTransition):
+        acerto.reject(note="Tarde demais.")
+
+
+def test_recusar_sem_motivo_levanta():
+    """Espaço em branco não é motivo — o aluno leria uma recusa vazia."""
+    acerto = _acerto()
+
+    with pytest.raises(DomainError) as exc:
+        acerto.reject(note="   ")
+
+    assert exc.value.code == "rejection_requires_note"
+    assert acerto.status == EnrollmentAdjustmentRequest.Status.OPEN
+
+
+def test_clean_rejeita_acerto_em_programa_diferente_do_do_aluno():
+    acerto = _acerto(program=Program(pk=2, acronym="PPGA"))
+
+    with pytest.raises(DomainError) as exc:
+        acerto.clean()
 
     assert exc.value.code == "program_mismatch"
