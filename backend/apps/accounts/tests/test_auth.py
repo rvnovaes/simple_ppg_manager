@@ -25,6 +25,9 @@ def test_login_valido_cria_sessao_e_audita(client, secretaria):
     corpo = resposta.json()
     assert corpo["username"] == "secretaria"
     assert "people.add_person" in corpo["permissions"]
+    # O papel vem junto porque há tela cujo público não se distingue por
+    # permissão — ver o comentário em UserOut.groups.
+    assert corpo["groups"] == ["Secretaria"]
 
     assert AuditLog.objects.filter(event="auth.login").count() == 1
     # A sessão vale para as demais rotas.

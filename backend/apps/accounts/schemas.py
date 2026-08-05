@@ -39,6 +39,12 @@ class UserOut(Schema):
     full_name: str
     is_staff: bool
     permissions: list[str]
+    # Papel de domínio é Group (Seção 5). Vem junto porque há tela cujo
+    # público não se distingue por permissão: Secretaria, Coordenação,
+    # Docente e Discente têm todos `view_enrollmentadjustmentrequest`, e o
+    # que muda entre eles é o papel — o mesmo critério que o backend usa em
+    # `EnrollmentAdjustmentRequestQuerySet.visible_to`.
+    groups: list[str]
     # Sem isto o front sabe QUEM logou, mas não sabe QUAL pessoa do domínio
     # é essa conta — nem em quais programas ela atua. Lista porque o User é
     # global e a Person é por programa.

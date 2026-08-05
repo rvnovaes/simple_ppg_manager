@@ -18,18 +18,18 @@ You are an autonomous coding agent working on a software project.
 
 ## Project rules
 
-The repository root `CLAUDE.md` (`/opt/simple_ppg_manager/CLAUDE.md`) is the single source of
-truth for stack, arquitetura, convenções e comandos de qualidade. Read it and follow it. Do not
-restate its rules here — a copy would drift.
+The repository root `CLAUDE.md` (`/opt/ppg-ralph-acerto-matricula/CLAUDE.md`) is the single
+source of truth for stack, arquitetura, convenções e comandos de qualidade. Read it and follow
+it. Do not restate its rules here — a copy would drift.
 
 Three adjustments, because you run inside an autonomous loop:
 
-- **Base branch é `main`.** Se a branch de `branchName` não existir, crie a partir de `main`.
-  Não existe `develop` neste projeto.
-- **Você trabalha no checkout principal**, `/opt/simple_ppg_manager` — não há worktree separada.
-  Não crie uma.
-- **Commit narrowly.** NUNCA `git add -A`: o checkout é compartilhado e a raiz tem arquivos
-  soltos que não são seus. Faça `git add` só dos arquivos que você tocou.
+- **Você já está na sua worktree**, `/opt/ppg-ralph-acerto-matricula`, na branch
+  `ralph/acerto-de-matricula`, criada a partir de `main`. Não crie outra e não troque de branch.
+  O checkout principal é `/opt/simple_ppg_manager` — não escreva nada lá.
+- **Base branch é `main`.** Não existe `develop` neste projeto.
+- **Commit narrowly.** Stage só os arquivos que você tocou. `git add -A` varre o `.env` e
+  qualquer resto de build.
 
 ## Progress Report Format
 
@@ -124,28 +124,37 @@ If there are still stories with `passes: false`, end your response normally (ano
 - Keep CI green
 - Read the Codebase Patterns section in progress.txt before starting
 
-## Ambiente deste projeto
+## Ambiente
 
-Raiz: `/opt/simple_ppg_manager`. Rode tudo a partir dela (o `Makefile` está lá).
+Raiz da sua worktree: `/opt/ppg-ralph-acerto-matricula`. Rode tudo a partir dela (o `Makefile`
+está lá). Antes de começar, `make install` e `make install-web` — worktree nova não herda
+`.venv` nem `node_modules`.
 
-- **Front + API, origem única (nginx): http://localhost:8080** — é onde a UI se verifica.
-  O front fala com a API por `/api/v1`, caminho relativo, via proxy do nginx
-- Vite (`make web`): :5173 — NÃO abra direto, quebra login e CSRF
-- Django nativo (`make run`, sem container): :8000
-- Banco: Postgres 17 em `localhost:5433` (`ppg`/`ppg`/`ppg`). Volume nomeado `pgdata`,
-  não some sozinho
+- Banco: Postgres 17 em `localhost:5433` (`ppg`/`ppg`/`ppg`), já de pé. Volume nomeado
+  `pgdata`, não some sozinho
+- **Front + API, origem única (nginx): http://localhost:8080.** O front fala com a API por
+  `/api/v1`, caminho relativo, via proxy do nginx
+- Vite: :5173 — NÃO abra direto, quebra login e CSRF (ADR-004)
+- Django nativo (`make run`): :8000
 - Django Admin: http://localhost:8080/admin/ — só superusuário (ADR-006)
 
-Regras:
-- `docker compose` puro, sem `-f`. Nome do projeto fixado como `simple_ppg_manager` no
-  próprio `docker-compose.yml`
-- `docker compose exec <serviço>`, NUNCA `docker exec <nome>`: os containers não têm nome fixo
-- Serviços do compose: `db`, `backend`, `nginx`. Não há worker, scheduler nem serviço de e-mail
-- Comandos são sempre via `make` (Seção 7 do CLAUDE.md raiz): `make up` sobe db + backend +
-  nginx; `make web` roda o Vite; `make migrations` / `make migrate`; `make gen-api` regenera
-  `frontend/src/lib/api/schema.d.ts` (backend precisa estar de pé); `make ready`
-  (lint + typecheck + test) é pré-condição de qualquer commit
+**Esta worktree COMPARTILHA a stack Docker do checkout principal.** Consequências, e elas
+mandam no seu jeito de trabalhar:
+
+- **NUNCA rode `make up`, `make down` nem `docker compose up/down/build` aqui.** O
+  `docker-compose.yml` fixa `name: simple_ppg_manager`, então subir daqui recria os containers
+  do outro checkout apontando para o seu código e derruba o ambiente de quem está trabalhando lá
+- **`:8080` e `:5173` servem o código do checkout principal, não o seu.** Verificação de UI por
+  ali NÃO exercita a sua branch. Para conferir uma tela sua, pare o Vite do outro checkout,
+  rode `make web` daqui, e avise no progress.txt que fez isso
+- Teste e lint rodam locais, sem container, e enxergam o seu código: `make ready`
+  (lint + typecheck + test) é a pré-condição de qualquer commit. `pytest` cria e derruba o
+  próprio banco de teste — não encosta no banco de desenvolvimento
+- `make migrate` aplica no banco compartilhado :5433. Migração sua altera o schema que o outro
+  checkout usa — é esperado, mas registre no progress.txt
+- `make gen-api` regenera `frontend/src/lib/api/schema.d.ts` e precisa do backend de pé; ele
+  usa o Django local (`make run`), não o container
 - Mudou schema da API: rode `make gen-api` antes de mexer nas telas Svelte. Sem isso os tipos
   do front ficam velhos e o `svelte-check` do `make ready` acusa
-- O front em dev é servido pelo Vite atrás do nginx — não há build a refazer para ver a tela;
-  basta o `make web` rodando
+- Serviços do compose: `db`, `backend`, `nginx`. Não há worker, scheduler nem serviço de e-mail.
+  Se precisar entrar num container, `docker compose exec <serviço>`, nunca `docker exec <nome>`

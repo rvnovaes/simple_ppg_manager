@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from apps.core.admin import AuditedModelAdmin
 
-from .models import AcademicTerm, CollectiveProject, Program, ResearchLine
+from .models import AcademicTerm, CollectiveProject, Discipline, Program, ResearchLine
 
 
 @admin.register(Program)
@@ -30,6 +30,15 @@ class CollectiveProjectAdmin(AuditedModelAdmin):
     list_display = ("name", "research_line", "program", "is_active")
     list_filter = ("program", "research_line", "is_active")
     search_fields = ("name",)
+
+
+@admin.register(Discipline)
+class DisciplineAdmin(AuditedModelAdmin):
+    """Quebra-vidro: a rotina da secretaria é a tela Svelte (ADR-006)."""
+
+    list_display = ("code", "name", "program", "is_active")
+    list_filter = ("program", "is_active")
+    search_fields = ("code", "name")
 
 
 @admin.register(AcademicTerm)

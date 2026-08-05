@@ -176,6 +176,41 @@ export interface paths {
         patch: operations["apps_programs_router_update_collective_project"];
         trace?: never;
     };
+    "/programs/disciplines/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Disciplines */
+        get: operations["apps_programs_router_list_disciplines"];
+        put?: never;
+        /** Create Discipline */
+        post: operations["apps_programs_router_create_discipline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/programs/disciplines/{discipline_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Discipline */
+        patch: operations["apps_programs_router_update_discipline"];
+        trace?: never;
+    };
     "/programs/terms/": {
         parameters: {
             query?: never;
@@ -316,6 +351,87 @@ export interface paths {
         patch: operations["apps_academic_router_update_student"];
         trace?: never;
     };
+    "/academic/students/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Students
+         * @description Os vínculos de aluno da própria sessão — nunca os dos outros.
+         *
+         *     Existe para a tela do acerto: ela precisa saber, antes de o formulário
+         *     ser preenchido, se o aluno tem orientador e qual vínculo é regular. Sem
+         *     isso o único jeito de descobrir seria levar o 409 `advisor_required`
+         *     depois de tudo digitado.
+         *
+         *     A permissão é a de abrir acerto, e não `academic.view_student`: essa
+         *     daria de quebra a listagem inteira do programa, que o discente não pode
+         *     ler. Lista curta (uma pessoa tem um ou dois vínculos), sem paginação.
+         */
+        get: operations["apps_academic_router_list_my_students"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/enrollment-requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Enrollment Requests */
+        get: operations["apps_academic_router_list_enrollment_requests"];
+        put?: never;
+        /** Create Enrollment Request */
+        post: operations["apps_academic_router_create_enrollment_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/enrollment-requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Enrollment Request */
+        post: operations["apps_academic_router_approve_enrollment_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/enrollment-requests/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Enrollment Request */
+        post: operations["apps_academic_router_reject_enrollment_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -350,6 +466,8 @@ export interface components {
             is_staff: boolean;
             /** Permissions */
             permissions: string[];
+            /** Groups */
+            groups: string[];
             /** People */
             people: components["schemas"]["PersonRefOut"][];
         };
@@ -474,6 +592,50 @@ export interface components {
         CollectiveProjectPatch: {
             /** Research Line Id */
             research_line_id?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** DisciplineOut */
+        DisciplineOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** PagedDisciplineOut */
+        PagedDisciplineOut: {
+            /** Items */
+            items: components["schemas"]["DisciplineOut"][];
+            /** Count */
+            count: number;
+        };
+        /** DisciplineIn */
+        DisciplineIn: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * DisciplinePatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        DisciplinePatch: {
+            /** Code */
+            code?: string | null;
             /** Name */
             name?: string | null;
             /** Is Active */
@@ -857,6 +1019,126 @@ export interface components {
             /** Term Id */
             term_id?: number | null;
         };
+        /**
+         * AdjustmentStatus
+         * @description Situação da solicitação de acerto.
+         *
+         *     Mora fora do model, com nome único, porque o gerador de OpenAPI batiza
+         *     o schema do enum com o `__name__` da classe: dois `Status` aninhados
+         *     colidem e o último registrado sobrescreve o outro — foi assim que
+         *     `Student.Status` virou `open/approved/rejected` no `schema.d.ts`.
+         *     `EnrollmentAdjustmentRequest.Status` continua valendo pelo alias.
+         * @enum {string}
+         */
+        AdjustmentStatus: "open" | "approved" | "rejected";
+        /** EnrollmentAdjustmentItemOut */
+        EnrollmentAdjustmentItemOut: {
+            /** Id */
+            id: number;
+            /** Discipline Id */
+            discipline_id: number;
+            /** Discipline Code */
+            discipline_code: string;
+            /** Discipline Name */
+            discipline_name: string;
+            /** Action */
+            action: string;
+        };
+        /** EnrollmentAdjustmentRequestOut */
+        EnrollmentAdjustmentRequestOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Student Id */
+            student_id: number;
+            /** Student Name */
+            student_name: string;
+            /** Advisor Name */
+            advisor_name: string | null;
+            /** Term Id */
+            term_id: number;
+            /** Status */
+            status: string;
+            /** Justification */
+            justification: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Items */
+            items: components["schemas"]["EnrollmentAdjustmentItemOut"][];
+        };
+        /** PagedEnrollmentAdjustmentRequestOut */
+        PagedEnrollmentAdjustmentRequestOut: {
+            /** Items */
+            items: components["schemas"]["EnrollmentAdjustmentRequestOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * Action
+         * @enum {string}
+         */
+        Action: "add" | "drop";
+        /**
+         * EnrollmentAdjustmentItemIn
+         * @description Uma mudança pedida: incluir ou excluir uma disciplina.
+         */
+        EnrollmentAdjustmentItemIn: {
+            /** Discipline Id */
+            discipline_id: number;
+            action: components["schemas"]["Action"];
+        };
+        /**
+         * EnrollmentAdjustmentRequestIn
+         * @description Abertura de um acerto de matrícula.
+         *
+         *     Sem `program_id`: o programa é o da requisição (current_program).
+         *     `student_id` é opcional e existe só para a tela ser explícita — o
+         *     aluno vem sempre da sessão, e informar o de outra pessoa é 403.
+         */
+        EnrollmentAdjustmentRequestIn: {
+            /** Student Id */
+            student_id?: number | null;
+            /** Term Id */
+            term_id: number;
+            /**
+             * Justification
+             * @default
+             */
+            justification: string;
+            /** Items */
+            items: components["schemas"]["EnrollmentAdjustmentItemIn"][];
+        };
+        /**
+         * EnrollmentAdjustmentApproveIn
+         * @description Aprovação: a nota é opcional — quem aprova não deve satisfação.
+         */
+        EnrollmentAdjustmentApproveIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * EnrollmentAdjustmentRejectIn
+         * @description Recusa: o motivo é o que o aluno lê para saber o que corrigir.
+         *
+         *     A obrigatoriedade real é do model (`reject` levanta
+         *     `rejection_requires_note`): aqui o campo é exigido na borda, mas
+         *     string em branco só é barrada lá, com `code` estável.
+         */
+        EnrollmentAdjustmentRejectIn: {
+            /** Note */
+            note: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1143,6 +1425,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectiveProjectOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_list_disciplines: {
+        parameters: {
+            query?: {
+                is_active?: boolean | null;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedDisciplineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_create_discipline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisciplineIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_update_discipline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discipline_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisciplinePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOut"];
                 };
             };
         };
@@ -1438,6 +1795,127 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StudentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_my_students: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_enrollment_requests: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["AdjustmentStatus"] | null;
+                term_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedEnrollmentAdjustmentRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_enrollment_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollmentAdjustmentRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentAdjustmentRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_approve_enrollment_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollmentAdjustmentApproveIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentAdjustmentRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_reject_enrollment_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollmentAdjustmentRejectIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentAdjustmentRequestOut"];
                 };
             };
         };

@@ -63,6 +63,42 @@ def test_discente_nao_lista_professores_nem_alunos() -> None:
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("papel", PAPEIS)
+def test_todo_papel_le_o_catalogo_de_disciplinas(papel: str) -> None:
+    assert "view_discipline" in _codenames(papel)
+
+
+@pytest.mark.django_db
+def test_so_a_secretaria_mantem_o_catalogo() -> None:
+    assert {"add_discipline", "change_discipline"} <= _codenames("Secretaria")
+    for papel in ("Coordenação", "Docente", "Discente"):
+        codenames = _codenames(papel)
+        assert "add_discipline" not in codenames
+        assert "change_discipline" not in codenames
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("papel", PAPEIS)
+def test_todo_papel_acompanha_o_acerto_de_matricula(papel: str) -> None:
+    assert "view_enrollmentadjustmentrequest" in _codenames(papel)
+
+
+@pytest.mark.django_db
+def test_so_o_discente_abre_solicitacao_de_acerto() -> None:
+    assert "add_enrollmentadjustmentrequest" in _codenames("Discente")
+    for papel in ("Secretaria", "Coordenação", "Docente"):
+        assert "add_enrollmentadjustmentrequest" not in _codenames(papel)
+
+
+@pytest.mark.django_db
+def test_so_o_docente_decide_a_solicitacao_de_acerto() -> None:
+    """Decidir é `change_`: quem não orienta não muda o status da solicitação."""
+    assert "change_enrollmentadjustmentrequest" in _codenames("Docente")
+    for papel in ("Secretaria", "Coordenação", "Discente"):
+        assert "change_enrollmentadjustmentrequest" not in _codenames(papel)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("papel", PAPEIS)
 def test_nenhum_papel_apaga_dado(papel: str) -> None:
     assert not [c for c in _codenames(papel) if c.startswith("delete_")]
 

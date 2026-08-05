@@ -9,8 +9,10 @@ from datetime import date
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from django.utils import timezone
 
-from apps.core.exceptions import DomainError
+from apps.core.exceptions import DomainError, InvalidStateTransition
+from apps.people.models import Person
 
 
 def _somar_anos(dia: date, anos: int) -> date:
@@ -360,6 +362,29 @@ class Student(models.Model):
         # primeiro.
         self._conferir_modalidade()
 
+    def ensure_can_request_adjustment(self) -> None:
+        """Invariante de quem pode abrir acerto de matrícula.
+
+        A ordem importa: a modalidade vem primeiro porque a isolada e a
+        eletiva nem podem ter orientador (CheckConstraint
+        `student_non_regular_requires_term`) — checar o orientador antes
+        devolveria `advisor_required` para quem nunca poderia ter um.
+
+        Sem orientador a solicitação nasceria presa: só o orientador
+        decide, então ninguém a tiraria de Aberta. É 409, não 400 — o
+        payload está certo, o estado do vínculo é que não permite.
+        """
+        if self.modality != self.Modality.REGULAR:
+            raise InvalidStateTransition(
+                "Só o aluno regular abre acerto de matrícula.",
+                code="regular_students_only",
+            )
+        if self.advisor_id is None:
+            raise InvalidStateTransition(
+                "Aluno sem orientador não tem quem decida o acerto.",
+                code="advisor_required",
+            )
+
     def _conferir_modalidade(self) -> None:
         """Mesma coerência das CheckConstraint, no caminho do domínio.
 
@@ -403,3 +428,213 @@ class Student(models.Model):
                 "Trancamento só se aplica ao aluno regular.",
                 code="leave_not_allowed",
             )
+
+
+# Papéis que acompanham o fluxo do programa inteiro. Aluno e orientador
+# enxergam só o que é deles, e por isso não estão aqui: quem não é
+# Secretaria nem Coordenação cai no escopo do próprio vínculo.
+PAPEIS_COM_VISAO_DO_PROGRAMA = ("Secretaria", "Coordenação")
+
+
+class EnrollmentAdjustmentRequestQuerySet(models.QuerySet):
+    def for_program(self, program) -> "EnrollmentAdjustmentRequestQuerySet":
+        return self.filter(program=program)
+
+    def open(self) -> "EnrollmentAdjustmentRequestQuerySet":
+        return self.filter(status=EnrollmentAdjustmentRequest.Status.OPEN)
+
+    def visible_to(self, user, program) -> "EnrollmentAdjustmentRequestQuerySet":
+        """O que esta sessão pode ler — sempre depois de `for_program`.
+
+        `view_enrollmentadjustmentrequest` é permissão de papel: os quatro
+        papéis a têm, mas ela diz que a pessoa acompanha acerto, não QUAIS
+        acertos. O recorte é aqui.
+
+        Secretaria e Coordenação (e o superusuário, que opera a
+        plataforma) veem o programa inteiro. Todo o resto vê a união do
+        que é seu como aluno e do que é seu como orientador — união, e não
+        dois ramos, porque nada impede que o mesmo User tenha os dois
+        vínculos.
+        """
+        if (
+            user.is_superuser
+            or user.groups.filter(name__in=PAPEIS_COM_VISAO_DO_PROGRAMA).exists()
+        ):
+            return self
+        pessoas = Person.objects.active().filter(user=user, program=program)
+        # Sem duplicata a corrigir: os dois lados do OU são FK direta
+        # (uma solicitação tem um aluno, que tem uma pessoa e um
+        # orientador), então o join não multiplica linha.
+        return self.filter(
+            models.Q(student__person__in=pessoas)
+            | models.Q(student__advisor__person__in=pessoas)
+        )
+
+
+class AdjustmentStatus(models.TextChoices):
+    """Situação da solicitação de acerto.
+
+    Mora fora do model, com nome único, porque o gerador de OpenAPI batiza
+    o schema do enum com o `__name__` da classe: dois `Status` aninhados
+    colidem e o último registrado sobrescreve o outro — foi assim que
+    `Student.Status` virou `open/approved/rejected` no `schema.d.ts`.
+    `EnrollmentAdjustmentRequest.Status` continua valendo pelo alias.
+    """
+
+    OPEN = "open", "Aberta"
+    APPROVED = "approved", "Aprovada"
+    REJECTED = "rejected", "Recusada"
+
+
+class EnrollmentAdjustmentRequest(models.Model):
+    """Pedido de acerto de matrícula de um aluno num período letivo.
+
+    Um pedido só, com vários itens: o aluno junta tudo o que quer incluir
+    e excluir em 2026/1 numa decisão única do orientador, em vez de abrir
+    um pedido por disciplina. Por isso o estado (`status`, `decided_at`,
+    `decision_note`) vive aqui e não no item.
+
+    A FK `program` é direta mesmo sendo alcançável por `student.program`
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None` e o rastro perde a chave de tenant.
+    """
+
+    Status = AdjustmentStatus
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="enrollment_adjustments",
+        verbose_name="programa",
+    )
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.PROTECT,
+        related_name="enrollment_adjustments",
+        verbose_name="aluno",
+    )
+    # Obrigatória: acerto é sempre relativo a um semestre, e é ela que dá
+    # sentido ao filtro da tela da secretaria.
+    term = models.ForeignKey(
+        "programs.AcademicTerm",
+        on_delete=models.PROTECT,
+        related_name="enrollment_adjustments",
+        verbose_name="período letivo",
+    )
+    status = models.CharField(
+        "situação",
+        max_length=20,
+        choices=Status,
+        default=Status.OPEN,
+    )
+    justification = models.TextField("justificativa do aluno", blank=True)
+    decision_note = models.TextField("motivo da decisão", blank=True)
+    # Vazio enquanto Aberta; carimbado por approve()/reject().
+    decided_at = models.DateTimeField("decidida em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = EnrollmentAdjustmentRequestQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "solicitação de acerto de matrícula"
+        verbose_name_plural = "solicitações de acerto de matrícula"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Acerto de {self.student} em {self.term}"
+
+    def approve(self, *, note: str = "") -> None:
+        """Aprova a solicitação.
+
+        Invariante: só se decide o que está Aberto. Decidir de novo é erro
+        do chamador, não no-op silencioso. A nota é opcional aqui — quem
+        aprova não deve satisfação; quem recusa, sim.
+        """
+        self._exigir_aberta()
+        self.status = self.Status.APPROVED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+
+    def reject(self, *, note: str) -> None:
+        """Recusa a solicitação, com motivo obrigatório.
+
+        O motivo é o que o aluno lê na tela dele para saber o que corrigir;
+        recusa sem motivo é uma porta fechada sem explicação.
+        """
+        self._exigir_aberta()
+        if not note.strip():
+            raise DomainError(
+                "Recusar exige um motivo.",
+                code="rejection_requires_note",
+            )
+        self.status = self.Status.REJECTED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+
+    def _exigir_aberta(self) -> None:
+        if self.status != self.Status.OPEN:
+            raise InvalidStateTransition("Esta solicitação de acerto já foi decidida.")
+
+    def clean(self) -> None:
+        """A FK `program` é direta (ADR-007 dec. 5) e por isso pode divergir
+        da do aluno. Divergir significa AuditLog com a chave de tenant
+        errada — é invariante, não detalhe de formulário.
+
+        `term` fica de fora de propósito: período letivo é institucional e
+        não tem programa para comparar (ADR-007 dec. 4).
+        """
+        super().clean()
+        try:
+            student = self.student
+        except ObjectDoesNotExist:
+            # Sem aluno ainda: quem cobra a obrigatoriedade é o schema
+            # Ninja (borda) e o NOT NULL da coluna, não este invariante.
+            return
+        if self.program_id != student.program_id:
+            raise DomainError(
+                "O programa da solicitação precisa ser o mesmo do aluno.",
+                code="program_mismatch",
+            )
+
+
+class EnrollmentAdjustmentItem(models.Model):
+    """Uma mudança pedida: incluir ou excluir uma disciplina.
+
+    Sem estado próprio — quem é aprovado ou recusado é a solicitação
+    inteira. CASCADE porque item órfão não significa nada.
+    """
+
+    class Action(models.TextChoices):
+        ADD = "add", "Incluir"
+        DROP = "drop", "Excluir"
+
+    request = models.ForeignKey(
+        EnrollmentAdjustmentRequest,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="solicitação",
+    )
+    discipline = models.ForeignKey(
+        "programs.Discipline",
+        on_delete=models.PROTECT,
+        related_name="enrollment_adjustment_items",
+        verbose_name="disciplina",
+    )
+    action = models.CharField("ação", max_length=10, choices=Action)
+
+    class Meta:
+        verbose_name = "item do acerto de matrícula"
+        verbose_name_plural = "itens do acerto de matrícula"
+        ordering = ["discipline__code"]
+        constraints = [
+            # Pedir duas vezes a mesma coisa é ruído; pedir incluir E
+            # excluir a mesma disciplina segue possível e é o orientador
+            # quem julga.
+            models.UniqueConstraint(
+                fields=["request", "discipline", "action"],
+                name="unique_item_por_solicitacao",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_action_display()} {self.discipline}"

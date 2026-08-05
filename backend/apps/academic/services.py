@@ -20,9 +20,20 @@ from apps.core import audit
 from apps.core.exceptions import DomainError
 from apps.people.models import Person
 from apps.people.services import create_person_with_user
-from apps.programs.models import CollectiveProject, Program, ResearchLine
+from apps.programs.models import (
+    AcademicTerm,
+    CollectiveProject,
+    Discipline,
+    Program,
+    ResearchLine,
+)
 
-from .models import Student, Teacher
+from .models import (
+    EnrollmentAdjustmentItem,
+    EnrollmentAdjustmentRequest,
+    Student,
+    Teacher,
+)
 
 
 def conferir_programa(objetos: Sequence[Any], program: Program, rotulo: str) -> None:
@@ -128,3 +139,58 @@ def create_student(
         status=student.status,
     )
     return student
+
+
+@transaction.atomic
+def create_enrollment_adjustment(
+    *,
+    program: Program,
+    student: Student,
+    term: AcademicTerm,
+    justification: str = "",
+    itens: Sequence[tuple[Discipline, str]],
+    request: HttpRequest | None = None,
+) -> EnrollmentAdjustmentRequest:
+    """Abre a solicitação de acerto com todos os seus itens — tudo ou nada.
+
+    Está aqui, e não no router, porque escreve em três models
+    (EnrollmentAdjustmentRequest, EnrollmentAdjustmentItem e AuditLog) na
+    mesma transação (ADR-002). Solicitação gravada sem os itens seria um
+    pedido vazio esperando decisão.
+
+    `itens` são pares (disciplina, ação) já resolvidos e escopados pelo
+    router: id inexistente ou de outro programa vira 404 lá, não
+    IntegrityError aqui.
+    """
+    student.ensure_can_request_adjustment()
+
+    solicitacao = EnrollmentAdjustmentRequest(
+        program=program,
+        student=student,
+        term=term,
+        justification=justification,
+    )
+    # A regra mora no model; aqui só persistimos e auditamos.
+    solicitacao.clean()
+    solicitacao.save()
+    EnrollmentAdjustmentItem.objects.bulk_create(
+        [
+            EnrollmentAdjustmentItem(
+                request=solicitacao, discipline=disciplina, action=acao
+            )
+            for disciplina, acao in itens
+        ]
+    )
+
+    audit.record(
+        "academic.enrollment_adjustment.create",
+        request=request,
+        target=solicitacao,
+        student_id=student.pk,
+        term_id=term.pk,
+        items=[
+            {"discipline_id": disciplina.pk, "action": acao}
+            for disciplina, acao in itens
+        ],
+    )
+    return solicitacao

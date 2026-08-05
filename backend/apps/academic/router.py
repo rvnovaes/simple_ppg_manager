@@ -12,18 +12,24 @@ from ninja import Router, Status
 from ninja.pagination import paginate
 
 from apps.core import audit
+from apps.core.exceptions import NotAllowed
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
 from apps.people.models import Person
 from apps.programs.models import (
     AcademicTerm,
     CollectiveProject,
+    Discipline,
     Program,
     ResearchLine,
 )
 
-from .models import Student, Teacher
+from .models import AdjustmentStatus, EnrollmentAdjustmentRequest, Student, Teacher
 from .schemas import (
+    EnrollmentAdjustmentApproveIn,
+    EnrollmentAdjustmentRejectIn,
+    EnrollmentAdjustmentRequestIn,
+    EnrollmentAdjustmentRequestOut,
     StudentIn,
     StudentOut,
     StudentPatch,
@@ -31,7 +37,12 @@ from .schemas import (
     TeacherOut,
     TeacherPatch,
 )
-from .services import conferir_programa, create_student, create_teacher
+from .services import (
+    conferir_programa,
+    create_enrollment_adjustment,
+    create_student,
+    create_teacher,
+)
 
 router = Router(tags=["academic"])
 
@@ -269,3 +280,191 @@ def update_student(request: HttpRequest, student_id: int, payload: StudentPatch)
             **extra,
         )
     return student
+
+
+@router.get("/students/me", response=list[StudentOut])
+def list_my_students(request: HttpRequest):
+    """Os vínculos de aluno da própria sessão — nunca os dos outros.
+
+    Existe para a tela do acerto: ela precisa saber, antes de o formulário
+    ser preenchido, se o aluno tem orientador e qual vínculo é regular. Sem
+    isso o único jeito de descobrir seria levar o 409 `advisor_required`
+    depois de tudo digitado.
+
+    A permissão é a de abrir acerto, e não `academic.view_student`: essa
+    daria de quebra a listagem inteira do programa, que o discente não pode
+    ler. Lista curta (uma pessoa tem um ou dois vínculos), sem paginação.
+    """
+    require_perm(request, "academic.add_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    return (
+        Student.objects.for_program(program)
+        .filter(person__in=pessoas)
+        .select_related("person", "person__user")
+    )
+
+
+def _aluno_da_sessao(
+    request: HttpRequest, program: Program, student_id: int | None
+) -> Student:
+    """O vínculo de aluno de quem está pedindo — nunca o do payload.
+
+    Aceitar `student_id` do corpo sem conferir seria deixar qualquer
+    discente abrir pedido em nome de outro. O `student_id` só serve para a
+    tela ser explícita: se não for um vínculo desta sessão, é 403.
+
+    Quando ele não vem, o vínculo regular ganha do não regular. O `first()`
+    solto no fim é de propósito: quem só tem isolada recebe o 409
+    `regular_students_only`, que explica o problema, em vez de um 403 que
+    diria "você não é aluno".
+    """
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    meus = Student.objects.for_program(program).filter(person__in=pessoas)
+    if student_id is not None:
+        aluno = meus.filter(pk=student_id).first()
+        if aluno is None:
+            raise NotAllowed("O acerto de matrícula é sempre em nome do próprio aluno.")
+        return aluno
+    aluno = meus.regular().first() or meus.first()
+    if aluno is None:
+        raise NotAllowed("Sua conta não tem vínculo de aluno neste programa.")
+    return aluno
+
+
+@router.get("/enrollment-requests/", response=list[EnrollmentAdjustmentRequestOut])
+@paginate
+def list_enrollment_requests(
+    request: HttpRequest,
+    status: AdjustmentStatus | None = None,
+    term_id: int | None = None,
+):
+    require_perm(request, "academic.view_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    solicitacoes = (
+        # Duas camadas, nesta ordem: o tenant primeiro (não é opcional) e o
+        # papel depois. `visible_to` é quem recorta aluno/orientador de
+        # secretaria/coordenação — ver o método no model.
+        EnrollmentAdjustmentRequest.objects.for_program(program)
+        .visible_to(request.user, program)
+        # Sem o prefetch são duas consultas por solicitação: uma pelos
+        # itens, outra pela disciplina de cada item.
+        .select_related("student__person", "student__advisor__person")
+        .prefetch_related("items__discipline")
+    )
+    # Filtros de conveniência da tela. Nenhum deles é escopo — esse já foi
+    # aplicado acima e não é opcional.
+    filtros = {"status": status, "term_id": term_id}
+    return solicitacoes.filter(
+        **{campo: valor for campo, valor in filtros.items() if valor is not None}
+    )
+
+
+@router.post("/enrollment-requests/", response={201: EnrollmentAdjustmentRequestOut})
+def create_enrollment_request(
+    request: HttpRequest, payload: EnrollmentAdjustmentRequestIn
+):
+    require_perm(request, "academic.add_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    student = _aluno_da_sessao(request, program, payload.student_id)
+    # Período letivo é institucional (ADR-007 dec. 4): busca global.
+    term = get_object_or_404(AcademicTerm, pk=payload.term_id)
+    # O escopo entra na busca: disciplina de outro programa não existe para
+    # esta requisição (404, nunca 403).
+    itens = [
+        (
+            get_object_or_404(
+                Discipline.objects.for_program(program), pk=item.discipline_id
+            ),
+            item.action,
+        )
+        for item in payload.items
+    ]
+    solicitacao = create_enrollment_adjustment(
+        program=program,
+        student=student,
+        term=term,
+        justification=payload.justification,
+        itens=itens,
+        request=request,
+    )
+    return Status(201, solicitacao)
+
+
+def _solicitacao_para_decidir(
+    request: HttpRequest, program: Program, request_id: int
+) -> EnrollmentAdjustmentRequest:
+    """A solicitação que esta sessão pode decidir — só a do próprio orientando.
+
+    `academic.change_enrollmentadjustmentrequest` é permissão de papel: ela
+    diz que docente decide acerto, não QUAL acerto. Sem esta checagem,
+    qualquer docente do programa decidiria o orientando de outro.
+
+    O escopo entra na busca (404, nunca 403, para solicitação de outro
+    programa). Aluno sem orientador nunca casa com o filtro — o `advisor_id`
+    nulo não encontra Teacher nenhum —, então cai no mesmo 403.
+    """
+    solicitacao = get_object_or_404(
+        EnrollmentAdjustmentRequest.objects.for_program(program)
+        .select_related("student")
+        .prefetch_related("items__discipline"),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    sou_o_orientador = (
+        Teacher.objects.for_program(program)
+        .filter(pk=solicitacao.student.advisor_id, person__in=pessoas)
+        .exists()
+    )
+    if not sou_o_orientador:
+        raise NotAllowed("Só o orientador do aluno decide este acerto de matrícula.")
+    return solicitacao
+
+
+@router.post(
+    "/enrollment-requests/{int:request_id}/approve",
+    response=EnrollmentAdjustmentRequestOut,
+)
+def approve_enrollment_request(
+    request: HttpRequest, request_id: int, payload: EnrollmentAdjustmentApproveIn
+):
+    require_perm(request, "academic.change_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    solicitacao = _solicitacao_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        # A regra mora no model: decidir de novo levanta
+        # InvalidStateTransition (409) e o handler central converte, sem
+        # try/except aqui (Seção 8).
+        solicitacao.approve(note=payload.note)
+        solicitacao.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.enrollment_adjustment.approve",
+            request=request,
+            target=solicitacao,
+            student_id=solicitacao.student_id,
+            note=solicitacao.decision_note,
+        )
+    return solicitacao
+
+
+@router.post(
+    "/enrollment-requests/{int:request_id}/reject",
+    response=EnrollmentAdjustmentRequestOut,
+)
+def reject_enrollment_request(
+    request: HttpRequest, request_id: int, payload: EnrollmentAdjustmentRejectIn
+):
+    require_perm(request, "academic.change_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    solicitacao = _solicitacao_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        solicitacao.reject(note=payload.note)
+        solicitacao.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.enrollment_adjustment.reject",
+            request=request,
+            target=solicitacao,
+            student_id=solicitacao.student_id,
+            note=solicitacao.decision_note,
+        )
+    return solicitacao
