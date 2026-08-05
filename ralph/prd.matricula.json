@@ -1,17 +1,17 @@
 {
   "project": "PPGD Manager",
   "branchName": "ralph/acerto-de-matricula",
-  "description": "Acerto de Matrícula - fluxo interno de ajuste de disciplinas: aluno solicita inclusão/exclusão de disciplinas em um único pedido, orientador aprova ou recusa (com motivo), secretaria/coordenação acompanham o status para replicar manualmente a mudança no sistema da UFMG.",
+  "description": "Acerto de Matrícula - fluxo interno de ajuste de disciplinas (revisão ADR-007): aluno regular solicita inclusão/exclusão de disciplinas de um período letivo em um único pedido, orientador aprova ou recusa (com motivo), secretaria/coordenação acompanham o status para replicar manualmente a mudança no sistema da UFMG. Inclui o catálogo de disciplinas com tela própria no front (ADR-006). Depende de ralph/prd.json, que entrega Teacher, Student, AcademicTerm, os grupos Docente/Discente, contas com senha utilizável e o helper current_program().",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Cadastro de disciplina (catálogo de referência)",
+      "title": "Model de disciplina (catálogo de referência)",
       "description": "As a secretaria, I want to maintain a catalog of program disciplines so that students can pick from it when requesting an enrollment adjustment.",
       "acceptanceCriteria": [
-        "Model Discipline no app programs: program (FK to Program, on_delete=PROTECT), code (CharField), name (CharField), is_active (BooleanField, default True)",
+        "Model Discipline no app programs: program (FK to Program, on_delete=PROTECT, related_name='disciplines'), code (CharField), name (CharField), is_active (BooleanField, default True)",
         "UniqueConstraint em (program, code)",
+        "Registrado no Django Admin do app programs apenas como quebra-vidro de sysadmin (ADR-006) — o caminho de uso da secretaria é a tela da US-008, não o Admin",
         "Migração criada e revisada (arquivo lido, não só gerado)",
-        "Registrado no Django Admin do app programs",
         "Typecheck passes"
       ],
       "priority": 1,
@@ -23,58 +23,81 @@
       "title": "Models da solicitação de acerto e seus itens",
       "description": "As a developer, I need models representing an enrollment adjustment request with one or more discipline changes, so the rest of the flow (create, approve, reject) has somewhere to persist state.",
       "acceptanceCriteria": [
-        "Model EnrollmentAdjustmentRequest no app academic: student (FK to Student, on_delete=PROTECT), status (TextChoices OPEN/APPROVED/REJECTED, default OPEN), justification (TextField, blank=True), decision_note (TextField, blank=True), decided_at (DateTimeField, null=True, blank=True), created_at (auto_now_add)",
-        "Model EnrollmentAdjustmentItem: request (FK, related_name='items', on_delete=CASCADE), discipline (FK to programs.Discipline, on_delete=PROTECT), action (TextChoices ADD/DROP)",
+        "Model EnrollmentAdjustmentRequest no app academic: program (FK to programs.Program, on_delete=PROTECT, related_name='enrollment_adjustments'), student (FK to Student, on_delete=PROTECT, related_name='enrollment_adjustments'), term (FK to programs.AcademicTerm, on_delete=PROTECT, related_name='enrollment_adjustments'), status (TextChoices OPEN/APPROVED/REJECTED = 'Aberta'/'Aprovada'/'Recusada', default OPEN), justification (TextField, blank=True), decision_note (TextField, blank=True), decided_at (DateTimeField, null=True, blank=True), created_at (auto_now_add)",
+        "A FK program é direta e obrigatória ainda que alcançável por student.program — ADR-007 decisão 5: sem ela, apps.core.audit.record() grava AuditLog com program=None",
+        "A FK term é obrigatória: o acerto é sempre relativo a um semestre, e é ela que dá sentido ao filtro da tela da secretaria (US-011). AcademicTerm vem de ralph/prd.json US-003",
+        "Model EnrollmentAdjustmentItem: request (FK, related_name='items', on_delete=CASCADE), discipline (FK to programs.Discipline, on_delete=PROTECT), action (TextChoices ADD/DROP = 'Incluir'/'Excluir')",
         "UniqueConstraint em (request, discipline, action)",
-        "Método approve(*, note='') só permitido a partir de status OPEN; levanta InvalidStateTransition se já decidida",
-        "Método reject(*, note) só permitido a partir de status OPEN; levanta InvalidStateTransition se já decidida; levanta DomainError com code='rejection_requires_note' se note vazio",
-        "Teste de invariante em memória (sem banco, seguindo o padrão de Person.archive() em apps/people/models.py): aprovar solicitação já decidida levanta erro; recusar sem motivo levanta erro; aprovar/recusar uma solicitação OPEN muda o status corretamente",
+        "Método approve(*, note='') só permitido a partir de status OPEN; levanta InvalidStateTransition se já decidida; preenche decided_at",
+        "Método reject(*, note) só permitido a partir de status OPEN; levanta InvalidStateTransition se já decidida; levanta DomainError com code='rejection_requires_note' se note vazio; preenche decided_at",
+        "Método clean() garante program == student.program == term.program e levanta DomainError com code='program_mismatch'",
         "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes",
-        "Tests pass"
+        "Tests pass: teste de invariante em memória sem banco, no padrão de Person.archive() em apps/people/models.py — aprovar solicitação já decidida levanta erro; recusar sem motivo levanta erro; aprovar/recusar uma solicitação OPEN muda o status e carimba decided_at"
       ],
       "priority": 2,
       "passes": false,
-      "notes": "Depende de apps.academic.models.Student já existir no código (model do PRD de cadastros básicos de professores/alunos, ainda não implementado neste repositório na data de geração deste prd.json)."
+      "notes": "Depende de apps.academic.models.Student e apps.programs.models.AcademicTerm, entregues por ralph/prd.json (US-005 e US-003)."
     },
     {
       "id": "US-003",
-      "title": "Papéis Docente e Discente com permissões do fluxo",
-      "description": "As the system, I need Teacher and Student to have their own permission groups so the enrollment-adjustment permission checks work (today only Secretaria and Coordenação groups exist).",
+      "title": "Permissões do fluxo nos papéis existentes",
+      "description": "As the system, I need the domain role groups to have the enrollment-adjustment permissions so the permission checks in this flow work.",
       "acceptanceCriteria": [
-        "Data migration no padrão de apps/programs/migrations/0002_programa_inicial_e_papeis.py cria os grupos Docente e Discente",
-        "Grupo Discente recebe academic.add_enrollmentadjustmentrequest e academic.view_enrollmentadjustmentrequest",
-        "Grupo Docente recebe academic.view_enrollmentadjustmentrequest e academic.change_enrollmentadjustmentrequest",
-        "Grupo Secretaria (já existente) ganha academic.view_enrollmentadjustmentrequest, programs.view_discipline, programs.add_discipline, programs.change_discipline",
-        "Grupo Coordenação (já existente) ganha academic.view_enrollmentadjustmentrequest",
+        "Nova data migration no padrão de apps/programs/migrations/0002_programa_inicial_e_papeis.py que ESTENDE os grupos existentes",
+        "A migração NÃO cria nenhum grupo: Secretaria, Coordenação, Docente e Discente já foram criados em ralph/prd.json US-006",
+        "Grupo Discente ganha academic.add_enrollmentadjustmentrequest, academic.view_enrollmentadjustmentrequest e programs.view_discipline",
+        "Grupo Docente ganha academic.view_enrollmentadjustmentrequest, academic.change_enrollmentadjustmentrequest e programs.view_discipline",
+        "Grupo Secretaria ganha academic.view_enrollmentadjustmentrequest, programs.view_discipline, programs.add_discipline e programs.change_discipline",
+        "Grupo Coordenação ganha academic.view_enrollmentadjustmentrequest e programs.view_discipline",
+        "Nenhum grupo recebe permissão de delete",
         "Migração de dados revisada (arquivo lido, não só gerado)",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": false,
-      "notes": ""
+      "notes": "Na versão anterior esta US criava os grupos Docente e Discente, o que gerava dependência circular com a PRD de cadastros básicos."
     },
     {
       "id": "US-004",
-      "title": "Endpoint - aluno cria solicitação de acerto",
-      "description": "As a student, I want to open an adjustment request with one or more discipline changes at once, so I don't need to open a separate request per change.",
+      "title": "Endpoints — catálogo de disciplinas",
+      "description": "As a secretaria, I want to create and edit disciplines via the API, to maintain the catalog students use when requesting an adjustment.",
       "acceptanceCriteria": [
-        "Schemas Ninja explícitos EnrollmentAdjustmentItemIn/Out e EnrollmentAdjustmentRequestIn/Out em apps/academic/schemas.py (nunca serializar o model direto)",
-        "POST /api/v1/academic/enrollment-requests/ recebe justification (opcional) e lista de itens (discipline_id, action)",
-        "require_perm(request, 'academic.add_enrollmentadjustmentrequest') na primeira linha da rota",
-        "Checagem explícita adicional: o Student do payload é o mesmo vinculado ao Person/User autenticado; levanta NotAllowed caso contrário",
-        "Criação da solicitação e dos itens dentro de transaction.atomic()",
-        "AuditLog registrado via apps.core.audit.record('academic.enrollment_adjustment.create', request=, target=)",
+        "Schemas Ninja explícitos DisciplineIn/DisciplineOut em apps/programs/schemas.py (nunca serializar o model direto)",
+        "GET /api/v1/programs/disciplines/ paginado, escopado por current_program(request), filtro opcional por is_active e busca por code/name, require_perm com programs.view_discipline",
+        "POST /api/v1/programs/disciplines/ com require_perm programs.add_discipline; program vem de current_program(request) e não do payload; registra AuditLog 'programs.discipline.create'",
+        "PATCH /api/v1/programs/disciplines/{id}/ com require_perm programs.change_discipline; registra AuditLog 'programs.discipline.update'",
         "Typecheck passes",
         "Tests pass"
       ],
       "priority": 4,
       "passes": false,
-      "notes": ""
+      "notes": "US nova: a versão anterior mandava a secretaria usar o Django Admin, contra o ADR-006."
     },
     {
       "id": "US-005",
-      "title": "Endpoint - orientador aprova ou recusa a solicitação",
+      "title": "Endpoint — aluno cria solicitação de acerto",
+      "description": "As a student, I want to open an adjustment request with one or more discipline changes at once, so I don't need to open a separate request per change.",
+      "acceptanceCriteria": [
+        "Schemas Ninja explícitos EnrollmentAdjustmentItemIn/Out e EnrollmentAdjustmentRequestIn/Out em apps/academic/schemas.py",
+        "POST /api/v1/academic/enrollment-requests/ recebe term_id, justification (opcional) e uma lista não vazia de itens (discipline_id, action)",
+        "require_perm(request, 'academic.add_enrollmentadjustmentrequest') na primeira linha da rota",
+        "Checagem explícita adicional: o Student do payload é o mesmo vinculado ao Person/User autenticado; levanta NotAllowed caso contrário",
+        "Bloqueio de solicitação sem quem decida: se o Student não tem advisor, levanta DomainError com code='advisor_required' e status 409 — sem isso a solicitação nasce presa, porque só o orientador pode decidi-la",
+        "Restrição de modalidade: só Student com modality=REGULAR pode abrir acerto; caso contrário levanta DomainError com code='regular_students_only' e status 409 (decorre do ADR-007)",
+        "Criação da solicitação e dos itens dentro de transaction.atomic()",
+        "AuditLog registrado via apps.core.audit.record('academic.enrollment_adjustment.create', request=, target=)",
+        "Resposta via schema explícito, nunca serializando o model direto",
+        "Typecheck passes",
+        "Tests pass, incluindo os dois bloqueios acima e a tentativa de criar em nome de outro aluno"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Endpoint — orientador aprova ou recusa a solicitação",
       "description": "As an advisor, I want to approve or reject (with a reason) an adjustment request from one of my advisees, so the secretaria knows whether to replicate the change in the UFMG system.",
       "acceptanceCriteria": [
         "POST /api/v1/academic/enrollment-requests/{id}/approve e POST /api/v1/academic/enrollment-requests/{id}/reject (reject recebe note obrigatório)",
@@ -85,37 +108,22 @@
         "Typecheck passes",
         "Tests pass"
       ],
-      "priority": 5,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-006",
-      "title": "Endpoint - listagem de solicitações escopada por papel",
-      "description": "As a system user (student, advisor, secretaria or coordenação), I want to see the requests relevant to me without needing separate backend screens per role.",
-      "acceptanceCriteria": [
-        "GET /api/v1/academic/enrollment-requests/ filtra o queryset pelo papel de quem pergunta: aluno vê só as suas, orientador vê as de student__advisor__person__user=request.user, secretaria/coordenação veem todas as do programa",
-        "Paginado seguindo o padrão de list_people (apps/people/router.py)",
-        "require_perm(request, 'academic.view_enrollmentadjustmentrequest') na primeira linha",
-        "Typecheck passes",
-        "Tests pass"
-      ],
       "priority": 6,
       "passes": false,
       "notes": ""
     },
     {
       "id": "US-007",
-      "title": "Tela Svelte - aluno abre solicitação de acerto",
-      "description": "As a student, I want a screen to pick disciplines from the catalog, mark them as add/drop, add an optional justification, and see the status of my past requests.",
+      "title": "Endpoint — listagem de solicitações escopada por papel",
+      "description": "As a system user (student, advisor, secretaria or coordenação), I want to see the requests relevant to me without needing separate backend screens per role.",
       "acceptanceCriteria": [
-        "make gen-api rodado (backend de pé) antes de tipar a tela",
-        "Formulário lista disciplinas do catálogo (via endpoint existente de Discipline) com opção incluir/excluir",
-        "Campo de justificativa opcional",
-        "Lista das solicitações do próprio aluno com status (Aberta/Aprovada/Recusada)",
-        "Toda chamada via lib/api/client.ts tipado (fetch cru proibido)",
-        "Typecheck (svelte-check) passes",
-        "Verify in browser using dev-browser skill"
+        "GET /api/v1/academic/enrollment-requests/ escopa primeiro por current_program(request) e depois filtra pelo papel: aluno vê só as suas, orientador vê as de student__advisor__person__user=request.user, secretaria/coordenação veem todas as do programa",
+        "O escopo de programa vem de current_program(request) em apps/core/tenancy.py (entregue em ralph/prd.json US-008), não de program_id no query string",
+        "Filtros opcionais por status e term_id",
+        "require_perm(request, 'academic.view_enrollmentadjustmentrequest') na primeira linha",
+        "Paginado seguindo o padrão de list_people (apps/people/router.py)",
+        "Typecheck passes",
+        "Tests pass: um teste por papel, verificando que cada um vê exatamente o conjunto esperado"
       ],
       "priority": 7,
       "passes": false,
@@ -123,33 +131,67 @@
     },
     {
       "id": "US-008",
-      "title": "Tela Svelte - orientador aprova ou recusa",
-      "description": "As an advisor, I want a screen listing pending adjustment requests from my advisees, with an action to approve or reject (reason required on reject).",
+      "title": "Tela Svelte — catálogo de disciplinas",
+      "description": "As a secretaria, I want a screen to create and edit the program's disciplines, without depending on the Django Admin.",
       "acceptanceCriteria": [
-        "Lista de solicitações pendentes (status OPEN) dos orientandos do orientador logado, visível na entrada da área dele",
-        "Ação de aprovar (nota opcional) e recusar (nota obrigatória, com validação no front antes de enviar)",
-        "Após decisão, a lista atualiza sem exigir refresh manual da página",
-        "Toda chamada via lib/api/client.ts tipado",
+        "make gen-api rodado (backend de pé) antes de tipar a tela",
+        "Lista de disciplinas com busca por código/nome e filtro de ativas",
+        "Formulário de criar/editar (code, name, is_active)",
+        "Coordenação, Docente e Discente veem a tela em modo somente leitura, ou não veem o item de menu se não tiverem programs.view_discipline",
+        "Toda chamada via lib/api/client.ts tipado (fetch cru proibido)",
         "Typecheck (svelte-check) passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
       "passes": false,
-      "notes": ""
+      "notes": "US nova, exigida pelo ADR-006: cadastro usado por usuário de negócio vai para o front."
     },
     {
       "id": "US-009",
-      "title": "Tela Svelte - leitura para secretaria e coordenação",
-      "description": "As secretaria/coordenação staff, I want a read-only screen with all program requests and their status, so I know what still needs to be manually replicated in the UFMG system.",
+      "title": "Tela Svelte — aluno abre solicitação de acerto",
+      "description": "As a student, I want a screen to pick disciplines from the catalog, mark them as add/drop, justify, and follow the status of my requests.",
       "acceptanceCriteria": [
-        "Tela lista todas as solicitações do programa com aluno, orientador, itens, status e data de decisão",
-        "Filtro por status (Aberta/Aprovada/Recusada)",
-        "Tela é somente leitura (sem ação de aprovar/recusar/editar)",
+        "Formulário com seletor de período letivo e lista de disciplinas do catálogo, com opção incluir/excluir por disciplina",
+        "Campo de justificativa opcional",
+        "Lista das solicitações do próprio aluno com status (Aberta/Aprovada/Recusada) e, quando recusada, o motivo visível",
+        "Se o aluno não tem orientador, a tela explica isso e desabilita o envio, em vez de deixar o backend recusar com 409 (advisor_required) depois do formulário preenchido",
         "Toda chamada via lib/api/client.ts tipado",
         "Typecheck (svelte-check) passes",
         "Verify in browser using dev-browser skill"
       ],
       "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Tela Svelte — orientador aprova ou recusa",
+      "description": "As an advisor, I want a screen listing pending adjustment requests from my advisees, with an action to approve or reject.",
+      "acceptanceCriteria": [
+        "Lista de solicitações pendentes (status OPEN) dos orientandos do orientador logado, visível na entrada da área dele e não enterrada em submenu",
+        "Ação de aprovar (nota opcional) e recusar (nota obrigatória, com validação no front antes de enviar)",
+        "Após a decisão, a lista atualiza sem exigir refresh manual da página",
+        "Toda chamada via lib/api/client.ts tipado",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill: golden path (aluno cria -> orientador aprova) e caminho de recusa (orientador recusa com motivo -> aluno vê o motivo)"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Tela Svelte — leitura para secretaria e coordenação",
+      "description": "As secretaria/coordenação staff, I want a read-only screen with all program requests and their status, so I know what still needs to be manually replicated in the UFMG system.",
+      "acceptanceCriteria": [
+        "Tela lista todas as solicitações do programa com aluno, orientador, período, itens, status e data de decisão",
+        "Filtro por status (Aberta/Aprovada/Recusada) e por período letivo",
+        "Tela é somente leitura (sem ação de aprovar/recusar/editar)",
+        "Toda chamada via lib/api/client.ts tipado",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 11,
       "passes": false,
       "notes": ""
     }

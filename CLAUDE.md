@@ -368,6 +368,11 @@ consequências. Já valem como decididos:
 - **ADR-006**: Admin só para sysadmin; todo usuário de negócio é servido
   pelo front (ver Seções 2 e 5). Substitui a orientação anterior de
   "tente o Admin primeiro para tela de operador interno".
+- **ADR-007**: no aluno, modalidade do vínculo (Regular/Isolada/Eletiva)
+  é campo separado da situação (Ativo/Trancado/Excluído); `Student.person`
+  é FK e não OneToOne; período letivo é entidade; **todo model de negócio
+  carrega FK `program` direta**, mesmo quando alcançável por navegação —
+  sem ela o `AuditLog` perde a chave de tenant.
 
 ## 12. O que este projeto NÃO faz (anti-padrões)
 
