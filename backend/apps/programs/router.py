@@ -19,8 +19,16 @@ from apps.core import audit
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
 
-from .models import Program, ResearchLine
-from .schemas import ProgramOut, ResearchLineIn, ResearchLineOut, ResearchLinePatch
+from .models import CollectiveProject, Program, ResearchLine
+from .schemas import (
+    CollectiveProjectIn,
+    CollectiveProjectOut,
+    CollectiveProjectPatch,
+    ProgramOut,
+    ResearchLineIn,
+    ResearchLineOut,
+    ResearchLinePatch,
+)
 
 router = Router(tags=["programs"])
 
@@ -82,3 +90,71 @@ def update_research_line(
             fields=sorted(campos),
         )
     return research_line
+
+
+@router.get("/collective-projects/", response=list[CollectiveProjectOut])
+@paginate
+def list_collective_projects(request: HttpRequest, research_line_id: int | None = None):
+    require_perm(request, "programs.view_collectiveproject")
+    projetos = CollectiveProject.objects.for_program(current_program(request))
+    if research_line_id is not None:
+        # Filtro de conveniência da tela. Não é escopo de tenant — esse já
+        # foi aplicado acima e não é opcional.
+        projetos = projetos.filter(research_line_id=research_line_id)
+    return projetos
+
+
+@router.post("/collective-projects/", response={201: CollectiveProjectOut})
+def create_collective_project(request: HttpRequest, payload: CollectiveProjectIn):
+    require_perm(request, "programs.add_collectiveproject")
+    program = current_program(request)
+    campos = payload.model_dump(exclude={"research_line_id"})
+    projeto = CollectiveProject(
+        program=program,
+        # Resolver a linha aqui, e não deixar a FK crua, é o que faz id
+        # inexistente virar 404 em vez de IntegrityError 500. Linha de
+        # outro programa chega ao clean() e vira 400 program_mismatch.
+        research_line=get_object_or_404(ResearchLine, pk=payload.research_line_id),
+        **campos,
+    )
+    with transaction.atomic():
+        projeto.clean()
+        projeto.save()
+        audit.record(
+            "programs.collective_project.create",
+            request=request,
+            target=projeto,
+            name=projeto.name,
+            research_line_id=projeto.research_line_id,
+        )
+    return Status(201, projeto)
+
+
+@router.patch(
+    "/collective-projects/{int:collective_project_id}/", response=CollectiveProjectOut
+)
+def update_collective_project(
+    request: HttpRequest, collective_project_id: int, payload: CollectiveProjectPatch
+):
+    require_perm(request, "programs.change_collectiveproject")
+    program = current_program(request)
+    projeto = get_object_or_404(
+        CollectiveProject.objects.for_program(program), pk=collective_project_id
+    )
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "research_line_id" in campos:
+        projeto.research_line = get_object_or_404(
+            ResearchLine, pk=campos["research_line_id"]
+        )
+    for campo, valor in campos.items():
+        setattr(projeto, campo, valor)
+    with transaction.atomic():
+        projeto.clean()
+        projeto.save(update_fields=list(campos) or None)
+        audit.record(
+            "programs.collective_project.update",
+            request=request,
+            target=projeto,
+            fields=sorted(campos),
+        )
+    return projeto

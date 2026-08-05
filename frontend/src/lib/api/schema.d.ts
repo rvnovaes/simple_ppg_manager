@@ -141,6 +141,41 @@ export interface paths {
         patch: operations["apps_programs_router_update_research_line"];
         trace?: never;
     };
+    "/programs/collective-projects/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Collective Projects */
+        get: operations["apps_programs_router_list_collective_projects"];
+        put?: never;
+        /** Create Collective Project */
+        post: operations["apps_programs_router_create_collective_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/programs/collective-projects/{collective_project_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Collective Project */
+        patch: operations["apps_programs_router_update_collective_project"];
+        trace?: never;
+    };
     "/people/": {
         parameters: {
             query?: never;
@@ -290,6 +325,50 @@ export interface components {
          * @description Atualização parcial: só os campos presentes no corpo são aplicados.
          */
         ResearchLinePatch: {
+            /** Name */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** CollectiveProjectOut */
+        CollectiveProjectOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Research Line Id */
+            research_line_id: number;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** PagedCollectiveProjectOut */
+        PagedCollectiveProjectOut: {
+            /** Items */
+            items: components["schemas"]["CollectiveProjectOut"][];
+            /** Count */
+            count: number;
+        };
+        /** CollectiveProjectIn */
+        CollectiveProjectIn: {
+            /** Research Line Id */
+            research_line_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * CollectiveProjectPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        CollectiveProjectPatch: {
+            /** Research Line Id */
+            research_line_id?: number | null;
             /** Name */
             name?: string | null;
             /** Is Active */
@@ -553,6 +632,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResearchLineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_list_collective_projects: {
+        parameters: {
+            query?: {
+                research_line_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedCollectiveProjectOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_create_collective_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectiveProjectIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectiveProjectOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_update_collective_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collective_project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectiveProjectPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectiveProjectOut"];
                 };
             };
         };

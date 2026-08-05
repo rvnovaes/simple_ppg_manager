@@ -328,6 +328,154 @@
         ]
       }
     },
+    "/programs/collective-projects/": {
+      "get": {
+        "operationId": "apps_programs_router_list_collective_projects",
+        "summary": "List Collective Projects",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedCollectiveProjectOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_programs_router_create_collective_project",
+        "summary": "Create Collective Project",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectiveProjectOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectiveProjectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/collective-projects/{collective_project_id}/": {
+      "patch": {
+        "operationId": "apps_programs_router_update_collective_project",
+        "summary": "Update Collective Project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collective_project_id",
+            "schema": {
+              "title": "Collective Project Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectiveProjectOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectiveProjectPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/people/": {
       "get": {
         "operationId": "apps_people_router_list_people",
@@ -721,6 +869,123 @@
           }
         },
         "title": "ResearchLinePatch",
+        "type": "object"
+      },
+      "CollectiveProjectOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "research_line_id": {
+            "title": "Research Line Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "research_line_id",
+          "name",
+          "is_active"
+        ],
+        "title": "CollectiveProjectOut",
+        "type": "object"
+      },
+      "PagedCollectiveProjectOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectiveProjectOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedCollectiveProjectOut",
+        "type": "object"
+      },
+      "CollectiveProjectIn": {
+        "properties": {
+          "research_line_id": {
+            "title": "Research Line Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "research_line_id",
+          "name"
+        ],
+        "title": "CollectiveProjectIn",
+        "type": "object"
+      },
+      "CollectiveProjectPatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.",
+        "properties": {
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "CollectiveProjectPatch",
         "type": "object"
       },
       "PagedPersonOut": {
