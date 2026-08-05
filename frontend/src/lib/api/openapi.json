@@ -1266,6 +1266,38 @@
         ]
       }
     },
+    "/academic/students/me": {
+      "get": {
+        "operationId": "apps_academic_router_list_my_students",
+        "summary": "List My Students",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StudentOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os vínculos de aluno da própria sessão — nunca os dos outros.\n\nExiste para a tela do acerto: ela precisa saber, antes de o formulário\nser preenchido, se o aluno tem orientador e qual vínculo é regular. Sem\nisso o único jeito de descobrir seria levar o 409 `advisor_required`\ndepois de tudo digitado.\n\nA permissão é a de abrir acerto, e não `academic.view_student`: essa\ndaria de quebra a listagem inteira do programa, que o discente não pode\nler. Lista curta (uma pessoa tem um ou dois vínculos), sem paginação.",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/academic/enrollment-requests/": {
       "get": {
         "operationId": "apps_academic_router_list_enrollment_requests",

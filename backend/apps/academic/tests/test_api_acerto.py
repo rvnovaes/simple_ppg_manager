@@ -375,3 +375,58 @@ def test_escrita_sem_token_csrf_e_recusada(aluno, periodo, disciplinas):
 
     assert _post(client, _payload(periodo, disciplinas)).status_code == 403
     assert not EnrollmentAdjustmentRequest.objects.exists()
+
+
+URL_MEUS_VINCULOS = "/api/v1/academic/students/me"
+
+
+def test_meus_vinculos_traz_so_o_da_sessao(
+    client_aluno, aluno, program, projeto, orientador
+):
+    """A tela do aluno lê daqui se ele tem orientador e se é regular."""
+    _criar_discente(
+        program=program,
+        username="bruno",
+        nome="Bruno Alves",
+        modality=Student.Modality.REGULAR,
+        level=Student.Level.MASTERS,
+        project=projeto,
+        advisor=orientador,
+        admission_date=date(2026, 3, 2),
+    )
+
+    resposta = client_aluno.get(URL_MEUS_VINCULOS)
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert [vinculo["id"] for vinculo in corpo] == [aluno.id]
+    assert corpo[0]["advisor_id"] == orientador.id
+    assert corpo[0]["modality"] == Student.Modality.REGULAR
+
+
+def test_meus_vinculos_nao_atravessa_o_tenant(client, outro_programa, periodo):
+    """Vínculo em outro programa não aparece: o escopo é current_program."""
+    aluno = _criar_discente(
+        program=outro_programa,
+        username="elis",
+        nome="Elis Prado",
+        modality=Student.Modality.ISOLATED,
+        term=periodo,
+    )
+    _logar(client, aluno)
+
+    resposta = client.get(URL_MEUS_VINCULOS)
+
+    assert resposta.status_code == 200
+    assert [vinculo["id"] for vinculo in resposta.json()] == [aluno.id]
+
+
+def test_meus_vinculos_sem_permissao_devolve_403(client_sem_permissao):
+    resposta = client_sem_permissao.get(URL_MEUS_VINCULOS)
+
+    assert resposta.status_code == 403
+    assert resposta.json()["code"] == "not_allowed"
+
+
+def test_meus_vinculos_sem_sessao_devolve_401(client):
+    assert client.get(URL_MEUS_VINCULOS).status_code == 401

@@ -351,6 +351,35 @@ export interface paths {
         patch: operations["apps_academic_router_update_student"];
         trace?: never;
     };
+    "/academic/students/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Students
+         * @description Os vínculos de aluno da própria sessão — nunca os dos outros.
+         *
+         *     Existe para a tela do acerto: ela precisa saber, antes de o formulário
+         *     ser preenchido, se o aluno tem orientador e qual vínculo é regular. Sem
+         *     isso o único jeito de descobrir seria levar o 409 `advisor_required`
+         *     depois de tudo digitado.
+         *
+         *     A permissão é a de abrir acerto, e não `academic.view_student`: essa
+         *     daria de quebra a listagem inteira do programa, que o discente não pode
+         *     ler. Lista curta (uma pessoa tem um ou dois vínculos), sem paginação.
+         */
+        get: operations["apps_academic_router_list_my_students"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/enrollment-requests/": {
         parameters: {
             query?: never;
@@ -1762,6 +1791,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StudentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_my_students: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"][];
                 };
             };
         };

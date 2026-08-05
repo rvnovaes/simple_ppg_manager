@@ -282,6 +282,29 @@ def update_student(request: HttpRequest, student_id: int, payload: StudentPatch)
     return student
 
 
+@router.get("/students/me", response=list[StudentOut])
+def list_my_students(request: HttpRequest):
+    """Os vínculos de aluno da própria sessão — nunca os dos outros.
+
+    Existe para a tela do acerto: ela precisa saber, antes de o formulário
+    ser preenchido, se o aluno tem orientador e qual vínculo é regular. Sem
+    isso o único jeito de descobrir seria levar o 409 `advisor_required`
+    depois de tudo digitado.
+
+    A permissão é a de abrir acerto, e não `academic.view_student`: essa
+    daria de quebra a listagem inteira do programa, que o discente não pode
+    ler. Lista curta (uma pessoa tem um ou dois vínculos), sem paginação.
+    """
+    require_perm(request, "academic.add_enrollmentadjustmentrequest")
+    program: Program = current_program(request)
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    return (
+        Student.objects.for_program(program)
+        .filter(person__in=pessoas)
+        .select_related("person", "person__user")
+    )
+
+
 def _aluno_da_sessao(
     request: HttpRequest, program: Program, student_id: int | None
 ) -> Student:
