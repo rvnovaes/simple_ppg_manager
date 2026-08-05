@@ -136,3 +136,57 @@ class CollectiveProject(models.Model):
                 "O programa do projeto precisa ser o mesmo da linha de pesquisa.",
                 code="program_mismatch",
             )
+
+
+class AcademicTermQuerySet(models.QuerySet):
+    def active(self) -> "AcademicTermQuerySet":
+        return self.filter(is_active=True)
+
+
+class AcademicTerm(models.Model):
+    """Período letivo — entidade INSTITUCIONAL, sem FK de programa.
+
+    Única exceção à regra de FK `program` direta (ADR-007 dec. 4): o
+    calendário 2026/1 é o da UFMG inteira. Por programa haveria "PPGD
+    2026/1" e "PPGA 2026/1" divergentes, com datas que deveriam ser as
+    mesmas. O AuditLog das escritas aqui grava `program=None` — está
+    correto, o período não pertence a programa nenhum.
+    """
+
+    class Half(models.IntegerChoices):
+        FIRST = 1, "1º semestre"
+        SECOND = 2, "2º semestre"
+
+    year = models.PositiveSmallIntegerField("ano")
+    half = models.PositiveSmallIntegerField("semestre", choices=Half)
+    starts_on = models.DateField("início")
+    ends_on = models.DateField("fim")
+    is_active = models.BooleanField("ativo", default=True)
+
+    objects = AcademicTermQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "período letivo"
+        verbose_name_plural = "períodos letivos"
+        ordering = ["-year", "-half"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["year", "half"],
+                name="unique_periodo_por_ano_e_semestre",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Rótulo canônico: '2026/1'. É a única forma de escrever um
+        semestre no sistema (ADR-007 dec. 4) — tela, relatório e log usam
+        este formato, ninguém remonta a string por conta própria.
+        """
+        return f"{self.year}/{self.half}"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.starts_on and self.ends_on and self.ends_on <= self.starts_on:
+            raise DomainError(
+                "O fim do período letivo precisa ser posterior ao início.",
+                code="invalid_term_range",
+            )
