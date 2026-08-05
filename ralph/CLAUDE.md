@@ -18,14 +18,14 @@ You are an autonomous coding agent working on a software project.
 
 ## Project rules
 
-The repository root `CLAUDE.md` (`/opt/ppg-ralph-acerto-matricula/CLAUDE.md`) is the single
+The repository root `CLAUDE.md` (`/opt/ppg-ralph-isoladas/CLAUDE.md`) is the single
 source of truth for stack, arquitetura, convenções e comandos de qualidade. Read it and follow
 it. Do not restate its rules here — a copy would drift.
 
 Three adjustments, because you run inside an autonomous loop:
 
-- **Você já está na sua worktree**, `/opt/ppg-ralph-acerto-matricula`, na branch
-  `ralph/acerto-de-matricula`, criada a partir de `main`. Não crie outra e não troque de branch.
+- **Você já está na sua worktree**, `/opt/ppg-ralph-isoladas`, na branch
+  `ralph/isoladas`, criada a partir de `main`. Não crie outra e não troque de branch.
   O checkout principal é `/opt/simple_ppg_manager` — não escreva nada lá.
 - **Base branch é `main`.** Não existe `develop` neste projeto.
 - **Commit narrowly.** Stage só os arquivos que você tocou. `git add -A` varre o `.env` e
@@ -126,7 +126,7 @@ If there are still stories with `passes: false`, end your response normally (ano
 
 ## Ambiente
 
-Raiz da sua worktree: `/opt/ppg-ralph-acerto-matricula`. Rode tudo a partir dela (o `Makefile`
+Raiz da sua worktree: `/opt/ppg-ralph-isoladas`. Rode tudo a partir dela (o `Makefile`
 está lá). Antes de começar, `make install` e `make install-web` — worktree nova não herda
 `.venv` nem `node_modules`.
 
@@ -138,15 +138,17 @@ está lá). Antes de começar, `make install` e `make install-web` — worktree 
 - Django nativo (`make run`): :8000
 - Django Admin: http://localhost:8080/admin/ — só superusuário (ADR-006)
 
-**Esta worktree COMPARTILHA a stack Docker do checkout principal.** Consequências, e elas
-mandam no seu jeito de trabalhar:
+**Existe uma stack Docker só, compartilhada por todos os checkouts do projeto, e ela já está
+apontada para ESTA worktree.** O `docker-compose.yml` fixa `name: simple_ppg_manager`, então
+quem roda `make up` por último captura os containers e monta o próprio código neles.
+Consequências:
 
-- **NUNCA rode `make up`, `make down` nem `docker compose up/down/build` aqui.** O
-  `docker-compose.yml` fixa `name: simple_ppg_manager`, então subir daqui recria os containers
-  do outro checkout apontando para o seu código e derruba o ambiente de quem está trabalhando lá
-- **`:8080` e `:5173` servem o código do checkout principal, não o seu.** Verificação de UI por
-  ali NÃO exercita a sua branch. Para conferir uma tela sua, pare o Vite do outro checkout,
-  rode `make web` daqui, e avise no progress.txt que fez isso
+- **NÃO rode `make up`, `make down` nem `docker compose up/down/build`.** A stack já está de pé
+  servindo o seu código; subir de novo não melhora nada e, se alguém tiver subido de outro
+  checkout no meio-tempo, você derruba o ambiente dessa pessoa
+- `:8080` e `:5173` servem o SEU código. Se uma tela sua não aparecer, confirme antes que o
+  Vite em execução é o desta worktree (`ls -l /proc/$(pgrep -f 'vite dev' | head -1)/cwd`) — se
+  não for, pare aquele processo e rode `make web` daqui
 - Teste e lint rodam locais, sem container, e enxergam o seu código: `make ready`
   (lint + typecheck + test) é a pré-condição de qualquer commit. `pytest` cria e derruba o
   próprio banco de teste — não encosta no banco de desenvolvimento

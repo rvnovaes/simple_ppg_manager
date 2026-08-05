@@ -1,198 +1,362 @@
 {
   "project": "PPGD Manager",
-  "branchName": "ralph/acerto-de-matricula",
-  "description": "Acerto de Matrícula - fluxo interno de ajuste de disciplinas (revisão ADR-007): aluno regular solicita inclusão/exclusão de disciplinas de um período letivo em um único pedido, orientador aprova ou recusa (com motivo), secretaria/coordenação acompanham o status para replicar manualmente a mudança no sistema da UFMG. Inclui o catálogo de disciplinas com tela própria no front (ADR-006). Depende de ralph/prd.json, que entrega Teacher, Student, AcademicTerm, os grupos Docente/Discente, contas com senha utilizável e o helper current_program().",
+  "branchName": "ralph/isoladas",
+  "description": "Requerimento de Matrícula em Disciplina Isolada: fluxo completo para pessoa sem vínculo com a UFMG cursar até duas disciplinas da pós num semestre. Candidato se auto-registra e se inscreve anexando documentação; o docente responsável classifica os candidatos por prioridade; a secretaria defere dentro do limite de vagas; há recurso; o deferido paga a GRU (servidor da UFMG é isento) e envia o comprovante pelo próprio login; a secretaria efetiva a matrícula criando um Student com modality=ISOLATED; ao fim do semestre a secretaria encerra o período. Baseado em tasks/prd-isoladas.md e no ADR-007. DEPENDE de ralph/prd.json (cadastros básicos: Student, AcademicTerm, Teacher, current_program) e de ralph/prd.matricula.json US-001 (model Discipline). Rodar em terceiro lugar.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Model de disciplina (catálogo de referência)",
-      "description": "As a secretaria, I want to maintain a catalog of program disciplines so that students can pick from it when requesting an enrollment adjustment.",
+      "title": "Model do ciclo de requerimento (edital do semestre)",
+      "description": "As a secretaria, I want to register each semester's isolated-enrollment call with its dates, so the system enforces the deadlines instead of me policing them manually.",
       "acceptanceCriteria": [
-        "Model Discipline no app programs: program (FK to Program, on_delete=PROTECT, related_name='disciplines'), code (CharField), name (CharField), is_active (BooleanField, default True)",
-        "UniqueConstraint em (program, code)",
-        "Registrado no Django Admin do app programs apenas como quebra-vidro de sysadmin (ADR-006) — o caminho de uso da secretaria é a tela da US-008, não o Admin",
+        "Model IsolatedEnrollmentCycle no app academic: program (FK to programs.Program, on_delete=PROTECT, related_name='isolated_cycles'), term (FK to programs.AcademicTerm, on_delete=PROTECT, related_name='isolated_cycles'), submission_opens_at (DateTimeField), submission_closes_at (DateTimeField), result_published_on (DateField), appeal_opens_at (DateTimeField), appeal_closes_at (DateTimeField), final_result_on (DateField), payment_closes_at (DateTimeField), is_active (BooleanField, default True)",
+        "UniqueConstraint em (program, term) — um ciclo por semestre por programa",
+        "FK program direta e obrigatória mesmo sendo alcançável por navegação (ADR-007 decisão 5): sem ela audit.record() grava AuditLog com program=None",
+        "Método clean() valida a ordem cronológica submission_opens_at < submission_closes_at <= appeal_opens_at < appeal_closes_at <= payment_closes_at e levanta DomainError com code='invalid_cycle_dates'",
+        "Métodos submission_open(at) e appeal_open(at) devolvem se o instante at está dentro da respectiva janela",
+        "Registrado no Django Admin do app academic",
         "Migração criada e revisada (arquivo lido, não só gerado)",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Tests pass (em memória, sem banco: clean() rejeita datas fora de ordem; submission_open() responde corretamente dentro e fora da janela)"
       ],
       "priority": 1,
-      "passes": true,
-      "notes": ""
+      "passes": false,
+      "notes": "Depende de programs.AcademicTerm, entregue por ralph/prd.json US-003."
     },
     {
       "id": "US-002",
-      "title": "Models da solicitação de acerto e seus itens",
-      "description": "As a developer, I need models representing an enrollment adjustment request with one or more discipline changes, so the rest of the flow (create, approve, reject) has somewhere to persist state.",
+      "title": "Model da oferta de disciplina no ciclo",
+      "description": "As a secretaria, I want to record which disciplines are offered each cycle, with how many seats and which teacher is responsible, because the teacher ranks the candidates and the seat count caps the approvals.",
       "acceptanceCriteria": [
-        "Model EnrollmentAdjustmentRequest no app academic: program (FK to programs.Program, on_delete=PROTECT, related_name='enrollment_adjustments'), student (FK to Student, on_delete=PROTECT, related_name='enrollment_adjustments'), term (FK to programs.AcademicTerm, on_delete=PROTECT, related_name='enrollment_adjustments'), status (TextChoices OPEN/APPROVED/REJECTED = 'Aberta'/'Aprovada'/'Recusada', default OPEN), justification (TextField, blank=True), decision_note (TextField, blank=True), decided_at (DateTimeField, null=True, blank=True), created_at (auto_now_add)",
-        "A FK program é direta e obrigatória ainda que alcançável por student.program — ADR-007 decisão 5: sem ela, apps.core.audit.record() grava AuditLog com program=None",
-        "A FK term é obrigatória: o acerto é sempre relativo a um semestre, e é ela que dá sentido ao filtro da tela da secretaria (US-011). AcademicTerm vem de ralph/prd.json US-003",
-        "Model EnrollmentAdjustmentItem: request (FK, related_name='items', on_delete=CASCADE), discipline (FK to programs.Discipline, on_delete=PROTECT), action (TextChoices ADD/DROP = 'Incluir'/'Excluir')",
-        "UniqueConstraint em (request, discipline, action)",
-        "Método approve(*, note='') só permitido a partir de status OPEN; levanta InvalidStateTransition se já decidida; preenche decided_at",
-        "Método reject(*, note) só permitido a partir de status OPEN; levanta InvalidStateTransition se já decidida; levanta DomainError com code='rejection_requires_note' se note vazio; preenche decided_at",
-        "Método clean() garante program == student.program == term.program e levanta DomainError com code='program_mismatch'",
+        "Model DisciplineOffering no app academic: program (FK to programs.Program, on_delete=PROTECT, related_name='offerings'), cycle (FK to IsolatedEnrollmentCycle, on_delete=PROTECT, related_name='offerings'), discipline (FK to programs.Discipline, on_delete=PROTECT, related_name='offerings'), teacher (FK to academic.Teacher, on_delete=PROTECT, related_name='offerings', OBRIGATÓRIO — é o docente responsável), seats (PositiveSmallIntegerField)",
+        "UniqueConstraint em (cycle, discipline)",
+        "Método clean() garante que program, cycle.program, discipline.program e teacher.program são o mesmo; levanta DomainError com code='program_mismatch'",
+        "Método seats_taken() conta os itens de requerimento DEFERRED naquela oferta; seats_available() devolve seats - seats_taken()",
+        "Registrado no Django Admin do app academic com cycle, discipline, teacher e seats em list_display",
         "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes",
-        "Tests pass: teste de invariante em memória sem banco, no padrão de Person.archive() em apps/people/models.py — aprovar solicitação já decidida levanta erro; recusar sem motivo levanta erro; aprovar/recusar uma solicitação OPEN muda o status e carimba decided_at"
+        "Tests pass (em memória: clean() rejeita docente de outro programa)"
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "Depende de apps.academic.models.Student e apps.programs.models.AcademicTerm, entregues por ralph/prd.json (US-005 e US-003)."
+      "passes": false,
+      "notes": "Depende de programs.Discipline (ralph/prd.matricula.json US-001) e academic.Teacher (ralph/prd.json US-004)."
     },
     {
       "id": "US-003",
-      "title": "Permissões do fluxo nos papéis existentes",
-      "description": "As the system, I need the domain role groups to have the enrollment-adjustment permissions so the permission checks in this flow work.",
+      "title": "Model do requerimento de isolada",
+      "description": "As a developer, I need the model representing a person's request in a cycle, with its states and payment state, so the rest of the flow has somewhere to persist.",
       "acceptanceCriteria": [
-        "Nova data migration no padrão de apps/programs/migrations/0002_programa_inicial_e_papeis.py que ESTENDE os grupos existentes",
-        "A migração NÃO cria nenhum grupo: Secretaria, Coordenação, Docente e Discente já foram criados em ralph/prd.json US-006",
-        "Grupo Discente ganha academic.add_enrollmentadjustmentrequest, academic.view_enrollmentadjustmentrequest e programs.view_discipline",
-        "Grupo Docente ganha academic.view_enrollmentadjustmentrequest, academic.change_enrollmentadjustmentrequest e programs.view_discipline",
-        "Grupo Secretaria ganha academic.view_enrollmentadjustmentrequest, programs.view_discipline, programs.add_discipline e programs.change_discipline",
-        "Grupo Coordenação ganha academic.view_enrollmentadjustmentrequest e programs.view_discipline",
-        "Nenhum grupo recebe permissão de delete",
-        "Migração de dados revisada (arquivo lido, não só gerado)",
+        "Model IsolatedEnrollmentRequest no app academic: program (FK, on_delete=PROTECT, related_name='isolated_requests'), cycle (FK to IsolatedEnrollmentCycle, on_delete=PROTECT, related_name='requests'), person (FK to people.Person, on_delete=PROTECT, related_name='isolated_requests'), status, payment_status, is_ufmg_staff (BooleanField, default False), gru_url (URLField, blank=True), decision_note (TextField, blank=True), decided_at (DateTimeField, null=True, blank=True), appeal_note (TextField, blank=True), appealed_at (DateTimeField, null=True, blank=True), submitted_at (DateTimeField, null=True, blank=True), created_at (auto_now_add)",
+        "status é TextChoices DRAFT/SUBMITTED/DEFERRED/REJECTED/CANCELLED/ENROLLED = 'Rascunho'/'Inscrito'/'Deferido'/'Indeferido'/'Cancelado'/'Matriculado'",
+        "payment_status é TextChoices PENDING/PAID/EXEMPT = 'Pendente'/'Pago'/'Isento'",
+        "UniqueConstraint em (cycle, person) — um requerimento por pessoa por ciclo; a inscrição carrega até duas disciplinas, não duas inscrições",
+        "FK program direta e obrigatória (ADR-007 decisão 5)",
+        "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "Na versão anterior esta US criava os grupos Docente e Discente, o que gerava dependência circular com a PRD de cadastros básicos."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-004",
-      "title": "Endpoints — catálogo de disciplinas",
-      "description": "As a secretaria, I want to create and edit disciplines via the API, to maintain the catalog students use when requesting an adjustment.",
+      "title": "Transições de estado do requerimento",
+      "description": "As a developer, I need the request's state changes to be model methods that refuse invalid transitions, following the Person.archive() pattern.",
       "acceptanceCriteria": [
-        "Schemas Ninja explícitos DisciplineIn/DisciplineOut em apps/programs/schemas.py (nunca serializar o model direto)",
-        "GET /api/v1/programs/disciplines/ paginado, escopado por current_program(request), filtro opcional por is_active e busca por code/name, require_perm com programs.view_discipline",
-        "POST /api/v1/programs/disciplines/ com require_perm programs.add_discipline; program vem de current_program(request) e não do payload; registra AuditLog 'programs.discipline.create'",
-        "PATCH /api/v1/programs/disciplines/{id}/ com require_perm programs.change_discipline; registra AuditLog 'programs.discipline.update'",
+        "submit(*, at): só a partir de DRAFT; exige cycle.submission_open(at) senão DomainError code='submission_window_closed'; exige entre 1 e 2 itens senão DomainError code='invalid_item_count'; exige documentação obrigatória completa senão DomainError code='missing_documents'; carimba submitted_at e vai para SUBMITTED",
+        "defer(*, note=''): só a partir de SUBMITTED; vai para DEFERRED e carimba decided_at; se is_ufmg_staff for True define payment_status=EXEMPT, senão mantém PENDING",
+        "reject(*, note): só a partir de SUBMITTED; note obrigatório (DomainError code='rejection_requires_note'); vai para REJECTED e carimba decided_at",
+        "cancel(*, note): a partir de SUBMITTED ou DEFERRED; vai para CANCELLED — é o que devolve a vaga quando o deferido não paga; não existe expiração automática",
+        "appeal(*, note, at): só a partir de REJECTED; exige cycle.appeal_open(at) senão DomainError code='appeal_window_closed'; note obrigatório; carimba appealed_at e NÃO muda o status (continua REJECTED até a secretaria rejulgar)",
+        "enroll(): só a partir de DEFERRED e com payment_status em (PAID, EXEMPT), senão DomainError code='payment_required'; vai para ENROLLED",
+        "Toda transição inválida levanta InvalidStateTransition (409), no padrão de Person.archive() em apps/people/models.py; nenhum try/except de negócio no router",
         "Typecheck passes",
-        "Tests pass"
+        "Tests pass — invariantes em memória, sem banco: submeter fora da janela; submeter com 0 ou 3 itens; deferir requerimento já decidido; recusar sem motivo; recorrer de requerimento deferido; efetivar sem pagamento; efetivar isento deve passar"
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "US nova: a versão anterior mandava a secretaria usar o Django Admin, contra o ADR-006."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-005",
-      "title": "Endpoint — aluno cria solicitação de acerto",
-      "description": "As a student, I want to open an adjustment request with one or more discipline changes at once, so I don't need to open a separate request per change.",
+      "title": "Model dos itens do requerimento",
+      "description": "As a candidate, I want to request one or two disciplines in a single application, with the same documents and a single fee.",
       "acceptanceCriteria": [
-        "Schemas Ninja explícitos EnrollmentAdjustmentItemIn/Out e EnrollmentAdjustmentRequestIn/Out em apps/academic/schemas.py",
-        "POST /api/v1/academic/enrollment-requests/ recebe term_id, justification (opcional) e uma lista não vazia de itens (discipline_id, action)",
-        "require_perm(request, 'academic.add_enrollmentadjustmentrequest') na primeira linha da rota",
-        "Checagem explícita adicional: o Student do payload é o mesmo vinculado ao Person/User autenticado; levanta NotAllowed caso contrário",
-        "Bloqueio de solicitação sem quem decida: se o Student não tem advisor, levanta DomainError com code='advisor_required' e status 409 — sem isso a solicitação nasce presa, porque só o orientador pode decidi-la",
-        "Restrição de modalidade: só Student com modality=REGULAR pode abrir acerto; caso contrário levanta DomainError com code='regular_students_only' e status 409 (decorre do ADR-007)",
-        "Criação da solicitação e dos itens dentro de transaction.atomic()",
-        "AuditLog registrado via apps.core.audit.record('academic.enrollment_adjustment.create', request=, target=)",
-        "Resposta via schema explícito, nunca serializando o model direto",
+        "Model IsolatedEnrollmentItem no app academic: request (FK, on_delete=CASCADE, related_name='items'), offering (FK to DisciplineOffering, on_delete=PROTECT, related_name='items'), rank (PositiveSmallIntegerField, null=True, blank=True — posição atribuída pelo docente, nulo até ele classificar)",
+        "UniqueConstraint em (request, offering)",
+        "UniqueConstraint em (offering, rank) com condition=Q(rank__isnull=False) — duas pessoas não ocupam a mesma posição na mesma oferta",
+        "Método clean() garante request.cycle == offering.cycle; levanta DomainError com code='cycle_mismatch'",
+        "O limite de no máximo 2 itens por requerimento é validado em IsolatedEnrollmentRequest.submit() (US-004), não por constraint de banco — depende de contagem de linhas relacionadas",
+        "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes",
-        "Tests pass, incluindo os dois bloqueios acima e a tentativa de criar em nome de outro aluno"
+        "Tests pass (com banco: item duplicado na mesma oferta é rejeitado; dois itens com o mesmo rank na mesma oferta são rejeitados)"
       ],
       "priority": 5,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-006",
-      "title": "Endpoint — orientador aprova ou recusa a solicitação",
-      "description": "As an advisor, I want to approve or reject (with a reason) an adjustment request from one of my advisees, so the secretaria knows whether to replicate the change in the UFMG system.",
+      "title": "Model dos documentos anexados",
+      "description": "As a candidate, I need to attach the documents the call requires; as secretaria, I need to review them before approving.",
       "acceptanceCriteria": [
-        "POST /api/v1/academic/enrollment-requests/{id}/approve e POST /api/v1/academic/enrollment-requests/{id}/reject (reject recebe note obrigatório)",
-        "require_perm(request, 'academic.change_enrollmentadjustmentrequest') na primeira linha de ambas as rotas",
-        "Checagem explícita adicional: o usuário autenticado é exatamente o Teacher que é advisor do student daquela solicitação; levanta NotAllowed se for outro docente, mesmo com a permissão de grupo",
-        "Transição inválida (solicitação já decidida) retorna 409 via InvalidStateTransition, sem try/except no router",
-        "transaction.atomic() com save(update_fields=[...]) e AuditLog ('academic.enrollment_adjustment.approve' / '.reject')",
+        "Model RequestDocument no app academic: request (FK, on_delete=CASCADE, related_name='documents'), kind (TextChoices), file (FileField com upload_to particionado por ciclo e requerimento), uploaded_at (auto_now_add)",
+        "kind é TextChoices IDENTITY/DIPLOMA/LATTES/ADDRESS/PAYSLIP/SUPERVISOR_AUTH/PAYMENT_RECEIPT = 'Identidade e CPF'/'Diploma de graduação ou certidão de conclusão'/'Currículo Lattes em PDF'/'Comprovante de endereço'/'Contracheque de servidor da UFMG'/'Autorização da chefia'/'Comprovante de pagamento da GRU'",
+        "UniqueConstraint em (request, kind) — um documento por tipo",
+        "Método IsolatedEnrollmentRequest.missing_documents() devolve os tipos obrigatórios ainda ausentes: IDENTITY, DIPLOMA, LATTES e ADDRESS sempre; mais PAYSLIP e SUPERVISOR_AUTH quando is_ufmg_staff é True; PAYMENT_RECEIPT NÃO conta para a submissão",
+        "Permissão customizada download_requestdocument declarada em Meta.permissions — o download é separado de ver o requerimento",
+        "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes",
-        "Tests pass"
+        "Tests pass (em memória: missing_documents() inclui contracheque e autorização da chefia só quando is_ufmg_staff é True)"
       ],
       "priority": 6,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-007",
-      "title": "Endpoint — listagem de solicitações escopada por papel",
-      "description": "As a system user (student, advisor, secretaria or coordenação), I want to see the requests relevant to me without needing separate backend screens per role.",
+      "title": "Papel Candidato e permissões do fluxo",
+      "description": "As the system, I need a role for someone who is not yet a student, with permission only over their own request.",
       "acceptanceCriteria": [
-        "GET /api/v1/academic/enrollment-requests/ escopa primeiro por current_program(request) e depois filtra pelo papel: aluno vê só as suas, orientador vê as de student__advisor__person__user=request.user, secretaria/coordenação veem todas as do programa",
-        "O escopo de programa vem de current_program(request) em apps/core/tenancy.py (entregue em ralph/prd.json US-008), não de program_id no query string",
-        "Filtros opcionais por status e term_id",
-        "require_perm(request, 'academic.view_enrollmentadjustmentrequest') na primeira linha",
-        "Paginado seguindo o padrão de list_people (apps/people/router.py)",
-        "Typecheck passes",
-        "Tests pass: um teste por papel, verificando que cada um vê exatamente o conjunto esperado"
+        "Data migration no padrão de apps/programs/migrations/0002_programa_inicial_e_papeis.py cria o grupo Candidato com academic.add_isolatedenrollmentrequest, academic.view_isolatedenrollmentrequest, academic.change_isolatedenrollmentrequest e academic.view_disciplineoffering",
+        "O grupo Candidato não recebe is_staff nem is_superuser, e nenhuma permissão sobre Student, Teacher ou outros dados de negócio (CLAUDE.md Seção 5)",
+        "Secretaria ganha view/change em IsolatedEnrollmentRequest, add/change/view em IsolatedEnrollmentCycle e DisciplineOffering, e a permissão customizada academic.download_requestdocument",
+        "Docente ganha view_isolatedenrollmentrequest e a permissão customizada academic.rank_disciplineoffering, e NÃO ganha download_requestdocument",
+        "Coordenação ganha apenas view em requerimento, ciclo e oferta; sem download_requestdocument",
+        "As permissões customizadas rank_disciplineoffering e download_requestdocument estão declaradas em Meta.permissions dos respectivos models",
+        "Migração de dados revisada (lida e conferida, não só gerada)",
+        "Typecheck passes"
       ],
       "priority": 7,
-      "passes": true,
-      "notes": ""
+      "passes": false,
+      "notes": "Os grupos Secretaria, Coordenação, Docente e Discente já existem (ralph/prd.json US-006); esta migração só cria Candidato e estende os demais."
     },
     {
       "id": "US-008",
-      "title": "Tela Svelte — catálogo de disciplinas",
-      "description": "As a secretaria, I want a screen to create and edit the program's disciplines, without depending on the Django Admin.",
+      "title": "Endpoint de auto-registro do candidato",
+      "description": "As a person from outside UFMG, I need to create an account so I can apply and later come back to check the result and upload my payment receipt.",
       "acceptanceCriteria": [
-        "make gen-api rodado (backend de pé) antes de tipar a tela",
-        "Lista de disciplinas com busca por código/nome e filtro de ativas",
-        "Formulário de criar/editar (code, name, is_active)",
-        "Coordenação, Docente e Discente veem a tela em modo somente leitura, ou não veem o item de menu se não tiverem programs.view_discipline",
-        "Toda chamada via lib/api/client.ts tipado (fetch cru proibido)",
-        "Typecheck (svelte-check) passes",
-        "Verify in browser using dev-browser skill"
+        "POST /api/v1/academic/isolated/signup — o único endpoint público de escrita do projeto; marcado no código com '# público' e justificativa em comentário, conforme a Seção 5 do CLAUDE.md que exige isso de toda rota sem require_perm",
+        "Recebe nome completo, e-mail, telefone e senha; cria User (username = e-mail), Person vinculada ao User e ao programa, e coloca o usuário no grupo Candidato, tudo numa transaction.atomic() via services.py",
+        "Se já existe Person com aquele e-mail no programa, não cria outra nem vaza a informação de que o e-mail existe: responde o mesmo corpo de sucesso e não altera nada",
+        "Aplica limite de tentativas por IP (rate limit simples em cache), porque é rota pública sem sessão",
+        "Sem confirmação de e-mail — o projeto não tem SMTP; quem faz o papel de porteiro é o deferimento manual da secretaria",
+        "Registra AuditLog 'academic.isolated.signup'",
+        "Typecheck passes",
+        "Tests pass (criar conta nova; repetir o mesmo e-mail não duplica Person nem devolve erro distinguível; rate limit dispara)"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "US nova, exigida pelo ADR-006: cadastro usado por usuário de negócio vai para o front."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-009",
-      "title": "Tela Svelte — aluno abre solicitação de acerto",
-      "description": "As a student, I want a screen to pick disciplines from the catalog, mark them as add/drop, justify, and follow the status of my requests.",
+      "title": "Endpoints — candidato monta e envia o requerimento",
+      "description": "As a candidate, I want to pick up to two disciplines offered this semester and submit my application within the deadline.",
       "acceptanceCriteria": [
-        "Formulário com seletor de período letivo e lista de disciplinas do catálogo, com opção incluir/excluir por disciplina",
-        "Campo de justificativa opcional",
-        "Lista das solicitações do próprio aluno com status (Aberta/Aprovada/Recusada) e, quando recusada, o motivo visível",
-        "Se o aluno não tem orientador, a tela explica isso e desabilita o envio, em vez de deixar o backend recusar com 409 (advisor_required) depois do formulário preenchido",
-        "Toda chamada via lib/api/client.ts tipado",
-        "Typecheck (svelte-check) passes",
-        "Verify in browser using dev-browser skill"
+        "Schemas Ninja explícitos IsolatedRequestIn/IsolatedRequestOut e IsolatedItemIn/IsolatedItemOut em apps/academic/schemas.py; nunca serializar model direto",
+        "GET /api/v1/academic/isolated/offerings/ lista as ofertas do ciclo aberto com seats e seats_available(); require_perm com academic.view_disciplineoffering",
+        "POST /api/v1/academic/isolated/requests/ cria o requerimento em DRAFT com seus itens; require_perm com academic.add_isolatedenrollmentrequest; checagem explícita adicional de que a Person do payload é a do usuário autenticado",
+        "PATCH /api/v1/academic/isolated/requests/{id}/ altera itens e is_ufmg_staff apenas enquanto status=DRAFT",
+        "POST /api/v1/academic/isolated/requests/{id}/submit chama submit() (US-004); erros de janela, contagem de itens e documentação faltante voltam como 4xx do handler central, sem try/except no router",
+        "GET /api/v1/academic/isolated/requests/ devolve apenas os requerimentos do próprio candidato quando quem pergunta é do grupo Candidato",
+        "Toda escrita registra AuditLog (academic.isolated.create, .update, .submit)",
+        "Typecheck passes",
+        "Tests pass (candidato não vê nem edita requerimento de outro; submissão fora da janela é recusada; edição depois de submetido é recusada)"
       ],
       "priority": 9,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-010",
-      "title": "Tela Svelte — orientador aprova ou recusa",
-      "description": "As an advisor, I want a screen listing pending adjustment requests from my advisees, with an action to approve or reject.",
+      "title": "Endpoints — upload e download de documentos",
+      "description": "As a candidate, I want to attach my documents; as secretaria, I want to download them to review.",
       "acceptanceCriteria": [
-        "Lista de solicitações pendentes (status OPEN) dos orientandos do orientador logado, visível na entrada da área dele e não enterrada em submenu",
-        "Ação de aprovar (nota opcional) e recusar (nota obrigatória, com validação no front antes de enviar)",
-        "Após a decisão, a lista atualiza sem exigir refresh manual da página",
-        "Toda chamada via lib/api/client.ts tipado",
-        "Typecheck (svelte-check) passes",
-        "Verify in browser using dev-browser skill: golden path (aluno cria -> orientador aprova) e caminho de recusa (orientador recusa com motivo -> aluno vê o motivo)"
+        "POST /api/v1/academic/isolated/requests/{id}/documents (multipart) cria ou substitui o documento de um kind; só o dono do requerimento, e só enquanto DRAFT — exceto PAYMENT_RECEIPT, aceito quando status=DEFERRED (US-013)",
+        "Valida extensão (PDF e imagens) e tamanho máximo por arquivo; recusa com DomainError code='invalid_document'",
+        "GET /api/v1/academic/isolated/documents/{id}/download exige require_perm(request, 'academic.download_requestdocument') — só a Secretaria; Docente e Coordenação recebem 403 mesmo conseguindo ver o requerimento",
+        "O candidato pode baixar os próprios documentos por checagem explícita de posse, em vez da permissão de Secretaria",
+        "GET /api/v1/academic/isolated/requests/{id}/documents lista os documentos anexados sem expor URL direta do arquivo",
+        "Registra AuditLog no upload (academic.isolated.document_upload) e também no download (academic.isolated.document_download) — é acesso a documento de identidade, o rastro importa",
+        "Typecheck passes",
+        "Tests pass (docente recebe 403 no download; candidato baixa o próprio; upload com extensão inválida é recusado)"
       ],
       "priority": 10,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-011",
-      "title": "Tela Svelte — leitura para secretaria e coordenação",
-      "description": "As secretaria/coordenação staff, I want a read-only screen with all program requests and their status, so I know what still needs to be manually replicated in the UFMG system.",
+      "title": "Endpoints — docente classifica os candidatos",
+      "description": "As the teacher responsible for a discipline, I want to rank the candidates by priority, because that order decides who gets enrolled within the seat limit.",
       "acceptanceCriteria": [
-        "Tela lista todas as solicitações do programa com aluno, orientador, período, itens, status e data de decisão",
-        "Filtro por status (Aberta/Aprovada/Recusada) e por período letivo",
-        "Tela é somente leitura (sem ação de aprovar/recusar/editar)",
+        "GET /api/v1/academic/isolated/offerings/{id}/candidates lista os itens SUBMITTED daquela oferta com nome do candidato e rank atual; require_perm com academic.rank_disciplineoffering E checagem explícita de que o usuário é o teacher daquela oferta — outro docente recebe 403",
+        "POST /api/v1/academic/isolated/offerings/{id}/rank recebe a lista ordenada de ids de item e grava rank sequencial (1, 2, 3...) numa transaction.atomic()",
+        "Recusa a operação se algum item enviado não pertencer àquela oferta (DomainError code='item_not_in_offering')",
+        "GET /api/v1/academic/isolated/offerings/?mine=true devolve as ofertas do docente autenticado com um marcador de quais ainda não têm classificação",
+        "Registra AuditLog 'academic.isolated.rank'",
+        "Typecheck passes",
+        "Tests pass (docente de outra oferta recebe 403; classificação grava ranks sequenciais; item de outra oferta é recusado)"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Endpoints — secretaria defere, indefere e cancela",
+      "description": "As secretaria, I want to approve requests following the teacher's ranking and the seat limit, and cancel those who do not pay so the seat returns.",
+      "acceptanceCriteria": [
+        "POST /api/v1/academic/isolated/requests/{id}/defer chama defer(); require_perm com academic.change_isolatedenrollmentrequest; aceita gru_url no payload e o grava",
+        "Recusa deferir quando algum item do requerimento está numa oferta sem vaga disponível (DomainError code='no_seats_available')",
+        "Recusa deferir quando a oferta ainda não foi classificada pelo docente (DomainError code='offering_not_ranked') — sem a lista do docente ninguém é matriculado",
+        "POST /api/v1/academic/isolated/requests/{id}/reject chama reject() com note obrigatório",
+        "POST /api/v1/academic/isolated/requests/{id}/cancel chama cancel() — devolve a vaga",
+        "GET /api/v1/academic/isolated/requests/?cycle=&status= lista todos os requerimentos do programa para Secretaria e Coordenação, escopado por current_program(request)",
+        "Cada operação numa transaction.atomic() com save(update_fields=[...]) e AuditLog (academic.isolated.defer / .reject / .cancel)",
+        "Typecheck passes",
+        "Tests pass (deferir sem vaga é recusado; deferir oferta não classificada é recusado; cancelar libera a vaga e o próximo passa a caber; servidor da UFMG deferido nasce EXEMPT)"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Depende do helper current_program(), entregue por ralph/prd.json US-008."
+    },
+    {
+      "id": "US-013",
+      "title": "Endpoints — recurso e comprovante da GRU",
+      "description": "As a rejected candidate, I want to appeal attaching the missing document; as an approved candidate, I want to upload my payment receipt.",
+      "acceptanceCriteria": [
+        "POST /api/v1/academic/isolated/requests/{id}/appeal chama appeal() (US-004): exige janela de recurso aberta e note; aceita upload de documento faltante junto; só o dono do requerimento",
+        "A secretaria rejulga pelos mesmos defer/reject da US-012 — o recurso não é entidade nova, é reabertura da decisão; não derruba a classificação do docente e não dispensa a GRU",
+        "POST /api/v1/academic/isolated/requests/{id}/payment-receipt (multipart) aceita o PAYMENT_RECEIPT quando status=DEFERRED e payment_status=PENDING; recusa fora da janela payment_closes_at com DomainError code='payment_window_closed'; define payment_status=PAID",
+        "Requerimento com payment_status=EXEMPT recusa envio de comprovante (DomainError code='payment_not_required')",
+        "Registra AuditLog (academic.isolated.appeal, .payment_receipt)",
+        "Typecheck passes",
+        "Tests pass (recurso fora da janela é recusado; comprovante em requerimento isento é recusado; comprovante fora do prazo é recusado)"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Endpoint — efetivar a matrícula",
+      "description": "As secretaria, after entering the enrollment in the UFMG system and receiving the number, I want to record it here and turn the request into a student record.",
+      "acceptanceCriteria": [
+        "POST /api/v1/academic/isolated/requests/{id}/enroll recebe registration_number; require_perm com academic.change_isolatedenrollmentrequest",
+        "Numa transaction.atomic() via services.py: chama enroll() no requerimento e cria um Student com modality=ISOLATED, status=ACTIVE, person do requerimento, term do ciclo e o registration_number informado — sem level, project, advisor, admission_date nem deadline, como exige a CheckConstraint do ADR-007",
+        "Chama full_clean() antes de salvar o Student — o Django não roda clean() em .create()",
+        "Recusa se payment_status for PENDING (DomainError code='payment_required')",
+        "Coloca o usuário do candidato no grupo Discente e o remove do grupo Candidato",
+        "Registra AuditLog 'academic.isolated.enroll'",
+        "Typecheck passes",
+        "Tests pass (efetivar sem pagamento é recusado; efetivar isento funciona; o Student criado passa nas CheckConstraint do ADR-007; a mesma Person pode ter dois Student de ciclos diferentes)"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Depende de academic.Student com modality/status separados (ralph/prd.json US-005, ADR-007)."
+    },
+    {
+      "id": "US-015",
+      "title": "Endpoint — encerrar o período",
+      "description": "As secretaria, I want to close the semester and mark every isolated student of that term as excluded in one go.",
+      "acceptanceCriteria": [
+        "POST /api/v1/academic/isolated/cycles/{id}/close marca status=EXCLUDED em todos os Student com modality=ISOLATED e term daquele ciclo que ainda estão ACTIVE, e define is_active=False no ciclo",
+        "Operação em lote numa transaction.atomic() em services.py, com um único AuditLog 'academic.isolated.close_cycle' contendo a contagem de alunos afetados no payload — não N eventos soltos",
+        "require_perm com academic.change_isolatedenrollmentcycle",
+        "Não há expiração automática: nada roda sozinho, é sempre esta ação explícita da secretaria",
+        "Typecheck passes",
+        "Tests pass (encerrar marca só os ISOLATED ACTIVE daquele termo, e não toca em aluno regular nem em quem já estava excluído)"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Tela Svelte — cadastro e inscrição do candidato",
+      "description": "As a person from outside UFMG, I want to create my account, pick up to two disciplines and attach my documents.",
+      "acceptanceCriteria": [
+        "make gen-api rodado (backend de pé) antes de tipar as telas",
+        "Tela pública de criação de conta, fora da área autenticada",
+        "Formulário de requerimento lista as ofertas do ciclo aberto com vagas, permite escolher no máximo duas (a UI impede a terceira) e marcar 'sou servidor da UFMG'",
+        "Área de upload com a lista de documentos exigidos e indicação clara do que ainda falta; marcar 'servidor da UFMG' acrescenta contracheque e autorização da chefia à lista",
+        "Botão de enviar fica desabilitado enquanto faltar documento ou a janela estiver fechada, com a razão visível — nada de botão que falha sem explicação",
+        "Toda chamada via lib/api/client.ts tipado (fetch cru proibido)",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Tela Svelte — acompanhamento do candidato",
+      "description": "As a candidate, I want to return to the system to see whether I was approved, pay the fee and upload the receipt.",
+      "acceptanceCriteria": [
+        "Mostra o estado atual do requerimento com o vocabulário do edital ('Inscrito', 'Deferido', 'Indeferido', 'Matriculado')",
+        "Quando deferido e não isento: exibe o link da GRU gravado pela secretaria e o campo de envio do comprovante, com o prazo visível",
+        "Quando isento: informa que não há taxa a pagar e não oferece envio de comprovante",
+        "Quando indeferido e dentro da janela: oferece interpor recurso com texto e anexo",
+        "Fora das janelas, os controles somem com a razão explicada",
         "Toda chamada via lib/api/client.ts tipado",
         "Typecheck (svelte-check) passes",
         "Verify in browser using dev-browser skill"
       ],
-      "priority": 11,
-      "passes": true,
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Tela Svelte — classificação pelo docente",
+      "description": "As a teacher, I want to see who applied to my discipline and rank them by priority.",
+      "acceptanceCriteria": [
+        "Lista as ofertas do docente logado, destacando as que ainda não foram classificadas",
+        "Tela de classificação com a lista de candidatos reordenável, e o número de vagas visível para ele saber onde cai o corte",
+        "Não expõe nenhum link de download de documento (o docente não tem essa permissão — US-010)",
+        "Ao salvar, a ordem é persistida e a tela confirma",
+        "Toda chamada via lib/api/client.ts tipado",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Tela Svelte — análise e deferimento pela secretaria",
+      "description": "As secretaria, I want to review requests with the documents, the teacher's ranking and the seat count on the same screen.",
+      "acceptanceCriteria": [
+        "Lista os requerimentos do ciclo, filtrável por status, com a posição atribuída pelo docente e as vagas restantes de cada oferta",
+        "Aviso em destaque para ofertas sem classificação enquanto o ciclo está aberto — sem a lista do docente ninguém é matriculado, e o custo do silêncio é a disciplina ficar vazia",
+        "Permite abrir cada documento anexado (só este papel tem a permissão)",
+        "Ações de deferir (com campo para colar o link da GRU), indeferir (motivo obrigatório) e cancelar",
+        "Toda chamada via lib/api/client.ts tipado",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Tela Svelte — ciclo, ofertas e encerramento",
+      "description": "As secretaria, I want to register the semester's call with its dates and offerings, and close the term when it ends.",
+      "acceptanceCriteria": [
+        "Formulário do ciclo com todas as datas do edital, validando a ordem cronológica antes de enviar",
+        "Cadastro de ofertas do ciclo: disciplina, docente responsável e número de vagas",
+        "Ação de encerrar o período, com confirmação que informa quantos alunos serão marcados como excluídos antes de executar",
+        "Coordenação vê tudo em modo somente leitura",
+        "Toda chamada via lib/api/client.ts tipado",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 20,
+      "passes": false,
       "notes": ""
     }
   ]
