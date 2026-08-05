@@ -12,6 +12,16 @@ class LoginIn(Schema):
     password: str
 
 
+class SetInitialPasswordIn(Schema):
+    password: str
+
+
+class DetailOut(Schema):
+    """Resposta de operação que não devolve entidade."""
+
+    detail: str
+
+
 class PersonRefOut(Schema):
     """A pessoa do domínio, por programa, ligada à conta logada."""
 

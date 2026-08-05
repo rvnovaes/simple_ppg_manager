@@ -118,6 +118,53 @@
         ]
       }
     },
+    "/accounts/users/{user_id}/set-initial-password": {
+      "post": {
+        "operationId": "apps_accounts_router_set_initial_password",
+        "summary": "Set Initial Password",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetInitialPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/programs/": {
       "get": {
         "operationId": "apps_programs_router_list_programs",
@@ -149,14 +196,146 @@
         ]
       }
     },
-    "/people/": {
+    "/programs/research-lines/": {
       "get": {
-        "operationId": "apps_people_router_list_people",
-        "summary": "List People",
+        "operationId": "apps_programs_router_list_research_lines",
+        "summary": "List Research Lines",
         "parameters": [
           {
             "in": "query",
-            "name": "program_id",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedResearchLineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_programs_router_create_research_line",
+        "summary": "Create Research Line",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchLineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchLineIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/research-lines/{research_line_id}/": {
+      "patch": {
+        "operationId": "apps_programs_router_update_research_line",
+        "summary": "Update Research Line",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "research_line_id",
+            "schema": {
+              "title": "Research Line Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchLineOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchLinePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/collective-projects/": {
+      "get": {
+        "operationId": "apps_programs_router_list_collective_projects",
+        "summary": "List Collective Projects",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "research_line_id",
             "schema": {
               "anyOf": [
                 {
@@ -166,7 +345,287 @@
                   "type": "null"
                 }
               ],
-              "title": "Program Id"
+              "title": "Research Line Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedCollectiveProjectOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_programs_router_create_collective_project",
+        "summary": "Create Collective Project",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectiveProjectOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectiveProjectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/collective-projects/{collective_project_id}/": {
+      "patch": {
+        "operationId": "apps_programs_router_update_collective_project",
+        "summary": "Update Collective Project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collective_project_id",
+            "schema": {
+              "title": "Collective Project Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectiveProjectOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectiveProjectPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/terms/": {
+      "get": {
+        "operationId": "apps_programs_router_list_academic_terms",
+        "summary": "List Academic Terms",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedAcademicTermOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_programs_router_create_academic_term",
+        "summary": "Create Academic Term",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicTermOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademicTermIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/programs/terms/{academic_term_id}/": {
+      "patch": {
+        "operationId": "apps_programs_router_update_academic_term",
+        "summary": "Update Academic Term",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "academic_term_id",
+            "schema": {
+              "title": "Academic Term Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicTermOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademicTermPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/people/": {
+      "get": {
+        "operationId": "apps_people_router_list_people",
+        "summary": "List People",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
             },
             "required": false
           },
@@ -286,6 +745,362 @@
           }
         ]
       }
+    },
+    "/academic/teachers/": {
+      "get": {
+        "operationId": "apps_academic_router_list_teachers",
+        "summary": "List Teachers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Category"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedTeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_create_teacher_endpoint",
+        "summary": "Create Teacher Endpoint",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeacherIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/teachers/{teacher_id}/": {
+      "patch": {
+        "operationId": "apps_academic_router_update_teacher",
+        "summary": "Update Teacher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teacher_id",
+            "schema": {
+              "title": "Teacher Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeacherPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/students/": {
+      "get": {
+        "operationId": "apps_academic_router_list_students",
+        "summary": "List Students",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "modality",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Modality"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Status"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Level"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "term_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Term Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "advisor_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Advisor Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedStudentOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_create_student_endpoint",
+        "summary": "Create Student Endpoint",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/students/{student_id}/": {
+      "patch": {
+        "operationId": "apps_academic_router_update_student",
+        "summary": "Update Student",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "student_id",
+            "schema": {
+              "title": "Student Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -391,6 +1206,33 @@
         "title": "LoginIn",
         "type": "object"
       },
+      "DetailOut": {
+        "description": "Resposta de operação que não devolve entidade.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "DetailOut",
+        "type": "object"
+      },
+      "SetInitialPasswordIn": {
+        "properties": {
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "SetInitialPasswordIn",
+        "type": "object"
+      },
       "ProgramOut": {
         "properties": {
           "id": {
@@ -435,6 +1277,390 @@
           }
         },
         "title": "Input",
+        "type": "object"
+      },
+      "PagedResearchLineOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchLineOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedResearchLineOut",
+        "type": "object"
+      },
+      "ResearchLineOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "name",
+          "is_active"
+        ],
+        "title": "ResearchLineOut",
+        "type": "object"
+      },
+      "ResearchLineIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ResearchLineIn",
+        "type": "object"
+      },
+      "ResearchLinePatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "ResearchLinePatch",
+        "type": "object"
+      },
+      "CollectiveProjectOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "research_line_id": {
+            "title": "Research Line Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "research_line_id",
+          "name",
+          "is_active"
+        ],
+        "title": "CollectiveProjectOut",
+        "type": "object"
+      },
+      "PagedCollectiveProjectOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectiveProjectOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedCollectiveProjectOut",
+        "type": "object"
+      },
+      "CollectiveProjectIn": {
+        "properties": {
+          "research_line_id": {
+            "title": "Research Line Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "research_line_id",
+          "name"
+        ],
+        "title": "CollectiveProjectIn",
+        "type": "object"
+      },
+      "CollectiveProjectPatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.",
+        "properties": {
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "CollectiveProjectPatch",
+        "type": "object"
+      },
+      "AcademicTermOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "half": {
+            "title": "Half",
+            "type": "integer"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "year",
+          "half",
+          "starts_on",
+          "ends_on",
+          "is_active",
+          "label"
+        ],
+        "title": "AcademicTermOut",
+        "type": "object"
+      },
+      "PagedAcademicTermOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AcademicTermOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedAcademicTermOut",
+        "type": "object"
+      },
+      "AcademicTermIn": {
+        "properties": {
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "half": {
+            "$ref": "#/components/schemas/Half"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "year",
+          "half",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "AcademicTermIn",
+        "type": "object"
+      },
+      "Half": {
+        "enum": [
+          1,
+          2
+        ],
+        "title": "Half",
+        "type": "integer"
+      },
+      "AcademicTermPatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.",
+        "properties": {
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "half": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Half"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "AcademicTermPatch",
         "type": "object"
       },
       "PagedPersonOut": {
@@ -541,6 +1767,816 @@
           "primary_email"
         ],
         "title": "PersonIn",
+        "type": "object"
+      },
+      "Category": {
+        "enum": [
+          "permanent",
+          "collaborator",
+          "visiting"
+        ],
+        "title": "Category",
+        "type": "string"
+      },
+      "PagedTeacherOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TeacherOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedTeacherOut",
+        "type": "object"
+      },
+      "PersonBrief": {
+        "description": "Pessoa por trás do vínculo, no mínimo que a tela exibe.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "primary_email": {
+            "title": "Primary Email",
+            "type": "string"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "needs_initial_password": {
+            "title": "Needs Initial Password",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "primary_email",
+          "phone_number",
+          "user_id",
+          "needs_initial_password"
+        ],
+        "title": "PersonBrief",
+        "type": "object"
+      },
+      "TeacherOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "person": {
+            "$ref": "#/components/schemas/PersonBrief"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "accredited_since": {
+            "format": "date",
+            "title": "Accredited Since",
+            "type": "string"
+          },
+          "accredited_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Until"
+          },
+          "academic_degree": {
+            "title": "Academic Degree",
+            "type": "string"
+          },
+          "lattes_url": {
+            "title": "Lattes Url",
+            "type": "string"
+          },
+          "home_institution": {
+            "title": "Home Institution",
+            "type": "string"
+          },
+          "research_line_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Research Line Ids",
+            "type": "array"
+          },
+          "project_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "person",
+          "category",
+          "accredited_since",
+          "accredited_until",
+          "academic_degree",
+          "lattes_url",
+          "home_institution",
+          "research_line_ids",
+          "project_ids",
+          "created_at"
+        ],
+        "title": "TeacherOut",
+        "type": "object"
+      },
+      "AcademicDegree": {
+        "enum": [
+          "doctorate",
+          "postdoctorate",
+          "habilitation"
+        ],
+        "title": "AcademicDegree",
+        "type": "string"
+      },
+      "TeacherIn": {
+        "description": "Criação de professor.\n\nO payload traz OU `person_id` (pessoa que já existe no programa) OU os\ndados de uma pessoa nova — nunca os dois. Sem `program_id`: o programa\né o da requisição (current_program), nunca o que o chamador escolher.",
+        "properties": {
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "primary_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Email"
+          },
+          "phone_number": {
+            "default": "",
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "accredited_since": {
+            "format": "date",
+            "title": "Accredited Since",
+            "type": "string"
+          },
+          "accredited_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Until"
+          },
+          "academic_degree": {
+            "$ref": "#/components/schemas/AcademicDegree"
+          },
+          "lattes_url": {
+            "default": "",
+            "title": "Lattes Url",
+            "type": "string"
+          },
+          "home_institution": {
+            "default": "",
+            "title": "Home Institution",
+            "type": "string"
+          },
+          "research_line_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Research Line Ids",
+            "type": "array"
+          },
+          "project_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "category",
+          "accredited_since",
+          "academic_degree"
+        ],
+        "title": "TeacherIn",
+        "type": "object"
+      },
+      "TeacherPatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.\n\nA pessoa não muda por aqui: trocar a pessoa de um vínculo docente é\napagar o histórico de quem orientou quem, não editar um campo.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accredited_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Since"
+          },
+          "accredited_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Until"
+          },
+          "academic_degree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcademicDegree"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lattes_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lattes Url"
+          },
+          "home_institution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Institution"
+          },
+          "research_line_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Ids"
+          },
+          "project_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Ids"
+          }
+        },
+        "title": "TeacherPatch",
+        "type": "object"
+      },
+      "Level": {
+        "enum": [
+          "masters",
+          "doctorate"
+        ],
+        "title": "Level",
+        "type": "string"
+      },
+      "Modality": {
+        "enum": [
+          "regular",
+          "isolated",
+          "elective"
+        ],
+        "title": "Modality",
+        "type": "string"
+      },
+      "Status": {
+        "enum": [
+          "active",
+          "leave",
+          "excluded"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "PagedStudentOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StudentOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedStudentOut",
+        "type": "object"
+      },
+      "StudentOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "person": {
+            "$ref": "#/components/schemas/PersonBrief"
+          },
+          "registration_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registration Number"
+          },
+          "modality": {
+            "title": "Modality",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "advisor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisor Id"
+          },
+          "admission_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Date"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "defense_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defense Date"
+          },
+          "term_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "person",
+          "registration_number",
+          "modality",
+          "status",
+          "level",
+          "project_id",
+          "advisor_id",
+          "admission_date",
+          "deadline",
+          "defense_date",
+          "term_id",
+          "created_at"
+        ],
+        "title": "StudentOut",
+        "type": "object"
+      },
+      "StudentIn": {
+        "description": "Criação de aluno.\n\nComo em `TeacherIn`, o payload traz OU `person_id` OU os dados de uma\npessoa nova. Os campos exigidos dependem da modalidade — é a mesma\nregra das CheckConstraint de `Student`, cobrada aqui na borda.",
+        "properties": {
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "primary_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Email"
+          },
+          "phone_number": {
+            "default": "",
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "modality": {
+            "$ref": "#/components/schemas/Modality"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              }
+            ],
+            "default": "active"
+          },
+          "registration_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registration Number"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Level"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "advisor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisor Id"
+          },
+          "admission_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Date"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "defense_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defense Date"
+          },
+          "term_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Id"
+          }
+        },
+        "required": [
+          "modality"
+        ],
+        "title": "StudentIn",
+        "type": "object"
+      },
+      "StudentPatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.\n\nA pessoa e a modalidade ficam de fora. Trocar a pessoa apagaria o\nhistórico do vínculo; trocar a modalidade transformaria uma isolada em\nregular por edição de campo, quando o que existe no domínio é um\nvínculo novo.",
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "registration_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registration Number"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Level"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "advisor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisor Id"
+          },
+          "admission_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Date"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "defense_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defense Date"
+          },
+          "term_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Id"
+          }
+        },
+        "title": "StudentPatch",
         "type": "object"
       }
     },

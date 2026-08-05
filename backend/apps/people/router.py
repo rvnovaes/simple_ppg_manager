@@ -12,6 +12,7 @@ from ninja.pagination import paginate
 
 from apps.core import audit
 from apps.core.permissions import require_perm
+from apps.core.tenancy import current_program
 from apps.programs.models import Program
 
 from .models import Person
@@ -23,12 +24,18 @@ router = Router(tags=["people"])
 
 @router.get("/", response=list[PersonOut])
 @paginate
-def list_people(request: HttpRequest, program_id: int | None = None):
+def list_people(request: HttpRequest, email: str | None = None):
     require_perm(request, "people.view_person")
-    queryset = Person.objects.all()
-    if program_id is not None:
-        queryset = queryset.filter(program_id=program_id)
-    return queryset
+    # O escopo é o programa da requisição, nunca um filtro que o chamador
+    # escolhe: program_id como filtro livre deixava vazar pessoa de outro
+    # tenant para quem simplesmente omitisse o parâmetro.
+    pessoas = Person.objects.for_program(current_program(request))
+    if email is not None:
+        # A tela procura por aqui antes de tentar criar uma pessoa nova:
+        # sem isso ela bate na UniqueConstraint (program, primary_email) e
+        # o usuário vê um erro em vez do cadastro que já existe.
+        pessoas = pessoas.filter(primary_email__iexact=email)
+    return pessoas
 
 
 @router.post("/", response={201: PersonOut})

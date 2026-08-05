@@ -15,8 +15,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Model + admin + migração 0003_researchline. make ready verde."
     },
     {
       "id": "US-002",
@@ -32,7 +32,7 @@
         "Tests pass (teste em memória, sem banco: clean() levanta DomainError quando o programa do projeto diverge do programa da linha)"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -51,7 +51,7 @@
         "Tests pass (teste em memória: __str__ formata '2026/1'; clean() rejeita ends_on anterior a starts_on)"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Entidade nova introduzida pelo ADR-007. Student (US-005) depende dela."
     },
     {
@@ -68,8 +68,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "App academic + Teacher + admin + migração 0001_initial. router/schemas/services criados vazios (docstring só); o router entra na NinjaAPI raiz na US-012. make ready verde."
     },
     {
       "id": "US-005",
@@ -94,8 +94,8 @@
         "Tests pass: em memória, Student REGULAR sem deadline recebe o prazo calculado (2 anos MASTERS, 4 anos DOCTORATE), incluindo admission_date em 29/02; com banco, as três CheckConstraint rejeitam regular sem project, isolada com advisor preenchido e isolada sem term; com banco, dois Student para a mesma Person em períodos diferentes são criados sem violar constraint; isolada com status=LEAVE é rejeitada pela constraint"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Depende de US-002 (CollectiveProject), US-003 (AcademicTerm) e US-004 (Teacher). Esta é a US que o ADR-007 reescreveu por inteiro em relação à versão anterior do PRD."
+      "passes": true,
+      "notes": "Student + 3 CheckConstraint + default_deadline() + admin + migração 0002_student. Testes: 6 em memória, 6 com banco. make ready verde (48 testes)."
     },
     {
       "id": "US-006",
@@ -113,7 +113,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -133,7 +133,7 @@
         "Tests pass: definir senha em conta nova funciona; repetir a chamada na mesma conta retorna 409; usuário sem a permissão retorna 403; assign_role_group chamado duas vezes deixa o usuário com o grupo uma vez só"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "US nova. Sem ela, create_person_with_user deixa a conta com set_unusable_password() e sem grupo, e todo o fluxo de ralph/prd.matricula.json fica inexequível."
     },
     {
@@ -152,7 +152,7 @@
         "Tests pass: usuário com uma Person lista só o programa dele; usuário sem Person recebe 403 com code='no_program'; usuário com duas Person e sem program_id recebe 400"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "US nova. Toda rota de listagem criada a partir da US-009 escopa por este helper."
     },
     {
@@ -169,7 +169,7 @@
         "Tests pass"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -185,7 +185,7 @@
         "Tests pass, inclusive: criar projeto com research_line de outro programa é recusado"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -201,7 +201,7 @@
         "Tests pass"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -221,7 +221,7 @@
         "Tests pass, inclusive: criar professor com person_id de outro programa é recusado"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -239,7 +239,7 @@
         "Tests pass, inclusive: criar dois Student para a mesma Person em períodos diferentes funciona pela API"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -257,7 +257,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -275,7 +275,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -294,7 +294,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Único caso do projeto em que esconder campo por regra de UI é correto, porque a regra existe como CheckConstraint no banco (US-005)."
     }
   ]

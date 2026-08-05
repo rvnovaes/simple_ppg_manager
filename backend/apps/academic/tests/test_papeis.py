@@ -1,0 +1,81 @@
+"""Os papéis do domínio saem das data migrations com as permissões certas.
+
+Testar o resultado da migration (e não o dicionário do módulo) é o que pega
+uma migration que deixou de rodar ou um grupo removido à mão no banco.
+"""
+
+import pytest
+from django.contrib.auth.models import Group
+
+PAPEIS = ["Secretaria", "Coordenação", "Docente", "Discente"]
+
+CADASTROS = ["researchline", "collectiveproject", "academicterm", "teacher", "student"]
+
+
+def _codenames(papel: str) -> set[str]:
+    return set(
+        Group.objects.get(name=papel).permissions.values_list("codename", flat=True)
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("papel", PAPEIS)
+def test_papel_existe(papel: str) -> None:
+    assert Group.objects.filter(name=papel).exists()
+
+
+@pytest.mark.django_db
+def test_secretaria_cria_e_altera_os_cadastros() -> None:
+    codenames = _codenames("Secretaria")
+    for model in CADASTROS:
+        for verbo in ("view", "add", "change"):
+            assert f"{verbo}_{model}" in codenames
+
+
+@pytest.mark.django_db
+def test_secretaria_define_senha_de_primeiro_acesso() -> None:
+    assert "change_user" in _codenames("Secretaria")
+
+
+@pytest.mark.django_db
+def test_coordenacao_so_le_os_cadastros() -> None:
+    codenames = _codenames("Coordenação")
+    for model in CADASTROS:
+        assert f"view_{model}" in codenames
+        assert f"add_{model}" not in codenames
+        assert f"change_{model}" not in codenames
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("papel", ["Docente", "Discente"])
+def test_papel_de_leitura_ve_a_estrutura_do_programa(papel: str) -> None:
+    codenames = _codenames(papel)
+    for model in ("researchline", "collectiveproject", "academicterm"):
+        assert f"view_{model}" in codenames
+
+
+@pytest.mark.django_db
+def test_discente_nao_lista_professores_nem_alunos() -> None:
+    codenames = _codenames("Discente")
+    assert "view_teacher" not in codenames
+    assert "view_student" not in codenames
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("papel", PAPEIS)
+def test_nenhum_papel_apaga_dado(papel: str) -> None:
+    assert not [c for c in _codenames(papel) if c.startswith("delete_")]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("papel", PAPEIS)
+def test_papel_nao_abre_o_admin(papel: str) -> None:
+    """is_staff/is_superuser são flags de User; papel de domínio não os concede.
+
+    O que se verifica aqui é que nenhum grupo carrega permissão sobre o
+    próprio model User além do change_user da Secretaria — nada de add/delete
+    de conta, que é o caminho por onde alguém se daria acesso.
+    """
+    permitido = {"change_user"} if papel == "Secretaria" else set()
+    sobre_user = {c for c in _codenames(papel) if c.endswith("_user")}
+    assert sobre_user == permitido

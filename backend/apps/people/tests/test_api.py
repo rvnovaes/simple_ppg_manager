@@ -112,3 +112,38 @@ def test_escrita_sem_token_csrf_e_recusada(secretaria, program):
 
     assert resposta.status_code == 403
     assert not Person.objects.exists()
+
+
+def test_listar_pessoas_filtra_por_email(client_secretaria, secretaria, program):
+    """A tela procura a pessoa pelo e-mail antes de tentar criar outra e
+    bater na UniqueConstraint (program, primary_email)."""
+    Person.objects.create(
+        program=program,
+        user=secretaria,
+        full_name="Carla Dias",
+        primary_email="carla@exemplo.br",
+    )
+    Person.objects.create(
+        program=program, full_name="Ana Lima", primary_email="ana@exemplo.br"
+    )
+
+    resposta = client_secretaria.get(URL, {"email": "ANA@exemplo.br"})
+
+    assert resposta.status_code == 200, resposta.content
+    assert [item["full_name"] for item in resposta.json()["items"]] == ["Ana Lima"]
+
+
+def test_listar_pessoas_com_email_inexistente_devolve_lista_vazia(
+    client_secretaria, secretaria, program
+):
+    Person.objects.create(
+        program=program,
+        user=secretaria,
+        full_name="Carla Dias",
+        primary_email="carla@exemplo.br",
+    )
+
+    resposta = client_secretaria.get(URL, {"email": "ninguem@exemplo.br"})
+
+    assert resposta.status_code == 200
+    assert resposta.json()["items"] == []

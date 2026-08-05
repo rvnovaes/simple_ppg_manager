@@ -1,19 +1,27 @@
-"""Borda de autenticação. Sessão do Django, sem JWT (ADR-003)."""
+"""Borda de autenticação e de contas. Sessão do Django, sem JWT (ADR-003).
+
+Dois routers aqui: `router` é montado em /auth/ (sessão), `users_router` em
+/accounts/ (administração de contas pela Secretaria).
+"""
 
 from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
 from django.http import HttpRequest
 from django.middleware.csrf import get_token
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_protect
 from ninja import Router
 from ninja.decorators import decorate_view
 
 from apps.core import audit
 from apps.core.exceptions import DomainError
+from apps.core.permissions import require_perm
 
-from .schemas import LoginIn, UserOut
+from .models import User
+from .schemas import DetailOut, LoginIn, SetInitialPasswordIn, UserOut
 
 router = Router(tags=["auth"])
+users_router = Router(tags=["accounts"])
 
 
 def _user_out(user) -> dict:
@@ -82,3 +90,20 @@ def do_logout(request: HttpRequest):
 def me(request: HttpRequest):
     # Sem require_perm: devolve apenas os dados do próprio usuário da sessão.
     return _user_out(request.user)
+
+
+@users_router.post(
+    "/users/{int:user_id}/set-initial-password", response={200: DetailOut}
+)
+def set_initial_password(
+    request: HttpRequest, user_id: int, payload: SetInitialPasswordIn
+):
+    require_perm(request, "accounts.change_user")
+    user = get_object_or_404(User, pk=user_id)
+    with transaction.atomic():
+        # A regra (só vale para conta sem senha) mora no model.
+        user.set_initial_password(payload.password)
+        user.save(update_fields=["password"])
+        # A senha NUNCA entra no payload de auditoria.
+        audit.record("accounts.user.set_initial_password", request=request, target=user)
+    return {"detail": "Senha inicial definida."}

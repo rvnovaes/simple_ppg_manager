@@ -10,6 +10,10 @@ dia for necessário, entra como model de vínculo com ADR próprio.
 """
 
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+
+from apps.core.exceptions import DomainError, InvalidStateTransition
 
 
 class User(AbstractUser):
@@ -19,3 +23,21 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return self.get_full_name() or self.username
+
+    def set_initial_password(self, raw_password: str) -> None:
+        """Define a senha do PRIMEIRO acesso — nunca troca uma senha existente.
+
+        A conta nasce com set_unusable_password() (ver
+        people.services.create_person_with_user); é este método que a torna
+        utilizável. Se já houver senha, quem troca é a própria pessoa: a
+        Secretaria não tem poder de assumir uma conta ativa.
+        """
+        if self.has_usable_password():
+            raise InvalidStateTransition(
+                "Esta conta já tem senha definida; use a recuperação de senha."
+            )
+        try:
+            validate_password(raw_password, self)
+        except ValidationError as exc:
+            raise DomainError(" ".join(exc.messages), code="senha_invalida") from exc
+        self.set_password(raw_password)

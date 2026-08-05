@@ -45,3 +45,14 @@ class NotAuthenticated(DomainError):
 
     status_code = 401
     code = "not_authenticated"
+
+
+class NoProgramInContext(DomainError):
+    """Não dá para dizer a que programa a requisição pertence.
+
+    É 403 e não 404 de propósito: a sessão é válida, mas o usuário não tem
+    vínculo ativo com o programa pedido (ou com nenhum).
+    """
+
+    status_code = 403
+    code = "no_program"

@@ -1,0 +1,545 @@
+## Codebase Patterns
+- Model de negócio SEMPRE com FK `program` direta (ADR-007 dec. 5): `apps.core.audit.record()`
+  infere o tenant via `getattr(target, "program", None)` — sem a FK o AuditLog sai com
+  `program=None`.
+- Convenção de model: verbose_name/verbose_name_plural em português minúsculo, labels de campo
+  em português, `ordering`, `UniqueConstraint` com nome em português (`unique_x_por_programa`),
+  QuerySet nomeado (`XQuerySet` com `.active()`/`.for_program()`) exposto via
+  `objects = XQuerySet.as_manager()`.
+- Todo ModelAdmin de dado de negócio herda de `apps.core.admin.AuditedModelAdmin`.
+- Regra de negócio em método do model; `DomainError`/subclasses de `apps.core.exceptions`;
+  router chama `apps.core.permissions.require_perm(request, "app.codename")` na primeira linha.
+- Escopo de tenant: listagem de dado de negócio usa
+  `apps.core.tenancy.current_program(request)` logo depois do `require_perm`, nunca um
+  `program_id` opcional de filtro. Assina
+  `current_program(request, *, program_id=None)`; sem o argumento ele lê `program_id` da
+  query string.
+- Sub-recurso entra no Router do app que já existe, com path próprio (`/research-lines/`),
+  e não em Router/prefixo novo. Escopo de tenant em busca por id vai DENTRO do queryset
+  (`get_object_or_404(X.objects.for_program(program), pk=...)`) — objeto de outro programa
+  dá 404, nunca 403.
+- Escrita: `require_perm` -> `current_program` -> `transaction.atomic()` com
+  `model.clean()`, `save()` e `audit.record("<app>.<entidade>.<verbo>", ...)` juntos.
+  Entrada nunca aceita `program_id` no corpo; PATCH usa schema de campos opcionais +
+  `model_dump(exclude_unset=True, exclude_none=True)`.
+- Teste de endpoint com `current_program` precisa de uma `Person(program=..., user=...)`
+  para o usuário da fixture; o `secretaria` do conftest sozinho dá 403 `no_program`.
+  Rodar pytest sempre a partir de `backend/`.
+- Entidade institucional (só `AcademicTerm`, ADR-007 dec. 4) NÃO tem FK `program`: rota
+  sem `current_program`, AuditLog com `program=None`. Toda outra entidade escopa.
+- Campo com `TextChoices`/`IntegerChoices` no schema Ninja: tipar com a própria classe de
+  choices (`half: AcademicTerm.Half`) e ganhar 422 na borda, em vez de `int`/`str` cru.
+- Validação que consulta o banco dentro de `clean()` quebra teste de invariante em memória
+  (nível (a)); ou o teste ganha `@pytest.mark.django_db`, ou a checagem vai depois das que
+  levantam sem banco.
+- Endpoint novo pede `make gen-api` (regenera `openapi.json` + `schema.d.ts`); ele só
+  precisa do backend importável, não do servidor. Rodar `make ready` DEPOIS dele.
+- Ambiente: `make db` sobe o Postgres (host 5433) — pytest e migrate precisam dele.
+  `make ready` (lint + typecheck + test) é pré-condição de commit.
+  O hook do rtk engole a saída do pytest; usar `rtk proxy uv run pytest ...` para ver.
+- Tela Svelte: estado em runas (`$state`/`$derived`), toda chamada por `api` de
+  `$lib/api/client`, tipos por `components['schemas']['XOut']`, erro por `mensagemDeErro`.
+  Listagem paginada do Ninja chega como `{items, count}`: ler `resp.data?.items ?? []`.
+- Modo somente leitura da Coordenação não é uma flag: cada botão de escrita fica atrás de
+  `sessao.pode('app.add_x')` / `sessao.pode('app.change_x')`, com os mesmos codenames que o
+  `require_perm` do router usa. A checagem que vale continua sendo a do backend.
+- `new Map()` dentro de componente Svelte é erro de lint
+  (`svelte/prefer-svelte-reactivity`), mesmo recriado a cada `$derived.by`; para agrupar
+  pai/filho usar `Record<number, T[]>`.
+- Tela nova entra também no `<nav>` de `routes/(app)/+layout.svelte`; sem isso ela existe
+  mas ninguém chega nela.
+- Verificar no navegador: `make db` + `make up` (nginx :8080) + `make web` (Vite :5173 pelo
+  host). Sempre :8080 — :5173 direto quebra login/CSRF. Dado de teste pelo shell do
+  container: `docker compose exec -T backend uv run python manage.py shell` (o `uv run` é
+  obrigatório) e `get_user_model()`, porque o model de usuário é `accounts.User`.
+
+# Ralph Progress Log
+Started: qua. 05 ago 2026 16:58:54 -03
+---
+
+## 2026-08-05 - US-001 (Model de Linha de Pesquisa)
+- Criado `ResearchLine` no app `programs`: FK `program` (PROTECT, related_name
+  `research_lines`), `name`, `is_active`, UniqueConstraint (program, name) com nome
+  `unique_linha_por_programa`, `ResearchLineQuerySet` com `.active()`/`.for_program()`.
+- Registrado no Admin como `ResearchLineAdmin(AuditedModelAdmin)`.
+- Migração `0003_researchline.py` gerada, lida (só CreateModel, sem risco) e aplicada.
+- `make ready` verde: ruff, mypy 48 arquivos, svelte-check 0 erros, 26 testes.
+- Arquivos: backend/apps/programs/models.py, backend/apps/programs/admin.py,
+  backend/apps/programs/migrations/0003_researchline.py
+- **Learnings for future iterations:**
+  - Branch `ralph/cadastros-basicos` criada a partir de `main`. O trecho de
+    `ralph/CLAUDE.md` que manda partir de `origin/develop-sanfili` e a seção
+    "Ambiente desta worktree" (portas 3103/5103, serviços `sanfili*`) são
+    boilerplate de OUTRO projeto — não valem aqui. Vale o `CLAUDE.md` da raiz:
+    `make db` (Postgres na 5433), `make up` + `make web`, UI em
+    http://localhost:8080. Não existe worktree separada: trabalho no checkout.
+  - Testes exigem Postgres de pé (`make db`); `--reuse-db` está em `addopts`.
+
+## 2026-08-05 - US-002 (Model de Projeto Coletivo)
+- `CollectiveProject` no app `programs`: FK `program` direta (PROTECT,
+  related_name `collective_projects`), FK `research_line` (PROTECT, related_name
+  `projects`), `name`, `is_active`, `CollectiveProjectQuerySet` com
+  `.active()`/`.for_program()`.
+- `clean()` levanta `DomainError(code="program_mismatch")` quando
+  `program_id != research_line.program_id`.
+- `CollectiveProjectAdmin(AuditedModelAdmin)` com `research_line` em `list_display`.
+- Migração `0004_collectiveproject.py` gerada, lida (só CreateModel, sem risco) e aplicada.
+- Testes novos em `backend/apps/programs/tests/test_models.py` (em memória, sem banco).
+- `make ready` verde: ruff, mypy 50 arquivos, svelte-check 0 erros, 29 testes.
+- Arquivos: backend/apps/programs/models.py, admin.py,
+  migrations/0004_collectiveproject.py, tests/__init__.py, tests/test_models.py
+- **Learnings for future iterations:**
+  - Teste de invariante que envolve FK roda sem banco atribuindo `pk=` à mão nos
+    objetos relacionados (`Program(pk=1)`); o `_id` da FK é preenchido a partir do pk
+    e a comparação `a_id != b_id` funciona em memória.
+  - `clean()` que lê uma FK precisa de `try/except ObjectDoesNotExist`
+    (`django.core.exceptions`): FK vazia levanta `RelatedObjectDoesNotExist` no acesso,
+    não devolve `None`.
+  - Sem FK obrigatória o app `programs` não tinha pacote `tests/` — criar com
+    `__init__.py`, senão o pytest não coleta.
+  - `make ready` roda `ruff format` e pode reformatar arquivos recém-escritos; escrever
+    já dentro de 88 colunas evita o retrabalho.
+
+## 2026-08-05 - US-003 (Model de Período Letivo)
+- `AcademicTerm` no app `programs`, INSTITUCIONAL — sem FK `program` (ADR-007 dec. 4,
+  única exceção): `year`, `half` (IntegerChoices 1/2), `starts_on`, `ends_on`,
+  `is_active`, `AcademicTermQuerySet.active()`.
+- UniqueConstraint (year, half) com nome `unique_periodo_por_ano_e_semestre`.
+- `__str__` devolve o rótulo canônico `2026/1`.
+- `clean()` levanta `DomainError(code="invalid_term_range")` quando
+  `ends_on <= starts_on` (fim igual ao início também é rejeitado).
+- `AcademicTermAdmin(AuditedModelAdmin)` sem filtro por programa.
+- Migração `0005_academicterm.py` gerada, lida (só CreateModel, sem risco) e aplicada.
+- `make ready` verde: ruff, mypy 50 arquivos, svelte-check 0 erros, 33 testes.
+- Arquivos: backend/apps/programs/models.py, admin.py, tests/test_models.py,
+  migrations/0005_academicterm.py
+- **Learnings for future iterations:**
+  - `models.IntegerChoices` aninhada no model (`class Half`) é o padrão para escolha
+    numérica; passar a classe direto em `choices=Half` (Django 5 aceita, sem `.choices`).
+  - `clean()` de campo obrigatório precisa do guard `if self.x and self.y` — instância
+    em memória sem os campos preenchidos tem `None` e a comparação de datas estouraria
+    `TypeError` em vez do `DomainError`.
+  - Entidade sem FK `program` gera AuditLog com `program=None` — correto aqui, mas é o
+    único caso; qualquer outro model novo leva a FK.
+---
+
+## 2026-08-05 - US-004 (App academic e model Teacher)
+- App `apps.academic` criado com a estrutura padrão (`models.py`, `admin.py`,
+  `router.py`, `schemas.py`, `services.py`, `migrations/`, `tests/`) e registrado em
+  `INSTALLED_APPS` depois de `apps.programs` e `apps.people`.
+- `Teacher`: FK `program` (PROTECT, related_name `teachers`), OneToOne `person`
+  (PROTECT, related_name `teacher_profile` — ADR-007 dec. 2, ao contrário de
+  `Student.person`), `category` (TextChoices CAPES), `accredited_since`,
+  `accredited_until` (null), `academic_degree` (TextChoices), `lattes_url`,
+  `home_institution`, M2M `research_lines` e `projects`, carimbos técnicos.
+- `clean()` levanta `DomainError(code="program_mismatch")` quando
+  `program_id != person.program_id`; `TeacherQuerySet.for_program()`.
+- `TeacherAdmin(AuditedModelAdmin)` com `raw_id_fields=("person",)` e
+  `filter_horizontal` nos dois M2M.
+- Migração `academic/0001_initial.py` gerada, lida (CreateModel + as duas tabelas
+  M2M, sem risco) e aplicada.
+- Testes em memória em `apps/academic/tests/test_models.py` (3 casos).
+- `make ready` verde: ruff, mypy 59 arquivos, svelte-check 0 erros, 36 testes.
+- Arquivos: backend/apps/academic/* (novo), backend/config/settings/base.py
+- **Learnings for future iterations:**
+  - `router.py`/`schemas.py`/`services.py` do app novo nasceram com docstring só. Um
+    `Router()` vazio registrado em `backend/api.py` publicaria uma tag sem operação no
+    OpenAPI e sujaria o `schema.d.ts`; o registro é da US-012.
+  - `makemigrations <app>` (com o nome do app) evita arrastar migração pendente de
+    outro app para o commit.
+  - M2M para model de outro app usa string `"programs.ResearchLine"` — importar a
+    classe criaria ciclo quando `programs` um dia precisar olhar para `academic`.
+  - `filter_horizontal` é o par natural de `raw_id_fields` no Admin: sem ele o M2M
+    vira um `<select multiple>` com a tabela inteira.
+---
+
+## 2026-08-05 - US-005 (Model Student com modalidade e situação separadas)
+- `Student` no app `academic`: FK `program` direta, FK `person` (related_name
+  `student_records` — FK e NÃO OneToOne, ADR-007 dec. 2), `registration_number`
+  (null+unique), `modality` (REGULAR/ISOLATED/ELECTIVE) e `status`
+  (ACTIVE/LEAVE/EXCLUDED) como campos separados, campos de grau todos null
+  (`level`, `project`, `advisor`, `admission_date`, `deadline`, `defense_date`) e
+  `term` (FK AcademicTerm).
+- 3 CheckConstraint: `student_regular_requires_degree_fields`,
+  `student_non_regular_requires_term`, `student_leave_only_when_regular`.
+- `default_deadline()` usa helper `_somar_anos()` (date.replace + fallback dia 28)
+  — sem dependência nova; `save()` preenche o prazo do regular quando None.
+- `clean()` valida program contra person, project e advisor; `term` fica de fora
+  (institucional). `StudentAdmin(AuditedModelAdmin)` com modality/status em
+  list_display e list_filter.
+- Migração `academic/0002_student.py` gerada, lida (só CreateModel) e aplicada.
+- `make ready` verde: ruff, mypy 60 arquivos, svelte-check 0 erros, 48 testes.
+- Arquivos: backend/apps/academic/models.py, admin.py, services.py,
+  tests/test_models.py, tests/test_student_constraints.py (novo),
+  migrations/0002_student.py
+- **Learnings for future iterations:**
+  - Django 5.2: `models.CheckConstraint(condition=...)`, não `check=` (deprecado).
+  - Ruff DJ001 barra `null=True` em CharField; quando a constraint precisa
+    distinguir ausente de "" (caso do `level`), use `# noqa: DJ001` com comentário
+    justificando. Campo com `unique=True` não é flagado.
+  - mypy não estreita `self.fk` a partir de `if self.fk_id:` — atribua
+    `x = self.fk` e teste `if x is not None`. FK anulável devolve None sem query.
+  - Teste de CheckConstraint precisa de `pytest.raises(IntegrityError)` DENTRO de
+    `transaction.atomic()`, senão a transação do teste fica quebrada.
+  - Fixture `program` do conftest raiz devolve o PPGD criado pela data migration
+    `programs.0002` — reutilize em vez de criar programa novo.
+---
+
+## 2026-08-05 - US-006 (Grupos e permissões dos papéis de domínio)
+- Data migration `academic/0003_papeis_dos_cadastros.py`: cria os Groups `Docente` e
+  `Discente` e estende `Secretaria` (view/add/change nos cinco cadastros novos +
+  `accounts.change_user`) e `Coordenação` (só view). Docente e Discente recebem view da
+  estrutura (ResearchLine, CollectiveProject, AcademicTerm); Docente também
+  `view_teacher`/`view_student`.
+- Nenhum `delete_*`, nenhuma permissão sobre User além do `change_user` da Secretaria,
+  nenhum `is_staff`/`is_superuser`.
+- `desfazer` apaga só os grupos criados aqui e remove das duas migrações anteriores
+  apenas as permissões que esta adicionou.
+- Testes novos em `apps/academic/tests/test_papeis.py` (11 casos) verificam o resultado
+  no banco, não o dicionário do módulo.
+- `make ready` verde: ruff, mypy 61 arquivos, svelte-check 0 erros, 66 testes.
+- Arquivos: backend/apps/academic/migrations/0003_papeis_dos_cadastros.py,
+  backend/apps/academic/tests/test_papeis.py
+- **Learnings for future iterations:**
+  - Papel novo entra em data migration NOVA, seguindo o padrão de
+    `programs/0002_programa_inicial_e_papeis.py` (get_or_create de ContentType e
+    Permission porque o post_migrate ainda não rodou). Migração aplicada não se edita.
+  - A migration de papéis mora no app cujas permissões ela concede e que fica mais no
+    fim do grafo — aqui `academic`, porque uma migração de `programs` dependendo de
+    `academic` inverteria a direção natural das dependências.
+  - `codename.split("_", 1)[1]` deriva o nome do model do codename; funciona para todos
+    os verbos padrão, inclusive `change_user` -> `user`.
+  - O `conftest.py` da raiz já monta o usuário `secretaria` a partir do Group da
+    migration; grupo novo com fixture segue esse mesmo caminho.
+---
+
+## 2026-08-05 - US-007 (Acesso — professor e aluno aptos a entrar no sistema)
+- `User.set_initial_password(raw_password)` em `apps/accounts/models.py`: só age em conta
+  com `has_usable_password() is False`, senão `InvalidStateTransition` (409). Passa por
+  `validate_password` (AUTH_PASSWORD_VALIDATORS do settings) e converte a ValidationError
+  do Django em `DomainError(code="senha_invalida")` (400).
+- `apps/accounts/services.py` (novo): `assign_role_group(user, *, group_name, request=None)`,
+  idempotente — devolve True só quando criou o vínculo, e só então audita
+  (`accounts.user.assign_role_group`). Quem chama são os services das US-012/US-013.
+- `users_router` (tag `accounts`) no mesmo `apps/accounts/router.py`, montado em
+  `/api/v1/accounts/`: `POST /users/{id}/set-initial-password` com
+  `require_perm(request, "accounts.change_user")` e AuditLog
+  `accounts.user.set_initial_password` sem a senha no payload.
+- Schemas `SetInitialPasswordIn` e `DetailOut` em `apps/accounts/schemas.py`.
+- `make ready` verde: ruff, mypy 63 arquivos, svelte-check 0 erros, 76 testes (10 novos em
+  `apps/accounts/tests/test_acesso.py`).
+- Arquivos: backend/apps/accounts/models.py, services.py (novo), router.py, schemas.py,
+  tests/test_acesso.py (novo), backend/api.py
+- **Learnings for future iterations:**
+  - `User()` recém-instanciado tem `password=""`, e `has_usable_password()` devolve **True**
+    para string vazia (só `None` e o prefixo `!` são "inutilizáveis"). Em teste de invariante
+    sem banco, chame `set_unusable_password()` antes.
+  - App pode ter mais de um Router no mesmo `router.py`; `api.py` monta cada um no seu
+    prefixo. Não crie arquivo novo de borda só para separar prefixo.
+  - Erro de validação de senha não precisa de exceção nova: `DomainError(msg, code="...")`
+    aceita o code pelo construtor.
+  - `uv run pytest` direto pelo Bash volta vazio por causa do filtro do rtk; use
+    `rtk proxy "uv run pytest ..."` para ver a saída real.
+  - Endpoint novo muda o OpenAPI; `make gen-api` só é necessário quando alguma tela for
+    consumir (US-015/US-016) — não foi rodado aqui.
+---
+
+## 2026-08-05 - US-008 (Programa corrente da requisição)
+- `apps/core/tenancy.py` (novo): `current_program(request, *, program_id=None) -> Program`.
+  Resolve pelas Person ativas do `request.user` (`Person.objects.active().filter(user=...)`):
+  uma -> o programa dela; nenhuma -> `NoProgramInContext` (403, code `no_program`), exceto
+  superusuário que informe `program_id`; mais de uma -> exige `program_id` e confere o
+  vínculo, senão `DomainError(code="program_required")` (400). `program_id` de programa em
+  que o usuário não tem Person ativa, ou inexistente, dá 403 `no_program`.
+- `NoProgramInContext` em `apps/core/exceptions.py` (herda de DomainError, status 403).
+- `list_people` perdeu o parâmetro `program_id` de filtro livre e passou a escopar por
+  `Person.objects.for_program(current_program(request))`.
+- `make gen-api` rodado: `openapi.json`/`schema.d.ts` refletem a remoção do parâmetro e
+  também o endpoint da US-007, que ainda não tinha sido regenerado.
+- `make ready` verde: ruff, mypy 66 arquivos, svelte-check 0 erros, 86 testes (11 novos em
+  `apps/core/tests/test_tenancy.py`).
+- Arquivos: backend/apps/core/tenancy.py (novo), exceptions.py,
+  backend/apps/core/tests/ (novo), backend/apps/people/router.py,
+  frontend/src/lib/api/openapi.json, schema.d.ts, CLAUDE.md
+- **Learnings for future iterations:**
+  - O app `core` não tinha pacote `tests/`; criado com `__init__.py` (mesmo caso do
+    `programs` na US-002). Teste de helper de borda vai pelo endpoint real, não chamando
+    o helper com request falso.
+  - Efeito colateral esperado: usuário sem Person ativa (o sysadmin de dev, por exemplo)
+    agora recebe 403 em `GET /people/`. A tela `pessoas/+page.svelte` só exibe a mensagem
+    de erro; se isso incomodar no dev, crie uma Person para a conta ou passe
+    `?program_id=`.
+  - `values_list("program_id", flat=True)` num `set()` já resolve o "quantos programas
+    distintos", sem `.distinct()` nem segunda query.
+  - `make gen-api` NÃO precisa do backend de pé: usa o management command
+    `export_openapi_schema`. A instrução do CLAUDE.md ("backend precisa estar de pé") vale
+    só para o fluxo antigo.
+---
+
+## 2026-08-05 - US-009 (Endpoints — Linha de Pesquisa)
+- `apps/programs/schemas.py`: `ResearchLineIn` (só `name`/`is_active` — sem `program_id`,
+  o tenant é o da requisição), `ResearchLinePatch` (campos opcionais, aplicação parcial) e
+  `ResearchLineOut`.
+- `apps/programs/router.py` deixou de ser só leitura: `GET /research-lines/` paginado e
+  escopado por `current_program(request)`, `POST /research-lines/` (201) e
+  `PATCH /research-lines/{id}/`, cada um com `require_perm` de
+  `programs.view|add|change_researchline` e AuditLog
+  `programs.research_line.create`/`.update` dentro do mesmo `transaction.atomic()`.
+- `ResearchLine.clean()` (novo): nome duplicado no programa vira 400 `duplicate_name` em
+  vez de IntegrityError 500; a checagem exclui o próprio pk, senão PATCH que mantém o nome
+  se auto-rejeitaria.
+- `make gen-api` rodado: `openapi.json`/`schema.d.ts` já com os três caminhos novos.
+- `make ready` verde: ruff, mypy 67 arquivos, svelte-check 0 erros, 100 testes (14 novos em
+  `apps/programs/tests/test_api_linhas.py`).
+- Arquivos: backend/apps/programs/models.py, schemas.py, router.py,
+  tests/test_api_linhas.py (novo), frontend/src/lib/api/openapi.json, schema.d.ts
+- **Learnings for future iterations:**
+  - O router de `programs` já estava montado em `api.py`; endpoint novo de sub-recurso entra
+    no MESMO Router com path `/research-lines/`. Não crie Router nem prefixo novo por
+    entidade filha — vale o mesmo para US-010/US-011.
+  - Escopo em PATCH/GET-por-id vai DENTRO da busca
+    (`get_object_or_404(X.objects.for_program(program), pk=...)`), o que devolve 404 para
+    objeto de outro tenant. Testar 404 aqui, não 403 — 403 revelaria que o id existe.
+  - `save(update_fields=[])` faz o Django PULAR o save silenciosamente; com
+    `model_dump(exclude_unset=True)` vazio use `list(campos) or None`.
+  - Schema Ninja descarta campo extra do corpo, então `program_id` no payload é ignorado em
+    silêncio — vale um teste explícito de que o tenant veio de `current_program`.
+  - `pytest apps/...` só funciona rodando de `backend/`; da raiz o path não existe.
+  - Fixture de tenant: `secretaria` do conftest NÃO tem Person, então qualquer endpoint com
+    `current_program` dá 403. Crie uma `Person(program=..., user=secretaria)` na fixture do
+    teste (padrão já usado em `apps/core/tests/test_tenancy.py`).
+---
+
+## 2026-08-05 - US-010
+- Endpoints de Projeto Coletivo: GET/POST/PATCH em /api/v1/programs/collective-projects/
+- GET paginado, escopado por current_program, com filtro opcional research_line_id
+- POST/PATCH resolvem a FK research_line com get_object_or_404 antes de instanciar o model;
+  CollectiveProject.clean() barra linha de outro programa com code program_mismatch (400)
+- Arquivos: backend/apps/programs/schemas.py, router.py,
+  backend/apps/programs/tests/test_api_projetos.py (16 testes),
+  frontend/src/lib/api/openapi.json e schema.d.ts (regenerados por make gen-api)
+- **Learnings for future iterations:**
+  - Endpoint que recebe FK no corpo NÃO pode atribuir só o `<fk>_id` cru: id inexistente
+    escapa do `clean()` (ObjectDoesNotExist faz o clean sair cedo) e vira IntegrityError 500.
+    Resolver com `get_object_or_404(Model, pk=...)` no router: inexistente vira 404, e de
+    outro programa chega ao `clean()` como 400 com code estável.
+  - `save(update_fields=[...])` aceita o attname da FK ("research_line_id") — o Django
+    registra name e attname na lista de campos válidos.
+  - `make gen-api` é parte da fatia de endpoint, não só das telas: US-009 commitou
+    openapi.json + schema.d.ts junto. Precisa do backend rodando via uv (o alvo do Makefile
+    já usa `manage.py export_openapi_schema`, sem servidor de pé).
+  - Saída do pytest chega filtrada pelo proxy rtk e às vezes some ("No tests collected"
+    mesmo com testes passando). `rtk proxy "uv run pytest ..."` mostra o resultado real.
+---
+
+## 2026-08-05 - US-011 (Endpoints — Período Letivo)
+- `AcademicTermIn`/`AcademicTermPatch`/`AcademicTermOut` em `apps/programs/schemas.py`.
+  `half` tipado com a própria `AcademicTerm.Half` (IntegerChoices é IntEnum, o pydantic
+  entende): semestre 3 vira 422 na borda em vez de linha inválida no banco.
+  `AcademicTermOut.label` resolvido por `resolve_label` devolvendo `str(obj)` — o rótulo
+  canônico '2026/1' entra no contrato para nenhuma tela remontar a string.
+- Rotas `GET/POST/PATCH /api/v1/programs/terms/` no Router já existente do app `programs`.
+  Nenhuma chama `current_program`: período letivo é institucional (ADR-007 dec. 4).
+  AuditLog `programs.academic_term.create`/`.update` sai com `program=None`, correto.
+- `AcademicTerm.clean` passou a recusar ano/semestre duplicado (`code="duplicate_term"`),
+  no mesmo molde do `ResearchLine.clean` — sem isso a UniqueConstraint virava
+  IntegrityError 500.
+- Testes: `apps/programs/tests/test_api_periodos.py` (15 casos). `make ready` verde,
+  131 testes. `make gen-api` regenerou `openapi.json` e `schema.d.ts`.
+- Arquivos: `apps/programs/{models,router,schemas}.py`,
+  `apps/programs/tests/{test_models,test_api_periodos}.py`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}`.
+- **Learnings for future iterations:**
+  - Validar duplicidade no `clean()` faz o método consultar o banco, e isso QUEBRA teste
+    de invariante em memória (nível (a) da pirâmide). Foi preciso marcar
+    `test_clean_aceita_periodo_com_fim_posterior_ao_inicio` com `@pytest.mark.django_db`.
+    Os testes de rejeição continuam sem banco porque levantam antes da consulta.
+  - Entidade institucional (sem FK `program`) é exceção conhecida: rota sem
+    `current_program`, e o teste de listagem NÃO precisa da fixture `Person` no programa.
+  - `make gen-api` precisa só do backend importável (roda `export_openapi_schema`), não do
+    servidor de pé. Rodar `make ready` de novo depois dele, porque mexe em arquivo do front.
+  - O hook do rtk engole a saída do pytest ("Pytest: No tests collected"); usar
+    `rtk proxy uv run pytest ...` para ver o resultado real.
+---
+
+## 2026-08-05 - US-012 (Endpoints — Professor)
+- `apps/academic/schemas.py`: `PersonBrief` (pessoa embutida em `TeacherOut`, nunca o model
+  Person serializado direto), `TeacherIn` com `@model_validator(mode="after")` cobrando
+  person_id XOR pessoa nova (422 na borda), `TeacherPatch` e `TeacherOut` com
+  `resolve_research_line_ids`/`resolve_project_ids` para os M2M.
+- `apps/academic/services.py`: `create_teacher()` atômico — cria a Person nova via
+  `create_person_with_user` quando é o caso, `Teacher.clean()` + `save()`, `.set()` nos M2M,
+  `assign_role_group(user, group_name="Docente")` e AuditLog `academic.teacher.create`.
+  `conferir_programa()` (público, usado também pelo router) barra linha/projeto de outro
+  programa com `DomainError(code="program_mismatch")`.
+- `apps/academic/router.py`: `GET/POST/PATCH /api/v1/academic/teachers/`, paginado e escopado
+  por `current_program`, filtro opcional `category`, `require_perm` de
+  `academic.view|add|change_teacher`, AuditLog `academic.teacher.update` no PATCH.
+  Router registrado em `backend/api.py` sob `/academic/`.
+- Testes: `apps/academic/tests/test_api_professores.py` (21 casos), incluindo person_id de
+  outro programa -> 404 e linha de outro programa -> 400 program_mismatch.
+- `make gen-api` + `make ready` verde: 152 testes, mypy 70 arquivos, svelte-check 0 erros.
+- **Learnings for future iterations:**
+  - Atributo de classe sem anotação dentro de Schema do Ninja quebra o pydantic v2
+    (`non-annotated attribute`); constante auxiliar fica fora da classe.
+  - Campo `TextChoices` também serve como tipo de QUERY PARAM (`category: Teacher.Category |
+    None = None`): valor fora do enum vira 422 sem `if` no router.
+  - M2M não é validável em `clean()` (só é gravável depois do `save()`); a checagem de tenant
+    dos M2M mora no service, com o MESMO `code="program_mismatch"` das FKs.
+  - `Model.objects.create(..., **extra)` com o mesmo campo em kwarg explícito e em `extra`
+    dá `TypeError: got multiple values`; usar `extra.setdefault(...)` no helper de teste.
+  - `Person` tem `UniqueConstraint unique_conta_por_programa`: duas Person do mesmo programa
+    NÃO podem apontar para o mesmo User. Teste que precisa de pessoa com conta cria um
+    `User` próprio, não reaproveita o da fixture `secretaria`.
+  - Payload com duas caras (id existente OU dados novos) é decidido na borda com
+    `@model_validator(mode="after")`, e o service recebe `person=` ou `dados_da_pessoa=`
+    já resolvidos — o router faz o `get_object_or_404` escopado.
+---
+
+## 2026-08-05 - US-013 (Endpoints — Aluno)
+- `StudentIn`/`StudentPatch`/`StudentOut` em `apps/academic/schemas.py`: `StudentOut`
+  embute `PersonBrief` e expõe `modality` e `status` como campos separados; `StudentIn`
+  valida na borda (422) o que as CheckConstraint garantem no banco — regular exige
+  `level`, `project_id` e `admission_date` (deadline calculado no `save()` quando ausente),
+  isolada/eletiva exigem `term_id` e recusam todos os campos de grau, e trancamento só
+  vale para regular.
+- `create_student` em `services.py`: mesma regra de pessoa do `create_teacher`
+  (person_id OU pessoa nova), `clean()` antes do `save()`, `assign_role_group(...,
+  "Discente")` só quando `modality=REGULAR`, `AuditLog academic.student.create`.
+- Router: `GET/POST /api/v1/academic/students/` e `PATCH .../{id}/`, escopados por
+  `current_program`, filtros opcionais modality/status/level/term_id/advisor_id. No PATCH,
+  mudança de situação grava `status_anterior`/`status_novo` no payload da auditoria.
+- `Student._conferir_modalidade()` (model) espelha as CheckConstraint no caminho do
+  domínio: PATCH incoerente vira DomainError 400 em vez de IntegrityError 500.
+- `list_people` ganhou filtro `email` (`primary_email__iexact`), para a tela achar a
+  Person antes de esbarrar na UniqueConstraint (program, primary_email).
+- `make ready` verde: ruff, mypy 71 arquivos, svelte-check 0 erros, 179 testes.
+- Arquivos: backend/apps/academic/{models,schemas,services,router}.py,
+  backend/apps/academic/tests/test_api_alunos.py, backend/apps/people/router.py,
+  backend/apps/people/tests/test_api.py, frontend/src/lib/api/{openapi.json,schema.d.ts}
+- **Learnings for future iterations:**
+  - Ordem dentro de `clean()` importa para os testes de invariante em memória: a checagem
+    de tenant (`program_mismatch`) vem primeiro; checagem de coerência de campos entra
+    depois, senão um objeto montado só com `program`/`person` no teste nível (a) falha
+    com o código errado.
+  - Regra que a CheckConstraint garante precisa de par: validator no schema Ninja (422 no
+    POST, onde a modalidade vem no corpo) E método do model (400 no PATCH, que pode
+    quebrar a coerência sem tocar na modalidade). Só o schema deixa o PATCH virar 500.
+  - FK opcional no payload (`project_id`, `advisor_id`, `term_id`) é resolvida no router
+    com `get_object_or_404` sobre `Model.objects.for_program(program)`; id inexistente ou
+    de outro tenant dá 404 antes da escrita, e o service recebe o objeto pronto.
+  - `AcademicTerm` é institucional: a busca por `term_id` é global, sem `for_program`.
+---
+
+## 2026-08-05 - US-014
+- Tela Svelte "Estrutura do programa" (`/estrutura`): linhas de pesquisa com projetos
+  coletivos aninhados, formulário de criar/editar linha, formulário de criar/editar projeto
+  com seletor de linha, e seção de períodos letivos (ano, semestre, início, fim) exibindo o
+  rótulo canônico `label` ("2026/1") que vem do backend.
+- Botões de criar/editar só aparecem com a permissão correspondente
+  (`programs.add_*` / `programs.change_*`); Coordenação, que só tem `view_*`, vê a tela
+  inteira em modo leitura.
+- Navegação: `(app)/+layout.svelte` ganhou um `<nav>` com Pessoas e Estrutura.
+- Arquivos: `frontend/src/routes/(app)/estrutura/+page.svelte` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`.
+- `make gen-api` rodado antes de tipar (openapi.json e schema.d.ts não mudaram — US-013 já
+  os tinha regenerado). `make ready` verde: ruff, prettier/eslint, mypy, svelte-check
+  (173 arquivos, 0 erros), 179 testes.
+- **Learnings for future iterations:**
+  - `eslint-plugin-svelte` recusa `new Map()` dentro de componente
+    (`svelte/prefer-svelte-reactivity`), mesmo em `$derived.by` onde o Map é recriado a cada
+    vez. Agrupamento pai/filho na tela: usar `Record<number, T[]>`, não Map.
+  - As listagens paginadas do Ninja devolvem `{items, count}` — a tela lê
+    `resp.data?.items ?? []`, nunca `resp.data` direto.
+  - `openapi-fetch` com `bind:value` de `<select>`: valor da opção é number, então o estado
+    tem que ser `number | null` e o botão de salvar fica `disabled` enquanto for null.
+  - Verificação de UI no navegador ficou pendente: o plugin browser-use exige que alguém
+    clique em "Allow remote debugging" no Chrome, e num loop autônomo não há quem clique.
+    O caminho de dados foi verificado por HTTP (login como `secretaria`, GET/POST/PATCH das
+    três entidades, e `auth/me` da `coordenacao` mostrando só `programs.view_*`).
+  - Ambiente de verificação real deste repo: `make db` + `make up` (nginx :8080, backend em
+    container) + `make web` (Vite :5173 no host, alcançado pelo nginx via
+    `host.docker.internal`). Abrir :5173 direto quebra login/CSRF.
+  - O `docker compose exec backend` precisa de `uv run python manage.py ...` — sem o `uv run`
+    o manage.py reclama que "Django não encontrado".
+  - O model de usuário é trocado (`accounts.User`): em script de shell usar
+    `get_user_model()`, nunca `django.contrib.auth.models.User`.
+  - `ralph/CLAUDE.md`, na seção "Ambiente desta worktree", descreve portas e serviços de
+    OUTRO projeto (sanfili, :3103/:5103). Ignorar; o `CLAUDE.md` da raiz é a verdade.
+---
+
+## 2026-08-05 - US-015
+- Tela Svelte "Professores" (`/professores`): lista com filtro por categoria
+  (Permanente/Colaborador/Visitante), formulário de criar/editar com todos os campos de
+  `Teacher` e seleção múltipla (checkbox) de linhas de pesquisa e projetos coletivos.
+- Busca por e-mail antes de criar: `GET /people/?email=...` no blur do campo (e em botão
+  explícito). Achando a pessoa, a tela oferece reaproveitá-la e o POST manda `person_id`;
+  não achando, avisa que cadastrará uma nova.
+- Ação "Definir senha inicial" (US-007) só aparece com `accounts.change_user` E enquanto a
+  conta não tiver senha; depois de definida some da linha.
+- Backend: `PersonBrief` ganhou `user_id` e `needs_initial_password` (resolver que consulta
+  `user.has_usable_password()`); listagens de professor e aluno passaram a
+  `select_related("person", "person__user")` para não fazer N+1.
+- Coordenação (só `academic.view_teacher`) vê tudo em leitura: sem botão de criar, editar
+  nem de senha.
+- Arquivos: `backend/apps/academic/{schemas,router}.py`,
+  `backend/apps/academic/tests/test_api_professores.py`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}`,
+  `frontend/src/routes/(app)/professores/+page.svelte` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`.
+- `make gen-api` + `make ready` verde: ruff, prettier/eslint, mypy 71 arquivos,
+  svelte-check 175 arquivos 0 erros, 181 testes.
+- **Learnings for future iterations:**
+  - Verificação no navegador segue bloqueada no loop autônomo: o plugin browser-use responde
+    `permission-blocked: wait for the user to click Allow`. O caminho de dados foi conferido
+    por HTTP contra o nginx :8080 (login secretaria, busca por e-mail vazia e depois com
+    resultado, POST de professor com pessoa nova, set-initial-password, PATCH de categoria,
+    e `permissions` da coordenação com só `academic.view_teacher`).
+  - Senha de dev de `secretaria`/`coordenacao` neste banco: `ppgd-dev-2026` (redefinida por
+    shell nesta iteração; o banco de dev não tinha senha conhecida).
+  - O corpo do POST de professor exige `phone_number` mesmo no caminho `person_id`
+    (o schema tem default `""`, mas o TS gerado o marca como obrigatório): mandar `""`.
+  - Campo que a tela precisa e o schema de saída não tem (aqui: "esta conta já tem senha?")
+    resolve-se com resolver no schema Ninja, não com uma segunda chamada por linha da lista.
+    Resolver que navega FK pede `select_related` na listagem, senão volta o N+1.
+  - `eslint-plugin-svelte` aceita `Record<number, T>` em `$derived.by`; `new Map()` continua
+    proibido (mesma pegadinha da US-014).
+---
+
+## 2026-08-05 - US-016
+- Tela Svelte "Alunos" (`/alunos`): lista com filtros de modalidade, situação, nível e
+  período letivo (filtragem em memória); colunas de modalidade e situação separadas, nunca
+  um rótulo combinado.
+- Formulário governado pela modalidade, que é a primeira decisão da tela: REGULAR mostra
+  nível, projeto, orientador, ingresso, prazo e defesa; ISOLADA/ELETIVA mostram só o
+  período letivo. Na edição a modalidade fica travada (o PATCH não a aceita).
+- Prazo pré-preenchido com ingresso + 2 (mestrado) ou 4 anos (doutorado), recalculado ao
+  mudar nível/ingresso e congelado assim que alguém digita; na edição já entra congelado.
+- Busca por e-mail antes de criar (`GET /people/?email=`), com reaproveitamento da Person
+  via `person_id` — caminho de quem volta a cursar isolada em outro semestre.
+- "Definir senha inicial" só com `accounts.change_user` e enquanto
+  `person.needs_initial_password`. Coordenação (só `academic.view_student`) vê tudo em
+  leitura.
+- Nav do `(app)/+layout.svelte` ganhou o link "Alunos".
+- Sem mudança de backend: `openapi.json`/`schema.d.ts` já cobriam os endpoints da US-013.
+- `make ready` verde: ruff, prettier/eslint, mypy 71 arquivos, svelte-check 177 arquivos
+  0 erros, 181 testes.
+- Arquivos: `frontend/src/routes/(app)/alunos/+page.svelte` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`.
+- **Learnings for future iterations:**
+  - `eslint-plugin-svelte` também proíbe `new Date()` dentro de componente
+    (`svelte/prefer-svelte-reactivity`, "Use SvelteDate instead") — vale mesmo para um Date
+    local e descartável dentro de função pura. Aritmética de data em `YYYY-MM-DD` se faz
+    com string + `padStart`, sem instanciar Date (mesma família da pegadinha do `new Map()`).
+  - O PATCH usa `exclude_unset=True, exclude_none=True`: mandar `campo: null` não limpa
+    campo nenhum, ele é descartado. Serve para a tela mandar o payload inteiro sem
+    quebrar a coerência de modalidade, mas significa que hoje NÃO existe caminho de API
+    para apagar `defense_date`/`deadline` já gravados.
+  - `Student.person` é FK e não OneToOne (ADR-007 dec. 2): a mesma Person pode ter vários
+    Student no mesmo programa (verificado — duas isoladas, 2026/1 e 2026/2).
+  - Verificação no navegador segue bloqueada no loop autônomo (`permission-blocked: wait
+    for the user to click Allow`); o binário `browser-use` também não está no PATH do
+    shell, só o MCP. Caminho de dados conferido por HTTP no nginx :8080: POST regular com
+    prazo calculado pela tela, POST isolada, POST isolada reaproveitando `person_id`,
+    PATCH de trancamento, set-initial-password e `permissions` da coordenação.
+---

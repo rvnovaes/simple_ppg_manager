@@ -28,12 +28,24 @@
 	<div class="min-h-screen">
 		<header class="border-borda bg-papel border-b">
 			<div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
-				<a
-					href={resolve('/pessoas')}
-					class="text-tinta text-[0.9375rem] font-semibold tracking-tight"
-				>
-					PPGD Manager
-				</a>
+				<div class="flex items-center gap-6">
+					<a
+						href={resolve('/pessoas')}
+						class="text-tinta text-[0.9375rem] font-semibold tracking-tight"
+					>
+						PPGD Manager
+					</a>
+					<nav class="flex items-center gap-4">
+						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/pessoas')}>Pessoas</a>
+						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/estrutura')}>
+							Estrutura
+						</a>
+						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/professores')}>
+							Professores
+						</a>
+						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/alunos')}>Alunos</a>
+					</nav>
+				</div>
 				<div class="flex items-center gap-4">
 					<span class="etiqueta hidden sm:inline">{sessao.usuario.username}</span>
 					<button class="botao-discreto" type="button" onclick={sair}>Sair</button>

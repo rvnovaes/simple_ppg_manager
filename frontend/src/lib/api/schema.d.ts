@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/accounts/users/{user_id}/set-initial-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Initial Password */
+        post: operations["apps_accounts_router_set_initial_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/programs/": {
         parameters: {
             query?: never;
@@ -87,6 +104,111 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/programs/research-lines/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Research Lines */
+        get: operations["apps_programs_router_list_research_lines"];
+        put?: never;
+        /** Create Research Line */
+        post: operations["apps_programs_router_create_research_line"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/programs/research-lines/{research_line_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Research Line */
+        patch: operations["apps_programs_router_update_research_line"];
+        trace?: never;
+    };
+    "/programs/collective-projects/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Collective Projects */
+        get: operations["apps_programs_router_list_collective_projects"];
+        put?: never;
+        /** Create Collective Project */
+        post: operations["apps_programs_router_create_collective_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/programs/collective-projects/{collective_project_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Collective Project */
+        patch: operations["apps_programs_router_update_collective_project"];
+        trace?: never;
+    };
+    "/programs/terms/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Academic Terms */
+        get: operations["apps_programs_router_list_academic_terms"];
+        put?: never;
+        /** Create Academic Term */
+        post: operations["apps_programs_router_create_academic_term"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/programs/terms/{academic_term_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Academic Term */
+        patch: operations["apps_programs_router_update_academic_term"];
         trace?: never;
     };
     "/people/": {
@@ -122,6 +244,76 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/academic/teachers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Teachers */
+        get: operations["apps_academic_router_list_teachers"];
+        put?: never;
+        /** Create Teacher Endpoint */
+        post: operations["apps_academic_router_create_teacher_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/teachers/{teacher_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Teacher */
+        patch: operations["apps_academic_router_update_teacher"];
+        trace?: never;
+    };
+    "/academic/students/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Students */
+        get: operations["apps_academic_router_list_students"];
+        put?: never;
+        /** Create Student Endpoint */
+        post: operations["apps_academic_router_create_student_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/students/{student_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Student */
+        patch: operations["apps_academic_router_update_student"];
         trace?: never;
     };
 }
@@ -168,6 +360,19 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * DetailOut
+         * @description Resposta de operação que não devolve entidade.
+         */
+        DetailOut: {
+            /** Detail */
+            detail: string;
+        };
+        /** SetInitialPasswordIn */
+        SetInitialPasswordIn: {
+            /** Password */
+            password: string;
+        };
         /** ProgramOut */
         ProgramOut: {
             /** Id */
@@ -191,6 +396,159 @@ export interface components {
              * @default 0
              */
             offset: number;
+        };
+        /** PagedResearchLineOut */
+        PagedResearchLineOut: {
+            /** Items */
+            items: components["schemas"]["ResearchLineOut"][];
+            /** Count */
+            count: number;
+        };
+        /** ResearchLineOut */
+        ResearchLineOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** ResearchLineIn */
+        ResearchLineIn: {
+            /** Name */
+            name: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * ResearchLinePatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        ResearchLinePatch: {
+            /** Name */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** CollectiveProjectOut */
+        CollectiveProjectOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Research Line Id */
+            research_line_id: number;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** PagedCollectiveProjectOut */
+        PagedCollectiveProjectOut: {
+            /** Items */
+            items: components["schemas"]["CollectiveProjectOut"][];
+            /** Count */
+            count: number;
+        };
+        /** CollectiveProjectIn */
+        CollectiveProjectIn: {
+            /** Research Line Id */
+            research_line_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * CollectiveProjectPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        CollectiveProjectPatch: {
+            /** Research Line Id */
+            research_line_id?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** AcademicTermOut */
+        AcademicTermOut: {
+            /** Id */
+            id: number;
+            /** Year */
+            year: number;
+            /** Half */
+            half: number;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Label */
+            label: string;
+        };
+        /** PagedAcademicTermOut */
+        PagedAcademicTermOut: {
+            /** Items */
+            items: components["schemas"]["AcademicTermOut"][];
+            /** Count */
+            count: number;
+        };
+        /** AcademicTermIn */
+        AcademicTermIn: {
+            /** Year */
+            year: number;
+            half: components["schemas"]["Half"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * Half
+         * @enum {integer}
+         */
+        Half: 1 | 2;
+        /**
+         * AcademicTermPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        AcademicTermPatch: {
+            /** Year */
+            year?: number | null;
+            half?: components["schemas"]["Half"] | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /** PagedPersonOut */
         PagedPersonOut: {
@@ -237,6 +595,267 @@ export interface components {
              * @default
              */
             phone_number: string;
+        };
+        /**
+         * Category
+         * @enum {string}
+         */
+        Category: "permanent" | "collaborator" | "visiting";
+        /** PagedTeacherOut */
+        PagedTeacherOut: {
+            /** Items */
+            items: components["schemas"]["TeacherOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * PersonBrief
+         * @description Pessoa por trás do vínculo, no mínimo que a tela exibe.
+         */
+        PersonBrief: {
+            /** Id */
+            id: number;
+            /** Full Name */
+            full_name: string;
+            /** Primary Email */
+            primary_email: string;
+            /** Phone Number */
+            phone_number: string;
+            /** User Id */
+            user_id: number | null;
+            /** Needs Initial Password */
+            needs_initial_password: boolean;
+        };
+        /** TeacherOut */
+        TeacherOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            person: components["schemas"]["PersonBrief"];
+            /** Category */
+            category: string;
+            /**
+             * Accredited Since
+             * Format: date
+             */
+            accredited_since: string;
+            /** Accredited Until */
+            accredited_until: string | null;
+            /** Academic Degree */
+            academic_degree: string;
+            /** Lattes Url */
+            lattes_url: string;
+            /** Home Institution */
+            home_institution: string;
+            /** Research Line Ids */
+            research_line_ids: number[];
+            /** Project Ids */
+            project_ids: number[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * AcademicDegree
+         * @enum {string}
+         */
+        AcademicDegree: "doctorate" | "postdoctorate" | "habilitation";
+        /**
+         * TeacherIn
+         * @description Criação de professor.
+         *
+         *     O payload traz OU `person_id` (pessoa que já existe no programa) OU os
+         *     dados de uma pessoa nova — nunca os dois. Sem `program_id`: o programa
+         *     é o da requisição (current_program), nunca o que o chamador escolher.
+         */
+        TeacherIn: {
+            /** Person Id */
+            person_id?: number | null;
+            /** Full Name */
+            full_name?: string | null;
+            /** Primary Email */
+            primary_email?: string | null;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            category: components["schemas"]["Category"];
+            /**
+             * Accredited Since
+             * Format: date
+             */
+            accredited_since: string;
+            /** Accredited Until */
+            accredited_until?: string | null;
+            academic_degree: components["schemas"]["AcademicDegree"];
+            /**
+             * Lattes Url
+             * @default
+             */
+            lattes_url: string;
+            /**
+             * Home Institution
+             * @default
+             */
+            home_institution: string;
+            /**
+             * Research Line Ids
+             * @default []
+             */
+            research_line_ids: number[];
+            /**
+             * Project Ids
+             * @default []
+             */
+            project_ids: number[];
+        };
+        /**
+         * TeacherPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         *
+         *     A pessoa não muda por aqui: trocar a pessoa de um vínculo docente é
+         *     apagar o histórico de quem orientou quem, não editar um campo.
+         */
+        TeacherPatch: {
+            category?: components["schemas"]["Category"] | null;
+            /** Accredited Since */
+            accredited_since?: string | null;
+            /** Accredited Until */
+            accredited_until?: string | null;
+            academic_degree?: components["schemas"]["AcademicDegree"] | null;
+            /** Lattes Url */
+            lattes_url?: string | null;
+            /** Home Institution */
+            home_institution?: string | null;
+            /** Research Line Ids */
+            research_line_ids?: number[] | null;
+            /** Project Ids */
+            project_ids?: number[] | null;
+        };
+        /**
+         * Level
+         * @enum {string}
+         */
+        Level: "masters" | "doctorate";
+        /**
+         * Modality
+         * @enum {string}
+         */
+        Modality: "regular" | "isolated" | "elective";
+        /**
+         * Status
+         * @enum {string}
+         */
+        Status: "active" | "leave" | "excluded";
+        /** PagedStudentOut */
+        PagedStudentOut: {
+            /** Items */
+            items: components["schemas"]["StudentOut"][];
+            /** Count */
+            count: number;
+        };
+        /** StudentOut */
+        StudentOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            person: components["schemas"]["PersonBrief"];
+            /** Registration Number */
+            registration_number: string | null;
+            /** Modality */
+            modality: string;
+            /** Status */
+            status: string;
+            /** Level */
+            level: string | null;
+            /** Project Id */
+            project_id: number | null;
+            /** Advisor Id */
+            advisor_id: number | null;
+            /** Admission Date */
+            admission_date: string | null;
+            /** Deadline */
+            deadline: string | null;
+            /** Defense Date */
+            defense_date: string | null;
+            /** Term Id */
+            term_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * StudentIn
+         * @description Criação de aluno.
+         *
+         *     Como em `TeacherIn`, o payload traz OU `person_id` OU os dados de uma
+         *     pessoa nova. Os campos exigidos dependem da modalidade — é a mesma
+         *     regra das CheckConstraint de `Student`, cobrada aqui na borda.
+         */
+        StudentIn: {
+            /** Person Id */
+            person_id?: number | null;
+            /** Full Name */
+            full_name?: string | null;
+            /** Primary Email */
+            primary_email?: string | null;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            modality: components["schemas"]["Modality"];
+            /** @default active */
+            status: components["schemas"]["Status"];
+            /** Registration Number */
+            registration_number?: string | null;
+            level?: components["schemas"]["Level"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Advisor Id */
+            advisor_id?: number | null;
+            /** Admission Date */
+            admission_date?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Defense Date */
+            defense_date?: string | null;
+            /** Term Id */
+            term_id?: number | null;
+        };
+        /**
+         * StudentPatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         *
+         *     A pessoa e a modalidade ficam de fora. Trocar a pessoa apagaria o
+         *     histórico do vínculo; trocar a modalidade transformaria uma isolada em
+         *     regular por edição de campo, quando o que existe no domínio é um
+         *     vínculo novo.
+         */
+        StudentPatch: {
+            status?: components["schemas"]["Status"] | null;
+            /** Registration Number */
+            registration_number?: string | null;
+            level?: components["schemas"]["Level"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Advisor Id */
+            advisor_id?: number | null;
+            /** Admission Date */
+            admission_date?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Defense Date */
+            defense_date?: string | null;
+            /** Term Id */
+            term_id?: number | null;
         };
     };
     responses: never;
@@ -335,6 +954,32 @@ export interface operations {
             };
         };
     };
+    apps_accounts_router_set_initial_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetInitialPasswordIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailOut"];
+                };
+            };
+        };
+    };
     apps_programs_router_list_programs: {
         parameters: {
             query?: never;
@@ -355,10 +1000,230 @@ export interface operations {
             };
         };
     };
+    apps_programs_router_list_research_lines: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedResearchLineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_create_research_line: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchLineIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_update_research_line: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                research_line_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchLinePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLineOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_list_collective_projects: {
+        parameters: {
+            query?: {
+                research_line_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedCollectiveProjectOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_create_collective_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectiveProjectIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectiveProjectOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_update_collective_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collective_project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectiveProjectPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectiveProjectOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_list_academic_terms: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedAcademicTermOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_create_academic_term: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcademicTermIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicTermOut"];
+                };
+            };
+        };
+    };
+    apps_programs_router_update_academic_term: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                academic_term_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcademicTermPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicTermOut"];
+                };
+            };
+        };
+    };
     apps_people_router_list_people: {
         parameters: {
             query?: {
-                program_id?: number | null;
+                email?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -421,6 +1286,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_teachers: {
+        parameters: {
+            query?: {
+                category?: components["schemas"]["Category"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedTeacherOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_teacher_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeacherIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeacherOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_teacher: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teacher_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeacherPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeacherOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_students: {
+        parameters: {
+            query?: {
+                modality?: components["schemas"]["Modality"] | null;
+                status?: components["schemas"]["Status"] | null;
+                level?: components["schemas"]["Level"] | null;
+                term_id?: number | null;
+                advisor_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedStudentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_student_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_student: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"];
                 };
             };
         };
