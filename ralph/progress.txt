@@ -16,6 +16,8 @@ Started: qua. 05 ago 2026 19:02:47 -03
 - **Permissões nascem antes do sinal `post_migrate`** dentro de uma data migration: é obrigatório o `ContentType.objects.get_or_create` + `Permission.objects.get_or_create` do padrão, senão a permissão não existe ainda.
 - **CRUD de recurso do programa tem forma fixa** (ver `research-lines` e `disciplines` em `apps/programs/router.py`): `require_perm` na 1ª linha; `current_program(request)` na 2ª; escopo entra na busca via `get_object_or_404(Model.objects.for_program(program), pk=...)` — objeto de outro tenant vira 404, nunca 403; `model.clean()` + `save()` + `audit.record()` dentro de um só `transaction.atomic()`; PATCH usa `model_dump(exclude_unset=True, exclude_none=True)` e `save(update_fields=list(campos) or None)`.
 - **Schema `XIn` nunca tem `program_id`**: o tenant vem de `current_program`. Como o Ninja descarta campo extra, mandar `program_id` no corpo é silenciosamente ignorado — e existe teste garantindo isso em cada recurso.
+- **Bloqueio de estado do vínculo é `InvalidStateTransition` com `code` próprio**: ela já é 409 e já herda de `DomainError`, então `InvalidStateTransition("...", code="advisor_required")` entrega o 409 pedido sem inventar exceção nova. `DomainError` puro sairia 400.
+- **`Person.user` é opcional no model** (pessoa sem conta = registro histórico): `client.force_login(aluno.person.user)` quebra o mypy. Passe por um helper que faz `assert user is not None`.
 - **Suíte de API por recurso tem um conjunto canônico de casos** (copiar de `test_api_linhas.py`/`test_api_disciplinas.py`): 201+auditoria, payload não escolhe tenant, duplicata 400 com `code` estável, sem permissão 403, sem sessão 401, listagem escopada, PATCH 200+auditoria, PATCH de outro programa 404, PATCH mantendo o próprio valor único, escrita sem CSRF 403.
 
 ---
@@ -77,3 +79,20 @@ Started: qua. 05 ago 2026 19:02:47 -03
   - Busca de tela ganha o nome de parâmetro `search`; filtro de estado usa o nome do próprio campo (`is_active`). O Ninja converte `?is_active=false` para `False` sozinho; testar os dois valores separadamente evita o falso positivo de `bool("false") == True`.
   - `clean()` do model, chamado no router antes do `save()`, é o que transforma a UniqueConstraint em 400 `duplicate_code`. Sem essa linha o teste de duplicata pega IntegrityError 500.
   - O router de `programs` não tem rota de DELETE em nenhum recurso, e nenhum papel tem permissão de delete (US-003) — desativar (`is_active=False`) é a única forma de tirar algo de circulação.
+---
+
+## 2026-08-05 - US-005
+- `POST /api/v1/academic/enrollment-requests/`: `require_perm("academic.add_enrollmentadjustmentrequest")` na 1ª linha, `current_program(request)` na 2ª, aluno resolvido pela sessão, período por busca global (institucional) e disciplinas por `Discipline.objects.for_program(program)` — disciplina de outro programa vira 404.
+- Schemas explícitos em `apps/academic/schemas.py`: `EnrollmentAdjustmentItemIn/Out` (o Out traz `discipline_code`/`discipline_name` para a tela não precisar de segunda chamada ao catálogo) e `EnrollmentAdjustmentRequestIn/Out`. O `In` recusa na borda (422) lista vazia e par `(discipline_id, action)` repetido — sem isso a UniqueConstraint viraria IntegrityError 500.
+- `create_enrollment_adjustment()` em `apps/academic/services.py`: escreve solicitação + itens + AuditLog (`academic.enrollment_adjustment.create`) num `transaction.atomic()` — três models, então é service e não router (ADR-002).
+- Invariante novo no model: `Student.ensure_can_request_adjustment()` levanta `InvalidStateTransition` (409) com `code="regular_students_only"` ou `code="advisor_required"`. **A ordem é modalidade primeiro**: isolada/eletiva nem podem ter orientador (CheckConstraint), então checar orientador antes devolveria `advisor_required` a quem nunca poderia ter um.
+- `student_id` no payload é opcional e conferido: `_aluno_da_sessao()` só aceita vínculo da própria sessão, senão `NotAllowed` (403). Sem `student_id`, o regular ganha do não regular, com `first()` de fallback para que quem só tem isolada receba o 409 explicativo em vez de um 403 enganoso.
+- Arquivos alterados: `backend/apps/academic/{models,schemas,services,router}.py`, `backend/apps/academic/tests/test_api_acerto.py` (novo, 15 testes).
+- `make ready` verde: prettier/eslint/ruff, mypy (73 arquivos), svelte-check (177 arquivos, 0 erros), pytest 230 passed (eram 215).
+- Sem migração nesta US — nada aplicado no banco compartilhado :5433.
+- Sem verificação de browser: US-005 é só backend. A US-009 (tela do aluno) precisa rodar `make gen-api` antes de tipar a tela.
+- **Learnings for future iterations:**
+  - A US pedia "o Student do payload", mas o payload descrito não tinha `student_id`. Resolvido aceitando `student_id` opcional e conferindo contra a sessão — assim o teste "criar em nome de outro aluno" tem o que exercitar sem abrir brecha.
+  - Ninja valida o corpo ANTES de entrar na view, então teste de 403 por falta de permissão precisa de payload sintaticamente válido; com `items: []` a resposta é 422 e o teste não prova nada.
+  - `EnrollmentAdjustmentRequestOut.resolve_items` devolve `list(obj.items.all())`; a US-007 (listagem) deve `prefetch_related("items__discipline")`, senão são 2 consultas por solicitação.
+  - A US-006 já tem `_aluno_da_sessao` como molde para o `_orientador_da_sessao`: mesma forma (Person ativa do user + escopo de programa), com `NotAllowed` para docente que não é o advisor.

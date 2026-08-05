@@ -92,7 +92,7 @@
         "Tests pass, incluindo os dois bloqueios acima e a tentativa de criar em nome de outro aluno"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
