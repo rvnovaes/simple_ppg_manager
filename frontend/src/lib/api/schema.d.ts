@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/accounts/users/{user_id}/set-initial-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Initial Password */
+        post: operations["apps_accounts_router_set_initial_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/programs/": {
         parameters: {
             query?: never;
@@ -165,6 +182,19 @@ export interface components {
         LoginIn: {
             /** Username */
             username: string;
+            /** Password */
+            password: string;
+        };
+        /**
+         * DetailOut
+         * @description Resposta de operação que não devolve entidade.
+         */
+        DetailOut: {
+            /** Detail */
+            detail: string;
+        };
+        /** SetInitialPasswordIn */
+        SetInitialPasswordIn: {
             /** Password */
             password: string;
         };
@@ -335,6 +365,32 @@ export interface operations {
             };
         };
     };
+    apps_accounts_router_set_initial_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetInitialPasswordIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailOut"];
+                };
+            };
+        };
+    };
     apps_programs_router_list_programs: {
         parameters: {
             query?: never;
@@ -358,7 +414,6 @@ export interface operations {
     apps_people_router_list_people: {
         parameters: {
             query?: {
-                program_id?: number | null;
                 limit?: number;
                 offset?: number;
             };

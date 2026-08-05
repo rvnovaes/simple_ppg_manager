@@ -230,6 +230,12 @@ Cada app Django tem: `models.py`, `admin.py`, `router.py`, `schemas.py`,
 
   Rota sem checagem explícita de permissão **não passa em review**
   (exceto as marcadas `# público` com justificativa).
+- **Escopo de tenant**: toda listagem/consulta de dado de negócio escopa
+  por `current_program(request)` (`apps/core/tenancy.py`), o segundo
+  helper único do projeto, chamado logo depois do `require_perm`. O
+  programa sai da(s) `Person` ativa(s) do usuário; nunca de um
+  `program_id` que o chamador escolhe livremente — filtro opcional vaza o
+  tenant inteiro para quem omitir o parâmetro.
 - **Admin restrito a superusuários** (ADR-006). A trava é de código, não
   de combinado: `admin.site.has_permission` exige `is_superuser`, então
   `is_staff` sozinho não abre a porta. Sempre atrás de VPN/rede interna em

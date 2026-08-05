@@ -9,6 +9,11 @@
 - Todo ModelAdmin de dado de negócio herda de `apps.core.admin.AuditedModelAdmin`.
 - Regra de negócio em método do model; `DomainError`/subclasses de `apps.core.exceptions`;
   router chama `apps.core.permissions.require_perm(request, "app.codename")` na primeira linha.
+- Escopo de tenant: listagem de dado de negócio usa
+  `apps.core.tenancy.current_program(request)` logo depois do `require_perm`, nunca um
+  `program_id` opcional de filtro. Assina
+  `current_program(request, *, program_id=None)`; sem o argumento ele lê `program_id` da
+  query string.
 - Ambiente: `make db` sobe o Postgres (host 5433) — pytest e migrate precisam dele.
   `make ready` (lint + typecheck + test) é pré-condição de commit.
 
@@ -201,4 +206,36 @@ Started: qua. 05 ago 2026 16:58:54 -03
     `rtk proxy "uv run pytest ..."` para ver a saída real.
   - Endpoint novo muda o OpenAPI; `make gen-api` só é necessário quando alguma tela for
     consumir (US-015/US-016) — não foi rodado aqui.
+---
+
+## 2026-08-05 - US-008 (Programa corrente da requisição)
+- `apps/core/tenancy.py` (novo): `current_program(request, *, program_id=None) -> Program`.
+  Resolve pelas Person ativas do `request.user` (`Person.objects.active().filter(user=...)`):
+  uma -> o programa dela; nenhuma -> `NoProgramInContext` (403, code `no_program`), exceto
+  superusuário que informe `program_id`; mais de uma -> exige `program_id` e confere o
+  vínculo, senão `DomainError(code="program_required")` (400). `program_id` de programa em
+  que o usuário não tem Person ativa, ou inexistente, dá 403 `no_program`.
+- `NoProgramInContext` em `apps/core/exceptions.py` (herda de DomainError, status 403).
+- `list_people` perdeu o parâmetro `program_id` de filtro livre e passou a escopar por
+  `Person.objects.for_program(current_program(request))`.
+- `make gen-api` rodado: `openapi.json`/`schema.d.ts` refletem a remoção do parâmetro e
+  também o endpoint da US-007, que ainda não tinha sido regenerado.
+- `make ready` verde: ruff, mypy 66 arquivos, svelte-check 0 erros, 86 testes (11 novos em
+  `apps/core/tests/test_tenancy.py`).
+- Arquivos: backend/apps/core/tenancy.py (novo), exceptions.py,
+  backend/apps/core/tests/ (novo), backend/apps/people/router.py,
+  frontend/src/lib/api/openapi.json, schema.d.ts, CLAUDE.md
+- **Learnings for future iterations:**
+  - O app `core` não tinha pacote `tests/`; criado com `__init__.py` (mesmo caso do
+    `programs` na US-002). Teste de helper de borda vai pelo endpoint real, não chamando
+    o helper com request falso.
+  - Efeito colateral esperado: usuário sem Person ativa (o sysadmin de dev, por exemplo)
+    agora recebe 403 em `GET /people/`. A tela `pessoas/+page.svelte` só exibe a mensagem
+    de erro; se isso incomodar no dev, crie uma Person para a conta ou passe
+    `?program_id=`.
+  - `values_list("program_id", flat=True)` num `set()` já resolve o "quantos programas
+    distintos", sem `.distinct()` nem segunda query.
+  - `make gen-api` NÃO precisa do backend de pé: usa o management command
+    `export_openapi_schema`. A instrução do CLAUDE.md ("backend precisa estar de pé") vale
+    só para o fluxo antigo.
 ---

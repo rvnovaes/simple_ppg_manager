@@ -152,7 +152,7 @@
         "Tests pass: usuário com uma Person lista só o programa dele; usuário sem Person recebe 403 com code='no_program'; usuário com duas Person e sem program_id recebe 400"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "US nova. Toda rota de listagem criada a partir da US-009 escopa por este helper."
     },
     {

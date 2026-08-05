@@ -118,6 +118,53 @@
         ]
       }
     },
+    "/accounts/users/{user_id}/set-initial-password": {
+      "post": {
+        "operationId": "apps_accounts_router_set_initial_password",
+        "summary": "Set Initial Password",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetInitialPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/programs/": {
       "get": {
         "operationId": "apps_programs_router_list_programs",
@@ -154,22 +201,6 @@
         "operationId": "apps_people_router_list_people",
         "summary": "List People",
         "parameters": [
-          {
-            "in": "query",
-            "name": "program_id",
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Program Id"
-            },
-            "required": false
-          },
           {
             "in": "query",
             "name": "limit",
@@ -389,6 +420,33 @@
           "password"
         ],
         "title": "LoginIn",
+        "type": "object"
+      },
+      "DetailOut": {
+        "description": "Resposta de operação que não devolve entidade.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "DetailOut",
+        "type": "object"
+      },
+      "SetInitialPasswordIn": {
+        "properties": {
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "SetInitialPasswordIn",
         "type": "object"
       },
       "ProgramOut": {
