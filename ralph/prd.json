@@ -61,7 +61,7 @@
       "title": "Transições de estado do requerimento",
       "description": "As a developer, I need the request's state changes to be model methods that refuse invalid transitions, following the Person.archive() pattern.",
       "acceptanceCriteria": [
-        "submit(*, at): só a partir de DRAFT; exige cycle.submission_open(at) senão DomainError code='submission_window_closed'; exige entre 1 e 2 itens senão DomainError code='invalid_item_count'; exige documentação obrigatória completa senão DomainError code='missing_documents'; carimba submitted_at e vai para SUBMITTED",
+        "submit(*, at): só a partir de DRAFT; exige cycle.submission_open(at) senão DomainError code='submission_window_closed'; carimba submitted_at e vai para SUBMITTED",
         "defer(*, note=''): só a partir de SUBMITTED; vai para DEFERRED e carimba decided_at; se is_ufmg_staff for True define payment_status=EXEMPT, senão mantém PENDING",
         "reject(*, note): só a partir de SUBMITTED; note obrigatório (DomainError code='rejection_requires_note'); vai para REJECTED e carimba decided_at",
         "cancel(*, note): a partir de SUBMITTED ou DEFERRED; vai para CANCELLED — é o que devolve a vaga quando o deferido não paga; não existe expiração automática",
@@ -69,11 +69,11 @@
         "enroll(): só a partir de DEFERRED e com payment_status em (PAID, EXEMPT), senão DomainError code='payment_required'; vai para ENROLLED",
         "Toda transição inválida levanta InvalidStateTransition (409), no padrão de Person.archive() em apps/people/models.py; nenhum try/except de negócio no router",
         "Typecheck passes",
-        "Tests pass — invariantes em memória, sem banco: submeter fora da janela; submeter com 0 ou 3 itens; deferir requerimento já decidido; recusar sem motivo; recorrer de requerimento deferido; efetivar sem pagamento; efetivar isento deve passar"
+        "Tests pass — invariantes em memória, sem banco: submeter fora da janela; deferir requerimento já decidido; recusar sem motivo; recorrer de requerimento deferido; efetivar sem pagamento; efetivar isento deve passar"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "As duas cobranças de submit() que dependem de model posterior foram movidas: a contagem de 1 a 2 itens (code='invalid_item_count') para a US-005 e a documentação obrigatória (code='missing_documents') para a US-006. Escritas aqui, tocariam acessor reverso de model inexistente — mesma armadilha de seats_taken() na US-002. appeal() exige note com code='appeal_requires_note'."
     },
     {
       "id": "US-005",
@@ -85,7 +85,7 @@
         "UniqueConstraint em (offering, rank) com condition=Q(rank__isnull=False) — duas pessoas não ocupam a mesma posição na mesma oferta",
         "Método clean() garante request.cycle == offering.cycle; levanta DomainError com code='cycle_mismatch'",
         "Métodos DisciplineOffering.seats_taken() (conta os itens cujo requerimento está DEFERRED naquela oferta) e seats_available() (seats - seats_taken()) — critério herdado da US-002, adiado até aqui porque depende deste model",
-        "O limite de no máximo 2 itens por requerimento é validado em IsolatedEnrollmentRequest.submit() (US-004), não por constraint de banco — depende de contagem de linhas relacionadas",
+        "IsolatedEnrollmentRequest.submit() passa a exigir entre 1 e 2 itens, senão DomainError code='invalid_item_count' — critério herdado da US-004, adiado até aqui porque depende deste model; é validação de método, não constraint de banco (depende de contagem de linhas relacionadas)",
         "Migração criada e revisada (arquivo lido, não só gerado)",
         "Typecheck passes",
         "Tests pass (com banco: item duplicado na mesma oferta é rejeitado; dois itens com o mesmo rank na mesma oferta são rejeitados)"
@@ -102,6 +102,7 @@
         "Model RequestDocument no app academic: request (FK, on_delete=CASCADE, related_name='documents'), kind (TextChoices), file (FileField com upload_to particionado por ciclo e requerimento), uploaded_at (auto_now_add)",
         "kind é TextChoices IDENTITY/DIPLOMA/LATTES/ADDRESS/PAYSLIP/SUPERVISOR_AUTH/PAYMENT_RECEIPT = 'Identidade e CPF'/'Diploma de graduação ou certidão de conclusão'/'Currículo Lattes em PDF'/'Comprovante de endereço'/'Contracheque de servidor da UFMG'/'Autorização da chefia'/'Comprovante de pagamento da GRU'",
         "UniqueConstraint em (request, kind) — um documento por tipo",
+        "IsolatedEnrollmentRequest.submit() passa a exigir documentação obrigatória completa, senão DomainError code='missing_documents' — critério herdado da US-004, adiado até aqui porque depende deste model",
         "Método IsolatedEnrollmentRequest.missing_documents() devolve os tipos obrigatórios ainda ausentes: IDENTITY, DIPLOMA, LATTES e ADDRESS sempre; mais PAYSLIP e SUPERVISOR_AUTH quando is_ufmg_staff é True; PAYMENT_RECEIPT NÃO conta para a submissão",
         "Permissão customizada download_requestdocument declarada em Meta.permissions — o download é separado de ver o requerimento",
         "Migração criada e revisada (arquivo lido, não só gerado)",

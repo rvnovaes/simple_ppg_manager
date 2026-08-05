@@ -992,3 +992,139 @@ class IsolatedEnrollmentRequest(models.Model):
                 "O ciclo e o candidato do requerimento precisam ser do mesmo programa.",
                 code="program_mismatch",
             )
+
+    def submit(self, *, at: datetime) -> None:
+        """Inscreve o candidato: Rascunho vira Inscrito.
+
+        `at` vem por parâmetro, e não de `timezone.now()` aqui dentro,
+        porque a janela é do edital e o teste precisa poder escolher o
+        instante sem congelar o relógio — mesmo motivo de
+        `IsolatedEnrollmentCycle.submission_open()`.
+
+        Faltam ainda duas cobranças deste passo, ambas dependentes de
+        models que não existem: a contagem de 1 a 2 itens
+        (`invalid_item_count`, US-005) e a documentação obrigatória
+        completa (`missing_documents`, US-006). Cada uma entra na US que
+        cria o model de que depende — escrita aqui, tocaria um acessor
+        reverso inexistente e não passaria no mypy nem em runtime.
+        """
+        self._exigir_status(
+            self.Status.DRAFT,
+            "Só um requerimento em rascunho pode ser inscrito.",
+        )
+        if not self.cycle.submission_open(at):
+            raise DomainError(
+                "As inscrições deste ciclo não estão abertas.",
+                code="submission_window_closed",
+            )
+        self.status = self.Status.SUBMITTED
+        self.submitted_at = at
+
+    def defer(self, *, note: str = "") -> None:
+        """Defere o requerimento.
+
+        A nota é opcional: quem defere não deve satisfação; quem indefere,
+        sim. Servidor da UFMG nasce isento aqui — a isenção é consequência
+        automática do vínculo declarado, e não uma segunda decisão da
+        secretaria que ela poderia esquecer de tomar.
+        """
+        self._exigir_status(
+            self.Status.SUBMITTED,
+            "Só um requerimento inscrito pode ser deferido.",
+        )
+        self.status = self.Status.DEFERRED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+        if self.is_ufmg_staff:
+            self.payment_status = self.PaymentStatus.EXEMPT
+
+    def reject(self, *, note: str) -> None:
+        """Indefere o requerimento, com motivo obrigatório.
+
+        O motivo é o que o candidato lê na tela dele e o que ele contesta
+        no recurso; indeferir sem motivo é uma porta fechada sem
+        explicação e um recurso impossível de escrever.
+        """
+        self._exigir_status(
+            self.Status.SUBMITTED,
+            "Só um requerimento inscrito pode ser indeferido.",
+        )
+        if not note.strip():
+            raise DomainError(
+                "Indeferir exige um motivo.",
+                code="rejection_requires_note",
+            )
+        self.status = self.Status.REJECTED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+
+    def cancel(self, *, note: str = "") -> None:
+        """Cancela o requerimento e, com ele, devolve a vaga.
+
+        É a única saída de um deferido que não pagou: não existe
+        expiração automática no projeto (nada roda sozinho), então a vaga
+        só volta para a fila quando a secretaria cancela explicitamente.
+        Cancelar um inscrito é a desistência do candidato antes da
+        decisão.
+        """
+        if self.status not in (self.Status.SUBMITTED, self.Status.DEFERRED):
+            raise InvalidStateTransition(
+                "Só um requerimento inscrito ou deferido pode ser cancelado."
+            )
+        self.status = self.Status.CANCELLED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+
+    def appeal(self, *, note: str, at: datetime) -> None:
+        """Interpõe recurso contra o indeferimento.
+
+        Não mexe no `status` de propósito: o recurso é pedido de
+        rejulgamento, não deferimento automático. O requerimento continua
+        Indeferido até a secretaria decidir de novo — e é o `appealed_at`
+        que a coloca na fila de rejulgamento.
+        """
+        self._exigir_status(
+            self.Status.REJECTED,
+            "Só cabe recurso de requerimento indeferido.",
+        )
+        if not self.cycle.appeal_open(at):
+            raise DomainError(
+                "A janela de recurso deste ciclo não está aberta.",
+                code="appeal_window_closed",
+            )
+        if not note.strip():
+            raise DomainError(
+                "O recurso exige as razões do pedido.",
+                code="appeal_requires_note",
+            )
+        self.appeal_note = note
+        self.appealed_at = at
+
+    def enroll(self) -> None:
+        """Efetiva a matrícula: Deferido vira Matriculado.
+
+        Deferimento e pagamento são atos de pessoas diferentes e é a
+        combinação dos dois que libera a matrícula. Isento passa sem
+        comprovante nenhum — é o servidor da UFMG, que já pagou com o
+        contracheque que anexou.
+        """
+        self._exigir_status(
+            self.Status.DEFERRED,
+            "Só um requerimento deferido pode virar matrícula.",
+        )
+        if self.payment_status not in (
+            self.PaymentStatus.PAID,
+            self.PaymentStatus.EXEMPT,
+        ):
+            raise DomainError(
+                "A taxa do requerimento ainda não foi paga.",
+                code="payment_required",
+            )
+        self.status = self.Status.ENROLLED
+
+    def _exigir_status(self, esperado: str, mensagem: str) -> None:
+        """Transição a partir do estado errado é 409, no padrão de
+        `Person.archive()`: erro do chamador, não no-op silencioso.
+        """
+        if self.status != esperado:
+            raise InvalidStateTransition(mensagem)

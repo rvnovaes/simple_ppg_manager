@@ -31,6 +31,8 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Ciclo de isolada (`IsolatedEnrollmentCycle`)**: as janelas do edital são métodos do model (`submission_open(at)`, `appeal_open(at)`), sempre com `at` recebido por parâmetro — nunca `timezone.now()` lá dentro. É o que permite testar a janela em memória, sem banco e sem congelar o relógio.
 - **Método que depende de model ainda não escrito não se antecipa**: com `django-stubs` ligado, o mypy recusa acessor reverso (`self.items`) de um model que não existe, e o método quebraria em runtime de qualquer jeito. Quando um critério de US anterior depende de model de US posterior, mova o critério na `prd.json` para a US que cria o model, em vez de escrever código morto ou `type: ignore`.
 - **`clean()` que compara programa de vários relacionados** (ver `DisciplineOffering.clean()`): itera os nomes de campo, pega cada um com `getattr` dentro de `try/except ObjectDoesNotExist` (relacionado ausente é cobrança da borda, não do invariante) e compara os `program_id` com o próprio. Um único `code="program_mismatch"` para todos.
+- **Transição de estado é método do model que NÃO salva**: muda os campos em memória e devolve; quem persiste é o router, com `save(update_fields=[...])` no mesmo `transaction.atomic()` do `audit.record()`. Estado errado levanta `InvalidStateTransition` (409); regra violada dentro do estado certo (janela, motivo, pagamento) levanta `DomainError` (400) com `code` próprio. Ver `IsolatedEnrollmentRequest.submit()/defer()/reject()/cancel()/appeal()/enroll()`.
+- **Instante do edital entra por parâmetro; instante da decisão sai de `timezone.now()`**: `submit(at=...)`/`appeal(at=...)` recebem o momento porque a janela é do calendário e o teste precisa escolhê-lo; `defer()`/`reject()`/`cancel()` carimbam `decided_at` com o agora do servidor.
 - **Ordem cronológica é invariante de `clean()`, não CheckConstraint**: `DomainError(code="invalid_cycle_dates")` sai 400 (erro do formulário da secretaria). A convenção do calendário é `<` dentro de cada janela (janela de duração zero não aceita ninguém) e `<=` entre o fechamento de uma fase e a abertura da seguinte (encadear no mesmo instante é legítimo).
 
 ---
@@ -75,4 +77,19 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - As transições de estado (`submit`, `defer`, `reject`, `cancel`, `appeal`, `enroll`) são a US-004 e ainda NÃO existem: US-004 só acrescenta métodos, sem migração. `submit()` vai depender de `missing_documents()` (US-006) e da contagem de `items` (US-005) — ambos posteriores. Mesma armadilha da US-002: método que toca acessor reverso de model inexistente não passa no mypy. Se a US-004 esbarrar nisso, mova o critério para a US que cria o model, como já foi feito com `seats_taken()`.
   - `payment_status` é campo separado de propósito: deferimento é ato da secretaria, pagamento é ato do candidato, e é a combinação que libera `enroll()`.
   - Sem verificação de browser: US-003 não toca UI.
+---
+
+## 2026-08-05 - US-004
+- Implementadas as transições de estado de `IsolatedEnrollmentRequest` (`backend/apps/academic/models.py`), todas como método do model no padrão de `Person.archive()`, sem migração: `submit(*, at)`, `defer(*, note='')`, `reject(*, note)`, `cancel(*, note='')`, `appeal(*, note, at)` e `enroll()`, mais o helper privado `_exigir_status()`.
+- `submit()` exige DRAFT e `cycle.submission_open(at)` (`DomainError` `submission_window_closed`) e carimba `submitted_at`. `defer()` exige SUBMITTED, carimba `decided_at` e define `payment_status=EXEMPT` quando `is_ufmg_staff`. `reject()` exige note (`rejection_requires_note`). `cancel()` aceita SUBMITTED ou DEFERRED — é o que devolve a vaga, não existe expiração automática. `appeal()` exige REJECTED, janela aberta (`appeal_window_closed`) e note (`appeal_requires_note`), carimba `appealed_at` e NÃO muda o status. `enroll()` exige DEFERRED e `payment_status` em (PAID, EXEMPT), senão `payment_required`.
+- Transição a partir do estado errado é `InvalidStateTransition` (409); janela, motivo e pagamento são `DomainError` (400) — o handler central converte, nenhum try/except de negócio.
+- Arquivos alterados: `backend/apps/academic/models.py`, `backend/apps/academic/tests/test_models.py` (18 testes novos, todos em memória), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (75 arquivos), svelte-check (185 arquivos, 0 erros), pytest 297 passed.
+- Sem migração e sem `make migrate`: a US só acrescenta métodos.
+- **Learnings for future iterations:**
+  - **Dois critérios de `submit()` foram movidos na `prd.json`**, pela terceira vez com o mesmo motivo: a contagem de 1 a 2 itens (`invalid_item_count`) foi para a **US-005** e a documentação obrigatória (`missing_documents`) para a **US-006**. Quem pegar essas US tem de acrescentar a cobrança dentro de `submit()`, além do model. O docstring de `submit()` registra as duas pendências.
+  - `appeal()` ganhou `code='appeal_requires_note'` (a `prd.json` só dizia "note obrigatório"). Reusar `rejection_requires_note` confundiria o front: são dois formulários distintos.
+  - Transição de estado **não salva**: o método muda os campos em memória e quem persiste é o router, com `save(update_fields=[...])` dentro do mesmo `transaction.atomic()` do `audit.record()`. É o que permite testar o invariante sem banco.
+  - `at` por parâmetro em `submit()`/`appeal()` (nunca `timezone.now()` dentro) é o que dispensa congelar o relógio no teste; já `defer()`/`reject()`/`cancel()` carimbam com `timezone.now()`, porque o instante da decisão é o agora do servidor e não uma data do edital.
+  - Sem verificação de browser: US-004 não toca UI.
 ---

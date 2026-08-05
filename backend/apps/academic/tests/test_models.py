@@ -370,3 +370,186 @@ def test_clean_rejeita_ciclo_de_outro_programa_no_requerimento():
 def test_clean_do_requerimento_sem_relacionado_obrigatorio_nao_levanta():
     """Obrigatoriedade é da borda e do NOT NULL, não deste invariante."""
     IsolatedEnrollmentRequest(program=Program(pk=1, acronym="PPGD")).clean()
+
+
+# Transições do requerimento de isolada (US-004). O instante entra por
+# parâmetro em submit()/appeal(), então a janela é exercitada sem
+# congelar o relógio: DENTRO_DA_INSCRICAO e DENTRO_DO_RECURSO são
+# coerentes com o calendário de `_ciclo()`.
+DENTRO_DA_INSCRICAO = datetime(2026, 2, 5, tzinfo=UTC)
+FORA_DA_INSCRICAO = datetime(2026, 2, 20, tzinfo=UTC)
+DENTRO_DO_RECURSO = datetime(2026, 2, 13, tzinfo=UTC)
+FORA_DO_RECURSO = datetime(2026, 2, 20, tzinfo=UTC)
+
+
+def test_inscrever_rascunho_dentro_da_janela_carimba_e_muda_status():
+    requerimento = _requerimento()
+
+    requerimento.submit(at=DENTRO_DA_INSCRICAO)
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.SUBMITTED
+    assert requerimento.submitted_at == DENTRO_DA_INSCRICAO
+
+
+def test_inscrever_fora_da_janela_levanta():
+    requerimento = _requerimento()
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.submit(at=FORA_DA_INSCRICAO)
+
+    assert exc.value.code == "submission_window_closed"
+    assert exc.value.status_code == 400
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.DRAFT
+
+
+def test_inscrever_requerimento_ja_inscrito_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.SUBMITTED)
+
+    with pytest.raises(InvalidStateTransition) as exc:
+        requerimento.submit(at=DENTRO_DA_INSCRICAO)
+
+    assert exc.value.status_code == 409
+
+
+def test_deferir_inscrito_carimba_a_decisao_e_mantem_pagamento_pendente():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.SUBMITTED)
+
+    requerimento.defer(note="Documentação em ordem.")
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.DEFERRED
+    assert requerimento.decision_note == "Documentação em ordem."
+    assert requerimento.decided_at is not None
+    assert (
+        requerimento.payment_status == IsolatedEnrollmentRequest.PaymentStatus.PENDING
+    )
+
+
+def test_deferir_servidor_da_ufmg_nasce_isento():
+    """A isenção é consequência do vínculo, não uma segunda decisão."""
+    requerimento = _requerimento(
+        status=IsolatedEnrollmentRequest.Status.SUBMITTED,
+        is_ufmg_staff=True,
+    )
+
+    requerimento.defer()
+
+    assert requerimento.payment_status == IsolatedEnrollmentRequest.PaymentStatus.EXEMPT
+
+
+def test_deferir_requerimento_ja_decidido_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)
+
+    with pytest.raises(InvalidStateTransition):
+        requerimento.defer()
+
+
+def test_indeferir_inscrito_com_motivo_carimba_a_decisao():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.SUBMITTED)
+
+    requerimento.reject(note="Falta o diploma.")
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.REJECTED
+    assert requerimento.decision_note == "Falta o diploma."
+    assert requerimento.decided_at is not None
+
+
+def test_indeferir_sem_motivo_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.SUBMITTED)
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.reject(note="   ")
+
+    assert exc.value.code == "rejection_requires_note"
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.SUBMITTED
+
+
+def test_cancelar_deferido_devolve_a_vaga():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)
+
+    requerimento.cancel(note="Não pagou a GRU no prazo.")
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.CANCELLED
+    assert requerimento.decided_at is not None
+
+
+def test_cancelar_rascunho_levanta():
+    with pytest.raises(InvalidStateTransition):
+        _requerimento().cancel()
+
+
+def test_recorrer_de_indeferido_na_janela_nao_muda_o_status():
+    """Recurso é pedido de rejulgamento, não deferimento automático."""
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.REJECTED)
+
+    requerimento.appeal(note="Anexo o diploma que faltava.", at=DENTRO_DO_RECURSO)
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.REJECTED
+    assert requerimento.appeal_note == "Anexo o diploma que faltava."
+    assert requerimento.appealed_at == DENTRO_DO_RECURSO
+
+
+def test_recorrer_fora_da_janela_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.REJECTED)
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.appeal(note="Anexo o diploma.", at=FORA_DO_RECURSO)
+
+    assert exc.value.code == "appeal_window_closed"
+
+
+def test_recorrer_de_requerimento_deferido_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)
+
+    with pytest.raises(InvalidStateTransition):
+        requerimento.appeal(note="Quero mais uma disciplina.", at=DENTRO_DO_RECURSO)
+
+
+def test_recorrer_sem_razoes_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.REJECTED)
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.appeal(note="", at=DENTRO_DO_RECURSO)
+
+    assert exc.value.code == "appeal_requires_note"
+
+
+def test_efetivar_deferido_e_pago_vira_matriculado():
+    requerimento = _requerimento(
+        status=IsolatedEnrollmentRequest.Status.DEFERRED,
+        payment_status=IsolatedEnrollmentRequest.PaymentStatus.PAID,
+    )
+
+    requerimento.enroll()
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.ENROLLED
+
+
+def test_efetivar_deferido_isento_passa_sem_comprovante():
+    requerimento = _requerimento(
+        status=IsolatedEnrollmentRequest.Status.DEFERRED,
+        payment_status=IsolatedEnrollmentRequest.PaymentStatus.EXEMPT,
+    )
+
+    requerimento.enroll()
+
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.ENROLLED
+
+
+def test_efetivar_sem_pagamento_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.enroll()
+
+    assert exc.value.code == "payment_required"
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.DEFERRED
+
+
+def test_efetivar_requerimento_inscrito_levanta():
+    requerimento = _requerimento(
+        status=IsolatedEnrollmentRequest.Status.SUBMITTED,
+        payment_status=IsolatedEnrollmentRequest.PaymentStatus.PAID,
+    )
+
+    with pytest.raises(InvalidStateTransition):
+        requerimento.enroll()
