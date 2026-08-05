@@ -58,4 +58,56 @@ Started: qua. 05 ago 2026 16:58:54 -03
     `__init__.py`, senão o pytest não coleta.
   - `make ready` roda `ruff format` e pode reformatar arquivos recém-escritos; escrever
     já dentro de 88 colunas evita o retrabalho.
+
+## 2026-08-05 - US-003 (Model de Período Letivo)
+- `AcademicTerm` no app `programs`, INSTITUCIONAL — sem FK `program` (ADR-007 dec. 4,
+  única exceção): `year`, `half` (IntegerChoices 1/2), `starts_on`, `ends_on`,
+  `is_active`, `AcademicTermQuerySet.active()`.
+- UniqueConstraint (year, half) com nome `unique_periodo_por_ano_e_semestre`.
+- `__str__` devolve o rótulo canônico `2026/1`.
+- `clean()` levanta `DomainError(code="invalid_term_range")` quando
+  `ends_on <= starts_on` (fim igual ao início também é rejeitado).
+- `AcademicTermAdmin(AuditedModelAdmin)` sem filtro por programa.
+- Migração `0005_academicterm.py` gerada, lida (só CreateModel, sem risco) e aplicada.
+- `make ready` verde: ruff, mypy 50 arquivos, svelte-check 0 erros, 33 testes.
+- Arquivos: backend/apps/programs/models.py, admin.py, tests/test_models.py,
+  migrations/0005_academicterm.py
+- **Learnings for future iterations:**
+  - `models.IntegerChoices` aninhada no model (`class Half`) é o padrão para escolha
+    numérica; passar a classe direto em `choices=Half` (Django 5 aceita, sem `.choices`).
+  - `clean()` de campo obrigatório precisa do guard `if self.x and self.y` — instância
+    em memória sem os campos preenchidos tem `None` e a comparação de datas estouraria
+    `TypeError` em vez do `DomainError`.
+  - Entidade sem FK `program` gera AuditLog com `program=None` — correto aqui, mas é o
+    único caso; qualquer outro model novo leva a FK.
+---
+
+## 2026-08-05 - US-004 (App academic e model Teacher)
+- App `apps.academic` criado com a estrutura padrão (`models.py`, `admin.py`,
+  `router.py`, `schemas.py`, `services.py`, `migrations/`, `tests/`) e registrado em
+  `INSTALLED_APPS` depois de `apps.programs` e `apps.people`.
+- `Teacher`: FK `program` (PROTECT, related_name `teachers`), OneToOne `person`
+  (PROTECT, related_name `teacher_profile` — ADR-007 dec. 2, ao contrário de
+  `Student.person`), `category` (TextChoices CAPES), `accredited_since`,
+  `accredited_until` (null), `academic_degree` (TextChoices), `lattes_url`,
+  `home_institution`, M2M `research_lines` e `projects`, carimbos técnicos.
+- `clean()` levanta `DomainError(code="program_mismatch")` quando
+  `program_id != person.program_id`; `TeacherQuerySet.for_program()`.
+- `TeacherAdmin(AuditedModelAdmin)` com `raw_id_fields=("person",)` e
+  `filter_horizontal` nos dois M2M.
+- Migração `academic/0001_initial.py` gerada, lida (CreateModel + as duas tabelas
+  M2M, sem risco) e aplicada.
+- Testes em memória em `apps/academic/tests/test_models.py` (3 casos).
+- `make ready` verde: ruff, mypy 59 arquivos, svelte-check 0 erros, 36 testes.
+- Arquivos: backend/apps/academic/* (novo), backend/config/settings/base.py
+- **Learnings for future iterations:**
+  - `router.py`/`schemas.py`/`services.py` do app novo nasceram com docstring só. Um
+    `Router()` vazio registrado em `backend/api.py` publicaria uma tag sem operação no
+    OpenAPI e sujaria o `schema.d.ts`; o registro é da US-012.
+  - `makemigrations <app>` (com o nome do app) evita arrastar migração pendente de
+    outro app para o commit.
+  - M2M para model de outro app usa string `"programs.ResearchLine"` — importar a
+    classe criaria ciclo quando `programs` um dia precisar olhar para `academic`.
+  - `filter_horizontal` é o par natural de `raw_id_fields` no Admin: sem ele o M2M
+    vira um `<select multiple>` com a tabela inteira.
 ---

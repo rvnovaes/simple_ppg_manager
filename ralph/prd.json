@@ -51,7 +51,7 @@
         "Tests pass (teste em memória: __str__ formata '2026/1'; clean() rejeita ends_on anterior a starts_on)"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Entidade nova introduzida pelo ADR-007. Student (US-005) depende dela."
     },
     {
@@ -68,8 +68,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "App academic + Teacher + admin + migração 0001_initial. router/schemas/services criados vazios (docstring só); o router entra na NinjaAPI raiz na US-012. make ready verde."
     },
     {
       "id": "US-005",
