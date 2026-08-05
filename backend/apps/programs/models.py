@@ -159,6 +159,72 @@ class CollectiveProject(models.Model):
             )
 
 
+class DisciplineQuerySet(models.QuerySet):
+    def active(self) -> "DisciplineQuerySet":
+        return self.filter(is_active=True)
+
+    def for_program(self, program: Program) -> "DisciplineQuerySet":
+        return self.filter(program=program)
+
+
+class Discipline(models.Model):
+    """Disciplina do catálogo do programa.
+
+    Catálogo de referência: é dele que o aluno escolhe o que incluir ou
+    excluir no acerto de matrícula. Desativar (is_active=False) em vez de
+    apagar — disciplina antiga continua sendo a disciplina citada em
+    acertos já decididos.
+    """
+
+    program = models.ForeignKey(
+        Program,
+        on_delete=models.PROTECT,
+        related_name="disciplines",
+        verbose_name="programa",
+    )
+    code = models.CharField("código", max_length=30)
+    name = models.CharField("nome", max_length=200)
+    is_active = models.BooleanField("ativa", default=True)
+
+    objects = DisciplineQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "disciplina"
+        verbose_name_plural = "disciplinas"
+        ordering = ["code"]
+        constraints = [
+            # Código é único dentro do programa, não globalmente: dois
+            # programas podem repetir a mesma sigla de disciplina.
+            models.UniqueConstraint(
+                fields=["program", "code"],
+                name="unique_disciplina_por_programa",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.code} — {self.name}"
+
+    def clean(self) -> None:
+        """Código duplicado no mesmo programa já é barrado pela constraint do
+        banco; validar aqui é o que faz a violação chegar como 400 com code
+        estável em vez de IntegrityError virando 500.
+        """
+        super().clean()
+        if not self.code or self.program_id is None:
+            # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+            return
+        duplicatas = Discipline.objects.filter(
+            program_id=self.program_id, code=self.code
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Já existe uma disciplina com este código neste programa.",
+                code="duplicate_code",
+            )
+
+
 class AcademicTermQuerySet(models.QuerySet):
     def active(self) -> "AcademicTermQuerySet":
         return self.filter(is_active=True)
