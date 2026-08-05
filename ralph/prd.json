@@ -1,0 +1,197 @@
+{
+  "project": "PPGD Manager",
+  "branchName": "ralph/cadastros-basicos",
+  "description": "Cadastros Básicos - Professores e Alunos: cria o app academic com os models Teacher e Student (1:1 com Person), a estrutura de programa que eles referenciam (ResearchLine e CollectiveProject no app programs), permissões para Secretaria/Coordenação, endpoints Ninja e telas Svelte de cadastro. Pré-requisito bloqueante do fluxo de acerto de matrícula (ralph/prd.matricula.json).",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Model de Linha de Pesquisa",
+      "description": "As a secretaria, I want to register the program's research lines so that teachers and collective projects can be linked to them.",
+      "acceptanceCriteria": [
+        "Model ResearchLine no app programs: program (FK to Program, on_delete=PROTECT), name (CharField), is_active (BooleanField, default True)",
+        "Registrado no Django Admin do app programs",
+        "Migração criada e revisada (arquivo lido, não só gerado)",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Model de Projeto Coletivo",
+      "description": "As a secretaria, I want to register the collective projects of each research line, since one line has several projects.",
+      "acceptanceCriteria": [
+        "Model CollectiveProject no app programs: research_line (FK to ResearchLine, on_delete=PROTECT, related_name='projects'), name (CharField), is_active (BooleanField, default True)",
+        "Registrado no Django Admin do app programs (research_line visível em list_display)",
+        "Migração criada e revisada (arquivo lido, não só gerado)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "App academic e model Teacher",
+      "description": "As a secretaria, I want to register a teacher with CAPES category, accreditation dates, academic degree, and links to research lines and projects, so I can maintain the program's faculty roster.",
+      "acceptanceCriteria": [
+        "App academic criado seguindo a estrutura padrão do projeto (models.py, admin.py, router.py, schemas.py, migrations/, tests/), registrado em INSTALLED_APPS",
+        "Model Teacher: person (OneToOneField to people.Person, on_delete=PROTECT, related_name='teacher_profile'), category (TextChoices PERMANENT/COLLABORATOR/VISITING = 'Permanente'/'Colaborador'/'Visitante'), accredited_since (DateField), accredited_until (DateField, null=True, blank=True), academic_degree (TextChoices DOCTORATE/POSTDOCTORATE/HABILITATION = 'Doutor'/'Pós-doutor'/'Livre-docente'), lattes_url (URLField, blank=True), home_institution (CharField, blank=True), research_lines (ManyToManyField to programs.ResearchLine, related_name='teachers', blank=True), projects (ManyToManyField to programs.CollectiveProject, related_name='teachers', blank=True)",
+        "Registrado no Django Admin do app academic",
+        "Migração criada e revisada (arquivo lido, não só gerado)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Model Student",
+      "description": "As a secretaria, I want to register a student with level, mandatory project, optional advisor, status, and regimental deadline, so I can track their academic life in the program.",
+      "acceptanceCriteria": [
+        "Model Student no app academic: person (OneToOneField to people.Person, on_delete=PROTECT, related_name='student_profile'), level (TextChoices MASTERS/DOCTORATE = 'Mestrado'/'Doutorado'), project (FK to programs.CollectiveProject, on_delete=PROTECT, related_name='students', obrigatória/not null), advisor (FK to Teacher, on_delete=PROTECT, related_name='advisees', null=True, blank=True), registration_number (CharField, max_length=30, null=True, blank=True, unique=True), status (TextChoices REGULAR/LEAVE/ISOLATED/ELECTIVE/EXCLUDED = 'Regular'/'Trancado'/'Isolada'/'Eletiva'/'Excluído', default REGULAR), admission_date (DateField), deadline (DateField), defense_date (DateField, null=True, blank=True)",
+        "Regra de deadline: se não informado na criação, calcular automaticamente como admission_date + 24 meses (level MASTERS) ou + 48 meses (level DOCTORATE), implementada como método no próprio model chamado em save() quando deadline for None; depois de criado, o campo é livremente editável",
+        "Sem validação de transição de status — troca livre entre quaisquer valores, nenhum método de invariante para esse campo",
+        "Registrado no Django Admin do app academic",
+        "Migração criada e revisada (arquivo lido, não só gerado)",
+        "Typecheck passes",
+        "Tests pass (teste em memória, sem banco: criar Student sem deadline informado e verificar que o valor calculado bate com a regra de 24/48 meses por nível)"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Depende de US-002 (CollectiveProject) e US-003 (Teacher) já terem sido implementadas."
+    },
+    {
+      "id": "US-005",
+      "title": "Permissões — Secretaria e Coordenação nos novos models",
+      "description": "As the system, I need the existing Secretaria and Coordenação groups to have the correct permissions on the four new models, so the project's require_perm authorization pattern works on the routes that will be created.",
+      "acceptanceCriteria": [
+        "Nova data migration (não editar a 0002_programa_inicial_e_papeis.py já aplicada) estende o grupo Secretaria com add/change/view em ResearchLine, CollectiveProject, Teacher e Student",
+        "Estende o grupo Coordenação com view em ResearchLine, CollectiveProject, Teacher e Student",
+        "Nenhum grupo recebe permissão de delete (não foi especificado)",
+        "Migração de dados revisada (arquivo lido, não só gerado)",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Endpoints — Linha de Pesquisa",
+      "description": "As a secretaria, I want to create and edit research lines via the API, to populate the structure that teachers and projects will reference.",
+      "acceptanceCriteria": [
+        "Schemas Ninja explícitos ResearchLineIn/ResearchLineOut em apps/programs/schemas.py (nunca serializar o model direto)",
+        "GET /api/v1/programs/research-lines/ paginado, require_perm com programs.view_researchline",
+        "POST /api/v1/programs/research-lines/ com require_perm programs.add_researchline",
+        "PATCH /api/v1/programs/research-lines/{id}/ com require_perm programs.change_researchline",
+        "Router registrado na NinjaAPI raiz (backend/api.py)",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Endpoints — Projeto Coletivo",
+      "description": "As a secretaria, I want to create and edit collective projects linked to a research line via the API.",
+      "acceptanceCriteria": [
+        "Schemas Ninja explícitos CollectiveProjectIn/CollectiveProjectOut em apps/programs/schemas.py",
+        "GET /api/v1/programs/collective-projects/ paginado, filtro opcional por research_line_id, require_perm com programs.view_collectiveproject",
+        "POST /api/v1/programs/collective-projects/ com require_perm programs.add_collectiveproject",
+        "PATCH /api/v1/programs/collective-projects/{id}/ com require_perm programs.change_collectiveproject",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Endpoints — Professor",
+      "description": "As a secretaria, I want to create and edit teachers via the API, including their research line and project links.",
+      "acceptanceCriteria": [
+        "Schemas Ninja explícitos TeacherIn/TeacherOut em apps/academic/schemas.py (TeacherOut inclui person embutido — nome, e-mail — sem serializar Person direto)",
+        "GET /api/v1/academic/teachers/ paginado, filtro opcional por category, require_perm com academic.view_teacher",
+        "POST /api/v1/academic/teachers/ cria Person + Teacher numa transaction.atomic() via services.py, seguindo o padrão de create_person_with_user em apps/people/services.py; require_perm com academic.add_teacher; registra AuditLog academic.teacher.create",
+        "PATCH /api/v1/academic/teachers/{id}/ com require_perm academic.change_teacher; registra AuditLog academic.teacher.update",
+        "Router registrado na NinjaAPI raiz",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Endpoints — Aluno",
+      "description": "As a secretaria, I want to create and edit students via the API, including mandatory project and optional advisor.",
+      "acceptanceCriteria": [
+        "Schemas Ninja explícitos StudentIn/StudentOut em apps/academic/schemas.py (StudentOut inclui person embutido, sem serializar Person direto)",
+        "GET /api/v1/academic/students/ paginado, filtro opcional por status, level, advisor_id, require_perm com academic.view_student",
+        "POST /api/v1/academic/students/ cria Person + Student numa transaction.atomic() via services.py; project é obrigatório no payload; advisor é opcional; se deadline não vier no payload, aplica a regra de cálculo do model; require_perm com academic.add_student; registra AuditLog academic.student.create",
+        "PATCH /api/v1/academic/students/{id}/ com require_perm academic.change_student; registra AuditLog academic.student.update",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Tela Svelte — Linhas de Pesquisa e Projetos Coletivos",
+      "description": "As a secretaria, I want a screen to create and edit research lines and their collective projects.",
+      "acceptanceCriteria": [
+        "make gen-api rodado (backend de pé) antes de tipar a tela",
+        "Lista de linhas de pesquisa com seus projetos coletivos agrupados (linha 1 -> N projetos, visualmente claro)",
+        "Formulário de criar/editar linha e criar/editar projeto (com seletor de linha)",
+        "Coordenação vê a tela em modo somente leitura (ações de criar/editar ocultas se o usuário não tiver a permissão de change)",
+        "Toda chamada via lib/api/client.ts tipado (fetch cru proibido)",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Tela Svelte — Cadastro de Professores",
+      "description": "As a secretaria, I want a screen to create and edit teachers, including category, accreditation, degree, and research line/project links.",
+      "acceptanceCriteria": [
+        "Lista de professores com filtro por categoria (Permanente/Colaborador/Visitante)",
+        "Formulário de criar/editar com todos os campos de Teacher (incluindo seleção múltipla de linhas de pesquisa e projetos)",
+        "Coordenação vê a tela em modo somente leitura",
+        "Toda chamada via lib/api/client.ts tipado",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Tela Svelte — Cadastro de Alunos",
+      "description": "As a secretaria, I want a screen to create and edit students, including level, project, advisor, status, and deadline.",
+      "acceptanceCriteria": [
+        "Lista de alunos com filtro por status e nível",
+        "Formulário de criar/editar com todos os campos de Student; project obrigatório (seletor); advisor opcional (seletor de professores); deadline pré-preenchido com o valor calculado mas editável",
+        "Coordenação vê a tela em modo somente leitura",
+        "Toda chamada via lib/api/client.ts tipado",
+        "Typecheck (svelte-check) passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
