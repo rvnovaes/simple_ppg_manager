@@ -37,6 +37,21 @@
 - Ambiente: `make db` sobe o Postgres (host 5433) — pytest e migrate precisam dele.
   `make ready` (lint + typecheck + test) é pré-condição de commit.
   O hook do rtk engole a saída do pytest; usar `rtk proxy uv run pytest ...` para ver.
+- Tela Svelte: estado em runas (`$state`/`$derived`), toda chamada por `api` de
+  `$lib/api/client`, tipos por `components['schemas']['XOut']`, erro por `mensagemDeErro`.
+  Listagem paginada do Ninja chega como `{items, count}`: ler `resp.data?.items ?? []`.
+- Modo somente leitura da Coordenação não é uma flag: cada botão de escrita fica atrás de
+  `sessao.pode('app.add_x')` / `sessao.pode('app.change_x')`, com os mesmos codenames que o
+  `require_perm` do router usa. A checagem que vale continua sendo a do backend.
+- `new Map()` dentro de componente Svelte é erro de lint
+  (`svelte/prefer-svelte-reactivity`), mesmo recriado a cada `$derived.by`; para agrupar
+  pai/filho usar `Record<number, T[]>`.
+- Tela nova entra também no `<nav>` de `routes/(app)/+layout.svelte`; sem isso ela existe
+  mas ninguém chega nela.
+- Verificar no navegador: `make db` + `make up` (nginx :8080) + `make web` (Vite :5173 pelo
+  host). Sempre :8080 — :5173 direto quebra login/CSRF. Dado de teste pelo shell do
+  container: `docker compose exec -T backend uv run python manage.py shell` (o `uv run` é
+  obrigatório) e `get_user_model()`, porque o model de usuário é `accounts.User`.
 
 # Ralph Progress Log
 Started: qua. 05 ago 2026 16:58:54 -03
@@ -414,4 +429,41 @@ Started: qua. 05 ago 2026 16:58:54 -03
     com `get_object_or_404` sobre `Model.objects.for_program(program)`; id inexistente ou
     de outro tenant dá 404 antes da escrita, e o service recebe o objeto pronto.
   - `AcademicTerm` é institucional: a busca por `term_id` é global, sem `for_program`.
+---
+
+## 2026-08-05 - US-014
+- Tela Svelte "Estrutura do programa" (`/estrutura`): linhas de pesquisa com projetos
+  coletivos aninhados, formulário de criar/editar linha, formulário de criar/editar projeto
+  com seletor de linha, e seção de períodos letivos (ano, semestre, início, fim) exibindo o
+  rótulo canônico `label` ("2026/1") que vem do backend.
+- Botões de criar/editar só aparecem com a permissão correspondente
+  (`programs.add_*` / `programs.change_*`); Coordenação, que só tem `view_*`, vê a tela
+  inteira em modo leitura.
+- Navegação: `(app)/+layout.svelte` ganhou um `<nav>` com Pessoas e Estrutura.
+- Arquivos: `frontend/src/routes/(app)/estrutura/+page.svelte` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`.
+- `make gen-api` rodado antes de tipar (openapi.json e schema.d.ts não mudaram — US-013 já
+  os tinha regenerado). `make ready` verde: ruff, prettier/eslint, mypy, svelte-check
+  (173 arquivos, 0 erros), 179 testes.
+- **Learnings for future iterations:**
+  - `eslint-plugin-svelte` recusa `new Map()` dentro de componente
+    (`svelte/prefer-svelte-reactivity`), mesmo em `$derived.by` onde o Map é recriado a cada
+    vez. Agrupamento pai/filho na tela: usar `Record<number, T[]>`, não Map.
+  - As listagens paginadas do Ninja devolvem `{items, count}` — a tela lê
+    `resp.data?.items ?? []`, nunca `resp.data` direto.
+  - `openapi-fetch` com `bind:value` de `<select>`: valor da opção é number, então o estado
+    tem que ser `number | null` e o botão de salvar fica `disabled` enquanto for null.
+  - Verificação de UI no navegador ficou pendente: o plugin browser-use exige que alguém
+    clique em "Allow remote debugging" no Chrome, e num loop autônomo não há quem clique.
+    O caminho de dados foi verificado por HTTP (login como `secretaria`, GET/POST/PATCH das
+    três entidades, e `auth/me` da `coordenacao` mostrando só `programs.view_*`).
+  - Ambiente de verificação real deste repo: `make db` + `make up` (nginx :8080, backend em
+    container) + `make web` (Vite :5173 no host, alcançado pelo nginx via
+    `host.docker.internal`). Abrir :5173 direto quebra login/CSRF.
+  - O `docker compose exec backend` precisa de `uv run python manage.py ...` — sem o `uv run`
+    o manage.py reclama que "Django não encontrado".
+  - O model de usuário é trocado (`accounts.User`): em script de shell usar
+    `get_user_model()`, nunca `django.contrib.auth.models.User`.
+  - `ralph/CLAUDE.md`, na seção "Ambiente desta worktree", descreve portas e serviços de
+    OUTRO projeto (sanfili, :3103/:5103). Ignorar; o `CLAUDE.md` da raiz é a verdade.
 ---
