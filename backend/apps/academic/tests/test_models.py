@@ -12,6 +12,7 @@ from apps.academic.models import (
     DisciplineOffering,
     EnrollmentAdjustmentRequest,
     IsolatedEnrollmentCycle,
+    IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
     Student,
     Teacher,
@@ -382,13 +383,11 @@ DENTRO_DO_RECURSO = datetime(2026, 2, 13, tzinfo=UTC)
 FORA_DO_RECURSO = datetime(2026, 2, 20, tzinfo=UTC)
 
 
-def test_inscrever_rascunho_dentro_da_janela_carimba_e_muda_status():
-    requerimento = _requerimento()
-
-    requerimento.submit(at=DENTRO_DA_INSCRICAO)
-
-    assert requerimento.status == IsolatedEnrollmentRequest.Status.SUBMITTED
-    assert requerimento.submitted_at == DENTRO_DA_INSCRICAO
+# A inscrição bem-sucedida mudou de lugar na US-005: `submit()` passou a
+# contar os itens, e contar linhas relacionadas exige banco. O caso vive
+# em `test_isolada_itens.py`. Os dois casos abaixo continuam aqui porque
+# estado e janela são checados antes da contagem, e nenhum deles chega
+# ao banco.
 
 
 def test_inscrever_fora_da_janela_levanta():
@@ -553,3 +552,38 @@ def test_efetivar_requerimento_inscrito_levanta():
 
     with pytest.raises(InvalidStateTransition):
         requerimento.enroll()
+
+
+def _item(**kwargs) -> IsolatedEnrollmentItem:
+    """Item coerente: requerimento e oferta no mesmo ciclo."""
+    programa = kwargs.pop("program", None) or Program(pk=1, acronym="PPGD")
+    ciclo = kwargs.pop("cycle", None) or _ciclo(pk=1, program=programa)
+    padrao = {
+        "request": _requerimento(program=programa, cycle=ciclo),
+        "offering": _oferta(pk=1, program=programa, cycle=ciclo),
+    }
+    return IsolatedEnrollmentItem(**{**padrao, **kwargs})
+
+
+def test_clean_aceita_item_cuja_oferta_e_do_mesmo_ciclo():
+    _item().clean()
+
+
+def test_clean_rejeita_item_com_oferta_de_outro_ciclo():
+    """Oferta de outro semestre descontaria a vaga do edital errado."""
+    programa = Program(pk=1, acronym="PPGD")
+    item = _item(
+        program=programa,
+        offering=_oferta(pk=2, program=programa, cycle=_ciclo(pk=9, program=programa)),
+    )
+
+    with pytest.raises(DomainError) as exc:
+        item.clean()
+
+    assert exc.value.code == "cycle_mismatch"
+    assert exc.value.status_code == 400
+
+
+def test_clean_do_item_sem_relacionado_obrigatorio_nao_levanta():
+    """Obrigatoriedade é da borda e do NOT NULL, não deste invariante."""
+    IsolatedEnrollmentItem().clean()

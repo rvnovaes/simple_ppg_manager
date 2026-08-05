@@ -823,6 +823,34 @@ class DisciplineOffering(models.Model):
     def __str__(self) -> str:
         return f"{self.discipline} ({self.cycle})"
 
+    def seats_taken(self) -> int:
+        """Vagas já comprometidas nesta oferta.
+
+        Conta o deferido e o matriculado: deferir é o ato que reserva a
+        vaga, e a matrícula é o mesmo candidato um passo adiante — contar
+        só DEFERRED faria a vaga reaparecer no instante em que a
+        secretaria efetiva a matrícula (US-014), e a oferta aceitaria mais
+        gente do que tem lugar.
+
+        Inscrito NÃO conta: a vaga é da decisão da secretaria, não da
+        intenção do candidato — senão a fila de inscritos esgotaria as
+        vagas antes de alguém ser julgado. Cancelado devolve a vaga, que é
+        exatamente para isso que `cancel()` existe (US-004).
+        """
+        return self.items.filter(
+            request__status__in=(
+                IsolatedRequestStatus.DEFERRED,
+                IsolatedRequestStatus.ENROLLED,
+            )
+        ).count()
+
+    def seats_available(self) -> int:
+        """Nunca negativo: `seats` reduzido depois de deferimentos deixaria
+        a conta abaixo de zero, e vaga negativa não significa nada para
+        quem lê a tela.
+        """
+        return max(self.seats - self.seats_taken(), 0)
+
     def clean(self) -> None:
         """Ciclo, disciplina e docente têm de ser todos do mesmo programa.
 
@@ -848,6 +876,12 @@ class DisciplineOffering(models.Model):
                 "mesmo programa.",
                 code="program_mismatch",
             )
+
+
+# Limite do edital: até duas disciplinas por candidato por semestre. Mora
+# no módulo, e não dentro do model, porque a borda (schema Ninja e tela)
+# precisa do mesmo número para impedir a terceira antes de submeter.
+MAX_ISOLATED_ITEMS = 2
 
 
 class IsolatedRequestStatus(models.TextChoices):
@@ -1001,12 +1035,17 @@ class IsolatedEnrollmentRequest(models.Model):
         instante sem congelar o relógio — mesmo motivo de
         `IsolatedEnrollmentCycle.submission_open()`.
 
-        Faltam ainda duas cobranças deste passo, ambas dependentes de
-        models que não existem: a contagem de 1 a 2 itens
-        (`invalid_item_count`, US-005) e a documentação obrigatória
-        completa (`missing_documents`, US-006). Cada uma entra na US que
-        cria o model de que depende — escrita aqui, tocaria um acessor
-        reverso inexistente e não passaria no mypy nem em runtime.
+        A contagem de itens é validação de método, e não constraint de
+        banco: ela depende de contar linhas relacionadas, coisa que
+        `CheckConstraint` não faz. Vem depois da checagem de estado e de
+        janela de propósito — as duas primeiras não tocam o banco, então
+        o erro barato sai antes da consulta.
+
+        Falta ainda uma cobrança deste passo, dependente de model que não
+        existe: a documentação obrigatória completa (`missing_documents`,
+        US-006). Ela entra na US que cria o model de que depende —
+        escrita aqui, tocaria um acessor reverso inexistente e não
+        passaria no mypy nem em runtime.
         """
         self._exigir_status(
             self.Status.DRAFT,
@@ -1016,6 +1055,11 @@ class IsolatedEnrollmentRequest(models.Model):
             raise DomainError(
                 "As inscrições deste ciclo não estão abertas.",
                 code="submission_window_closed",
+            )
+        if not 1 <= self.items.count() <= MAX_ISOLATED_ITEMS:
+            raise DomainError(
+                "A inscrição precisa ter uma ou duas disciplinas.",
+                code="invalid_item_count",
             )
         self.status = self.Status.SUBMITTED
         self.submitted_at = at
@@ -1128,3 +1172,81 @@ class IsolatedEnrollmentRequest(models.Model):
         """
         if self.status != esperado:
             raise InvalidStateTransition(mensagem)
+
+
+class IsolatedEnrollmentItem(models.Model):
+    """Uma disciplina pedida dentro de um requerimento de isolada.
+
+    O requerimento é único por pessoa por ciclo e carrega de uma a duas
+    disciplinas (`MAX_ISOLATED_ITEMS`, cobrado em
+    `IsolatedEnrollmentRequest.submit()`): documentação e taxa são do
+    candidato, a escolha é por disciplina.
+
+    `rank` é a posição que o docente responsável atribui na oferta
+    (US-011) e nasce nulo — antes de ele classificar, ninguém tem
+    posição, e é essa ausência que a secretaria vê como "oferta ainda não
+    classificada" no deferimento (US-012). Nulo não é zero nem último.
+
+    Sem FK `program` direta, ao contrário do resto (ADR-007 dec. 5): o
+    item não é alvo de AuditLog próprio — quem é auditado é o
+    requerimento, que já carrega o tenant. O `on_delete=CASCADE` para
+    `request` diz o mesmo: item não existe sem o requerimento dele.
+    """
+
+    request = models.ForeignKey(
+        IsolatedEnrollmentRequest,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="requerimento",
+    )
+    offering = models.ForeignKey(
+        DisciplineOffering,
+        on_delete=models.PROTECT,
+        related_name="items",
+        verbose_name="oferta",
+    )
+    rank = models.PositiveSmallIntegerField("classificação", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "item do requerimento de isolada"
+        verbose_name_plural = "itens do requerimento de isolada"
+        ordering = ["offering__discipline__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "offering"],
+                name="unique_item_por_requerimento_e_oferta",
+            ),
+            # Duas pessoas na mesma posição da mesma oferta tornam o corte
+            # das vagas indecidível. A condição deixa de fora o rank nulo:
+            # antes da classificação todo mundo empata em "sem posição", e
+            # isso é o estado normal, não uma violação.
+            models.UniqueConstraint(
+                fields=["offering", "rank"],
+                condition=models.Q(rank__isnull=False),
+                name="unique_classificacao_por_oferta",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.offering} em {self.request}"
+
+    def clean(self) -> None:
+        """O item só pode apontar para uma oferta do mesmo ciclo.
+
+        Nada no banco impede montar um requerimento de 2026/1 com uma
+        oferta de 2026/2 — e a mistura só apareceria no deferimento, com
+        a vaga sendo descontada do edital errado.
+        """
+        super().clean()
+        try:
+            requerimento = self.request
+            oferta = self.offering
+        except ObjectDoesNotExist:
+            # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+            return
+        if requerimento.cycle_id != oferta.cycle_id:
+            raise DomainError(
+                "A disciplina escolhida precisa ser uma oferta do mesmo ciclo "
+                "do requerimento.",
+                code="cycle_mismatch",
+            )
