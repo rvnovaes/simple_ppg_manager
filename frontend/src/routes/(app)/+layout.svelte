@@ -6,11 +6,10 @@
 	let { children } = $props();
 
 	// Navegar dentro da SPA não recarrega a página, então o <details> ficaria
-	// aberto por cima do conteúdo novo depois do clique.
-	let submenuPessoas = $state<HTMLDetailsElement | null>(null);
-
-	function fecharSubmenu() {
-		if (submenuPessoas) submenuPessoas.open = false;
+	// aberto por cima do conteúdo novo depois do clique. Fecha o submenu do
+	// próprio link, e por isso serve para todos sem uma referência por menu.
+	function fecharSubmenu(event: MouseEvent) {
+		(event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');
 	}
 
 	// Guarda das telas internas: sem sessão, volta para o login.
@@ -54,7 +53,7 @@
 						{#if sessao.pode('people.view_person')}
 							<!-- <details> em vez de estado próprio: fecha no Esc, abre no
 							teclado e não precisa de listener de clique fora. -->
-							<details class="group relative" bind:this={submenuPessoas}>
+							<details class="group relative">
 								<summary
 									class="text-grafite hover:text-tinta cursor-pointer list-none text-sm marker:content-['']"
 								>
@@ -117,22 +116,38 @@
 								Classificação
 							</a>
 						{/if}
-						<!-- Por papel: `change_isolatedenrollmentrequest` também é do
-						Candidato (é com ela que ele monta o próprio requerimento), e a
-						análise do edital é trabalho da secretaria. Coordenação fica de
-						fora porque esta tela só tem controles de decisão. -->
-						{#if sessao.temPapel('Secretaria')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/analise')}>
-								Análise
-							</a>
-						{/if}
-						<!-- Por permissão: Secretaria monta o edital e Coordenação o
-						acompanha em modo somente leitura — as duas têm
-						`view_isolatedenrollmentcycle`, e nenhum outro papel tem. -->
+						<!-- Disciplina isolada agrupa o que a secretaria e a coordenação
+						operam no edital. As telas do candidato (Inscrição, Acompanhamento)
+						e a do docente (Classificação) ficam fora: são o trabalho de quem
+						passa pelo edital, não a gestão dele. -->
 						{#if sessao.pode('academic.view_isolatedenrollmentcycle')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/editais')}>
-								Editais
-							</a>
+							<details class="group relative">
+								<summary
+									class="text-grafite hover:text-tinta cursor-pointer list-none text-sm marker:content-['']"
+								>
+									Disciplina isolada
+									<span aria-hidden="true" class="text-cinza ml-0.5 text-[0.625rem]">▾</span>
+								</summary>
+								<div
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-44 flex-col border py-1 shadow-sm"
+								>
+									<!-- Por papel: `change_isolatedenrollmentrequest` também é do
+									Candidato (é com ela que ele monta o próprio requerimento), e
+									a análise do edital é trabalho da secretaria. Coordenação fica
+									de fora porque esta tela só tem controles de decisão. -->
+									{#if sessao.temPapel('Secretaria')}
+										<a class="item-submenu" href={resolve('/analise')} onclick={fecharSubmenu}>
+											Análise
+										</a>
+									{/if}
+									<!-- Por permissão: Secretaria monta o edital e Coordenação o
+									acompanha em modo somente leitura — as duas têm
+									`view_isolatedenrollmentcycle`, e nenhum outro papel tem. -->
+									<a class="item-submenu" href={resolve('/editais')} onclick={fecharSubmenu}>
+										Editais
+									</a>
+								</div>
+							</details>
 						{/if}
 						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>
