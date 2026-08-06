@@ -194,3 +194,6 @@ temp/
 # Estado local do loop do ralph — não versionar
 ralph/.last-branch
 ralph/archive/
+
+# Credenciais da carga de demonstração — geradas por make seed, não versionar
+CONTAS-DEMO.txt
