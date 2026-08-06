@@ -2134,6 +2134,145 @@
         ]
       }
     },
+    "/academic/isolated/requests/{request_id}/appeal": {
+      "post": {
+        "operationId": "apps_academic_router_appeal_isolated_request",
+        "summary": "Appeal Isolated Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Interpõe recurso contra o indeferimento, com o documento que faltou.\n\nMultipart, e não JSON, por causa do anexo: o motivo mais comum de\nindeferimento é documentação, e recorrer sem poder juntar a página que\nfaltou seria pedir clemência em vez de corrigir. O anexo é opcional —\nquem contesta a nota do docente não tem o que anexar.\n\nNão existe rota de \"rejulgar\": a secretaria decide de novo pelos\nmesmos `defer`/`reject` da US-012. O recurso não cria entidade nem\nestado novo, ele reabre a decisão — e por isso não derruba a\nclassificação do docente nem dispensa a GRU.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "title": "Note",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/RequestDocumentKind"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "file": {
+                    "anyOf": [
+                      {
+                        "format": "binary",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "File"
+                  }
+                },
+                "required": [
+                  "note"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/requests/{request_id}/payment-receipt": {
+      "post": {
+        "operationId": "apps_academic_router_upload_isolated_payment_receipt",
+        "summary": "Upload Isolated Payment Receipt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Anexa o comprovante da GRU e dá a taxa por paga.\n\nSem `kind` no corpo: esta rota tem um tipo só, e recebê-lo de fora\ndeixaria o candidato marcar como pago o envio de qualquer papel. É por\nisso que ela existe separada do upload genérico, que exige rascunho.\n\nAnexar e marcar pago são o mesmo ato porque a conferência é humana e\nposterior: a secretaria vê o comprovante na tela dela (US-019) e\ncancela se não bater (US-012). O que o sistema garante aqui é que\nninguém fica PAGO sem ter anexado nada.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/academic/isolated/signup": {
       "post": {
         "operationId": "apps_academic_router_isolated_signup",

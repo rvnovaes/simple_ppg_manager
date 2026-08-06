@@ -17,7 +17,7 @@ from ninja.decorators import decorate_view
 from ninja.pagination import paginate
 
 from apps.core import audit
-from apps.core.exceptions import NotAllowed
+from apps.core.exceptions import DomainError, NotAllowed
 from apps.core.permissions import require_perm
 from apps.core.ratelimit import enforce_rate_limit
 from apps.core.tenancy import current_program
@@ -732,6 +732,32 @@ def list_isolated_documents(request: HttpRequest, request_id: int):
     return requerimento.documents.all()
 
 
+def _substituir_documento(
+    requerimento: IsolatedEnrollmentRequest,
+    kind: str,
+    file: UploadedFile,
+) -> tuple[RequestDocument, bool]:
+    """Grava o anexo daquele tipo, apagando a versão anterior se houver.
+
+    Substituir apagando a linha, e não editando o `file`: `uploaded_at` é
+    `auto_now_add` e ficaria com a data do envio errado se o registro
+    fosse reaproveitado.
+
+    A remoção do arquivo do storage é explícita porque `delete()` do model
+    não a faz — sem ela cada reenvio deixaria um órfão no MEDIA_ROOT. E
+    vem antes de qualquer escrita que possa falhar, já que o storage não
+    participa do rollback da transação.
+    """
+    anterior = RequestDocument.objects.filter(request=requerimento, kind=kind).first()
+    if anterior is not None:
+        anterior.file.delete(save=False)
+        anterior.delete()
+    documento = RequestDocument.objects.create(
+        request=requerimento, kind=kind, file=file
+    )
+    return documento, anterior is not None
+
+
 @router.post(
     "/isolated/requests/{int:request_id}/documents",
     response={201: RequestDocumentOut},
@@ -761,19 +787,7 @@ def upload_isolated_document(
     RequestDocument.validate_upload(filename=file.name or "", size=file.size or 0)
 
     with transaction.atomic():
-        anterior = RequestDocument.objects.filter(
-            request=requerimento, kind=kind
-        ).first()
-        if anterior is not None:
-            # `delete()` do model não apaga o arquivo do storage; sem esta
-            # linha cada reenvio deixaria um órfão no MEDIA_ROOT. Não é
-            # transacional (o storage não participa do rollback), e por
-            # isso vem antes de qualquer escrita que possa falhar.
-            anterior.file.delete(save=False)
-            anterior.delete()
-        documento = RequestDocument.objects.create(
-            request=requerimento, kind=kind, file=file
-        )
+        documento, substituiu = _substituir_documento(requerimento, kind, file)
         audit.record(
             "academic.isolated.document_upload",
             request=request,
@@ -781,7 +795,7 @@ def upload_isolated_document(
             document_id=documento.pk,
             kind=str(kind),
             filename=file.name,
-            replaced=anterior is not None,
+            replaced=substituiu,
         )
     return Status(201, documento)
 
@@ -1020,6 +1034,108 @@ def cancel_isolated_request(
             person_id=requerimento.person_id,
             cycle_id=requerimento.cycle_id,
             note=requerimento.decision_note,
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/appeal", response=IsolatedRequestOut)
+def appeal_isolated_request(
+    request: HttpRequest,
+    request_id: int,
+    note: str = Form(...),
+    kind: RequestDocumentKind | None = Form(None),
+    file: UploadedFile | None = File(None),
+):
+    """Interpõe recurso contra o indeferimento, com o documento que faltou.
+
+    Multipart, e não JSON, por causa do anexo: o motivo mais comum de
+    indeferimento é documentação, e recorrer sem poder juntar a página que
+    faltou seria pedir clemência em vez de corrigir. O anexo é opcional —
+    quem contesta a nota do docente não tem o que anexar.
+
+    Não existe rota de "rejulgar": a secretaria decide de novo pelos
+    mesmos `defer`/`reject` da US-012. O recurso não cria entidade nem
+    estado novo, ele reabre a decisão — e por isso não derruba a
+    classificação do docente nem dispensa a GRU.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    if (kind is None) != (file is None):
+        raise DomainError(
+            "O anexo do recurso precisa do tipo e do arquivo juntos.",
+            code="incomplete_document",
+        )
+    if kind is not None:
+        # Estado e janela são cobrança de `appeal()`, logo abaixo; aqui só
+        # o que é do anexo. Tipo proibido é 400 do model, arquivo recusado
+        # é 400 com code invalid_document.
+        requerimento.ensure_appeal_document_allowed(kind)
+        assert file is not None  # garantido pela checagem de par acima
+        RequestDocument.validate_upload(filename=file.name or "", size=file.size or 0)
+
+    with transaction.atomic():
+        # Estado errado é 409 e janela fechada é 400 appeal_window_closed,
+        # ambos do model e convertidos pelo handler central (Seção 8).
+        requerimento.appeal(note=note, at=timezone.now())
+        requerimento.save(update_fields=["appeal_note", "appealed_at"])
+        documento = None
+        if kind is not None and file is not None:
+            documento, _ = _substituir_documento(requerimento, kind, file)
+        audit.record(
+            "academic.isolated.appeal",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            document_id=documento.pk if documento is not None else None,
+            kind=str(kind) if kind is not None else None,
+        )
+    return requerimento
+
+
+@router.post(
+    "/isolated/requests/{int:request_id}/payment-receipt",
+    response=IsolatedRequestOut,
+)
+def upload_isolated_payment_receipt(
+    request: HttpRequest,
+    request_id: int,
+    file: UploadedFile = File(...),
+):
+    """Anexa o comprovante da GRU e dá a taxa por paga.
+
+    Sem `kind` no corpo: esta rota tem um tipo só, e recebê-lo de fora
+    deixaria o candidato marcar como pago o envio de qualquer papel. É por
+    isso que ela existe separada do upload genérico, que exige rascunho.
+
+    Anexar e marcar pago são o mesmo ato porque a conferência é humana e
+    posterior: a secretaria vê o comprovante na tela dela (US-019) e
+    cancela se não bater (US-012). O que o sistema garante aqui é que
+    ninguém fica PAGO sem ter anexado nada.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    # Estado errado é 409; isento e prazo vencido são 400 com code estável
+    # (payment_not_required, payment_window_closed) — tudo do model.
+    requerimento.register_payment(at=timezone.now())
+    RequestDocument.validate_upload(filename=file.name or "", size=file.size or 0)
+
+    with transaction.atomic():
+        documento, substituiu = _substituir_documento(
+            requerimento, RequestDocumentKind.PAYMENT_RECEIPT, file
+        )
+        requerimento.save(update_fields=["payment_status"])
+        audit.record(
+            "academic.isolated.payment_receipt",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            document_id=documento.pk,
+            filename=file.name,
+            replaced=substituiu,
         )
     return requerimento
 

@@ -699,6 +699,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/requests/{request_id}/appeal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Appeal Isolated Request
+         * @description Interpõe recurso contra o indeferimento, com o documento que faltou.
+         *
+         *     Multipart, e não JSON, por causa do anexo: o motivo mais comum de
+         *     indeferimento é documentação, e recorrer sem poder juntar a página que
+         *     faltou seria pedir clemência em vez de corrigir. O anexo é opcional —
+         *     quem contesta a nota do docente não tem o que anexar.
+         *
+         *     Não existe rota de "rejulgar": a secretaria decide de novo pelos
+         *     mesmos `defer`/`reject` da US-012. O recurso não cria entidade nem
+         *     estado novo, ele reabre a decisão — e por isso não derruba a
+         *     classificação do docente nem dispensa a GRU.
+         */
+        post: operations["apps_academic_router_appeal_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/payment-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Isolated Payment Receipt
+         * @description Anexa o comprovante da GRU e dá a taxa por paga.
+         *
+         *     Sem `kind` no corpo: esta rota tem um tipo só, e recebê-lo de fora
+         *     deixaria o candidato marcar como pago o envio de qualquer papel. É por
+         *     isso que ela existe separada do upload genérico, que exige rascunho.
+         *
+         *     Anexar e marcar pago são o mesmo ato porque a conferência é humana e
+         *     posterior: a secretaria vê o comprovante na tela dela (US-019) e
+         *     cancela se não bater (US-012). O que o sistema garante aqui é que
+         *     ninguém fica PAGO sem ter anexado nada.
+         */
+        post: operations["apps_academic_router_upload_isolated_payment_receipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/isolated/signup": {
         parameters: {
             query?: never;
@@ -2830,6 +2889,70 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["IsolatedCancelIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_appeal_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Note */
+                    note: string;
+                    kind?: components["schemas"]["RequestDocumentKind"] | null;
+                    /** File */
+                    file?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_upload_isolated_payment_receipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
             };
         };
         responses: {

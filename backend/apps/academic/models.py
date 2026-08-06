@@ -748,6 +748,15 @@ class IsolatedEnrollmentCycle(models.Model):
     def appeal_open(self, at: datetime) -> bool:
         return self.appeal_opens_at <= at < self.appeal_closes_at
 
+    def payment_open(self, at: datetime) -> bool:
+        """O prazo da GRU só tem fim, e não começo.
+
+        A guia nasce no deferimento (US-012), que já é a abertura de fato:
+        antes dela não existe o que pagar, e um `payment_opens_at` seria
+        uma data a mais para a secretaria errar no formulário do edital.
+        """
+        return at < self.payment_closes_at
+
 
 class DisciplineOfferingQuerySet(models.QuerySet):
     def for_program(self, program) -> "DisciplineOfferingQuerySet":
@@ -1328,6 +1337,49 @@ class IsolatedEnrollmentRequest(models.Model):
             )
         self.appeal_note = note
         self.appealed_at = at
+
+    def ensure_appeal_document_allowed(self, kind: str) -> None:
+        """O que o recurso aceita anexar.
+
+        A documentação da inscrição, sim: documento faltante ou ilegível é
+        o motivo mais comum de indeferimento, e obrigar o candidato a
+        recorrer sem poder juntar a página que faltou transformaria o
+        recurso em pedido de clemência. Por isso este caminho existe
+        separado de `ensure_document_upload_allowed()`, que exige rascunho.
+
+        O comprovante da GRU, não: a guia só é emitida no deferimento, e
+        quem recorre está indeferido — não há o que comprovar.
+        """
+        if kind == RequestDocumentKind.PAYMENT_RECEIPT:
+            raise DomainError(
+                "O comprovante da GRU não é documento de recurso.",
+                code="invalid_document_kind",
+            )
+
+    def register_payment(self, *, at: datetime) -> None:
+        """Registra o pagamento da taxa a partir do comprovante anexado.
+
+        Não mexe no `status`: pagar não matricula ninguém. A matrícula é
+        `enroll()` (US-014), e é lá que deferimento e pagamento se juntam.
+
+        `at` vem por parâmetro porque o prazo é do edital, como em
+        `submit()` e `appeal()`.
+        """
+        self._exigir_status(
+            self.Status.DEFERRED,
+            "O comprovante da GRU só é aceito em requerimento deferido.",
+        )
+        if self.payment_status == self.PaymentStatus.EXEMPT:
+            raise DomainError(
+                "Este requerimento é isento da taxa e não tem GRU a pagar.",
+                code="payment_not_required",
+            )
+        if not self.cycle.payment_open(at):
+            raise DomainError(
+                "O prazo de pagamento deste ciclo já encerrou.",
+                code="payment_window_closed",
+            )
+        self.payment_status = self.PaymentStatus.PAID
 
     def enroll(self) -> None:
         """Efetiva a matrícula: Deferido vira Matriculado.

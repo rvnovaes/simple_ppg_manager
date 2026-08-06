@@ -406,6 +406,8 @@ DENTRO_DA_INSCRICAO = datetime(2026, 2, 5, tzinfo=UTC)
 FORA_DA_INSCRICAO = datetime(2026, 2, 20, tzinfo=UTC)
 DENTRO_DO_RECURSO = datetime(2026, 2, 13, tzinfo=UTC)
 FORA_DO_RECURSO = datetime(2026, 2, 20, tzinfo=UTC)
+DENTRO_DO_PAGAMENTO = datetime(2026, 2, 20, tzinfo=UTC)
+FORA_DO_PAGAMENTO = datetime(2026, 2, 26, tzinfo=UTC)
 
 
 # A inscrição bem-sucedida mudou de lugar na US-005: `submit()` passou a
@@ -619,6 +621,74 @@ def test_recorrer_sem_razoes_levanta():
         requerimento.appeal(note="", at=DENTRO_DO_RECURSO)
 
     assert exc.value.code == "appeal_requires_note"
+
+
+def test_recurso_recusa_o_comprovante_da_gru_como_anexo():
+    """A guia só é emitida no deferimento e quem recorre está indeferido:
+    não há o que comprovar.
+    """
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.REJECTED)
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.ensure_appeal_document_allowed(RequestDocumentKind.PAYMENT_RECEIPT)
+
+    assert exc.value.code == "invalid_document_kind"
+
+
+def test_recurso_aceita_documento_da_inscricao():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.REJECTED)
+
+    requerimento.ensure_appeal_document_allowed(RequestDocumentKind.DIPLOMA)
+
+
+def test_prazo_de_pagamento_so_tem_fim():
+    ciclo = _ciclo()
+
+    assert ciclo.payment_open(datetime(2026, 2, 1, tzinfo=UTC))
+    assert ciclo.payment_open(DENTRO_DO_PAGAMENTO)
+    assert not ciclo.payment_open(datetime(2026, 2, 25, tzinfo=UTC))
+
+
+def test_registrar_pagamento_marca_pago_sem_matricular():
+    """Pagar não matricula ninguém: a matrícula é `enroll()` (US-014)."""
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)
+
+    requerimento.register_payment(at=DENTRO_DO_PAGAMENTO)
+
+    assert requerimento.payment_status == IsolatedEnrollmentRequest.PaymentStatus.PAID
+    assert requerimento.status == IsolatedEnrollmentRequest.Status.DEFERRED
+
+
+def test_registrar_pagamento_de_isento_levanta():
+    requerimento = _requerimento(
+        status=IsolatedEnrollmentRequest.Status.DEFERRED,
+        payment_status=IsolatedEnrollmentRequest.PaymentStatus.EXEMPT,
+    )
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.register_payment(at=DENTRO_DO_PAGAMENTO)
+
+    assert exc.value.code == "payment_not_required"
+    assert requerimento.payment_status == IsolatedEnrollmentRequest.PaymentStatus.EXEMPT
+
+
+def test_registrar_pagamento_fora_do_prazo_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)
+
+    with pytest.raises(DomainError) as exc:
+        requerimento.register_payment(at=FORA_DO_PAGAMENTO)
+
+    assert exc.value.code == "payment_window_closed"
+    assert (
+        requerimento.payment_status == IsolatedEnrollmentRequest.PaymentStatus.PENDING
+    )
+
+
+def test_registrar_pagamento_de_requerimento_nao_deferido_levanta():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.SUBMITTED)
+
+    with pytest.raises(InvalidStateTransition):
+        requerimento.register_payment(at=DENTRO_DO_PAGAMENTO)
 
 
 def test_efetivar_deferido_e_pago_vira_matriculado():
