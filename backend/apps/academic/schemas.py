@@ -379,6 +379,10 @@ class DisciplineOfferingOut(Schema):
     teacher_name: str
     seats: int
     seats_available: int
+    # Marcador da lista do docente (`?mine=true`): ele precisa ver de
+    # relance onde ainda falta responder. Calculado no servidor pela mesma
+    # razão de `seats_available` — a tela não conta inscritos sem posição.
+    needs_ranking: bool
 
     @staticmethod
     def resolve_discipline_code(obj: DisciplineOffering) -> str:
@@ -395,6 +399,61 @@ class DisciplineOfferingOut(Schema):
     @staticmethod
     def resolve_seats_available(obj: DisciplineOffering) -> int:
         return obj.seats_available()
+
+    @staticmethod
+    def resolve_needs_ranking(obj: DisciplineOffering) -> bool:
+        return obj.needs_ranking()
+
+
+class IsolatedCandidateOut(Schema):
+    """Um inscrito na oferta, como o docente responsável o vê.
+
+    Só o necessário para ordenar: nome, quando se inscreveu e a posição
+    atual. Documentação e situação de pagamento são da análise da
+    secretaria (US-012) e não entram aqui — o docente classifica por
+    mérito, não por pendência administrativa.
+    """
+
+    item_id: int
+    request_id: int
+    person_id: int
+    person_name: str
+    rank: int | None
+    submitted_at: datetime.datetime | None
+
+    @staticmethod
+    def resolve_item_id(obj: IsolatedEnrollmentItem) -> int:
+        return obj.pk
+
+    @staticmethod
+    def resolve_person_id(obj: IsolatedEnrollmentItem) -> int:
+        return obj.request.person_id
+
+    @staticmethod
+    def resolve_person_name(obj: IsolatedEnrollmentItem) -> str:
+        return obj.request.person.full_name
+
+    @staticmethod
+    def resolve_submitted_at(obj: IsolatedEnrollmentItem) -> datetime.datetime | None:
+        return obj.request.submitted_at
+
+
+class IsolatedRankIn(Schema):
+    """A ordem escolhida pelo docente, do primeiro ao último.
+
+    A posição não viaja no corpo: ela É o índice da lista, e mandar
+    `rank` explícito abriria a porta para buraco (1, 2, 4) e empate.
+    Lista vazia zera a classificação da oferta — é como o docente
+    recomeça, igual ao `items: []` do rascunho do candidato.
+    """
+
+    item_ids: list[int] = []
+
+    @model_validator(mode="after")
+    def sem_repeticao(self) -> "IsolatedRankIn":
+        if len(set(self.item_ids)) != len(self.item_ids):
+            raise ValueError("O mesmo candidato aparece duas vezes na ordem.")
+        return self
 
 
 class IsolatedItemIn(Schema):

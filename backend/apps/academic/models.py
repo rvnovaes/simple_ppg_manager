@@ -851,6 +851,65 @@ class DisciplineOffering(models.Model):
         """
         return max(self.seats - self.seats_taken(), 0)
 
+    def candidates(self) -> "models.QuerySet[IsolatedEnrollmentItem]":
+        """Quem disputa esta oferta, na ordem em que o docente decidiu.
+
+        Só o inscrito: rascunho ainda não é candidatura, e deferido,
+        recusado ou cancelado já passou pela secretaria — classificar
+        depois da decisão mudaria o corte de vagas por baixo dela.
+
+        Sem posição vem por último (`nulls_last`), não primeiro: a lista
+        classificada é a resposta do docente e tem de ficar no topo
+        quando ele reabre a tela. Empate de "sem posição" desempata pelo
+        nome, para a ordem não variar entre duas leituras.
+        """
+        if self.pk is None:
+            return IsolatedEnrollmentItem.objects.none()
+        return (
+            self.items.filter(request__status=IsolatedRequestStatus.SUBMITTED)
+            .select_related("request__person")
+            .order_by(
+                models.F("rank").asc(nulls_last=True), "request__person__full_name"
+            )
+        )
+
+    def needs_ranking(self) -> bool:
+        """Ainda falta classificar alguém aqui.
+
+        É o marcador da lista do docente (`?mine=true`): oferta sem
+        inscrito nenhum não "falta classificar" — não há o que ordenar —,
+        e oferta com todo mundo posicionado já foi respondida.
+        """
+        if self.pk is None:
+            return False
+        return self.items.filter(
+            request__status=IsolatedRequestStatus.SUBMITTED, rank__isnull=True
+        ).exists()
+
+    def rank_items(self, item_ids: list[int]) -> list["IsolatedEnrollmentItem"]:
+        """Posição 1..N na ordem recebida, SEM salvar.
+
+        Devolve os itens já com o `rank` em memória; quem persiste é o
+        router, no mesmo `transaction.atomic()` do AuditLog — igual às
+        transições de estado do requerimento.
+
+        Item que não é candidato desta oferta é `item_not_in_offering`
+        (400): a lista que o docente devolve é a MESMA que ele recebeu de
+        `candidates()`, então id de fora é erro de chamada, não escolha.
+        """
+        candidatos = {item.pk: item for item in self.candidates()}
+        if any(item_id not in candidatos for item_id in item_ids):
+            raise DomainError(
+                "A classificação só aceita candidatos inscritos nesta oferta.",
+                code="item_not_in_offering",
+            )
+        ordenados = []
+        for posicao, item_id in enumerate(item_ids, start=1):
+            item = candidatos[item_id]
+            item.rank = posicao
+            ordenados.append(item)
+        return ordenados
+
     def clean(self) -> None:
         """Ciclo, disciplina e docente têm de ser todos do mesmo programa.
 

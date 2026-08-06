@@ -447,6 +447,12 @@ export interface paths {
          *     e a tela do candidato precisa da lista inteira para ele escolher duas.
          *     Fora da janela de inscrição a resposta é `no_open_cycle` (400) — a
          *     mesma que o auto-registro dá, e a mesma mensagem que a tela exibe.
+         *
+         *     `?mine=true` é a lista do docente e NÃO passa pelo ciclo aberto de
+         *     propósito: ele classifica depois que a inscrição fecha, e amarrar a
+         *     janela aqui deixaria a tela dele vazia justamente quando ela importa.
+         *     O recorte então é o ciclo ativo, e `needs_ranking` diz onde falta
+         *     resposta.
          */
         get: operations["apps_academic_router_list_isolated_offerings"];
         put?: never;
@@ -569,6 +575,53 @@ export interface paths {
         get: operations["apps_academic_router_download_isolated_document"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/offerings/{offering_id}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Offering Candidates
+         * @description Quem se inscreveu nesta oferta, na ordem atual da classificação.
+         *
+         *     Sem paginação, pela mesma razão da lista de ofertas: a fila de uma
+         *     disciplina isolada tem dezenas de nomes e o docente ordena todos de
+         *     uma vez — meia lista não dá para classificar.
+         */
+        get: operations["apps_academic_router_list_offering_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/offerings/{offering_id}/rank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rank Offering Candidates
+         * @description Grava a ordem do docente como posição 1..N.
+         *
+         *     Substituição, e não acréscimo: a lista do corpo é a classificação
+         *     final daquela oferta, e quem ficou de fora volta a não ter posição.
+         */
+        post: operations["apps_academic_router_rank_offering_candidates"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1328,6 +1381,8 @@ export interface components {
             seats: number;
             /** Seats Available */
             seats_available: number;
+            /** Needs Ranking */
+            needs_ranking: boolean;
         };
         /** IsolatedItemOut */
         IsolatedItemOut: {
@@ -1476,6 +1531,45 @@ export interface components {
          * @enum {string}
          */
         RequestDocumentKind: "identity" | "diploma" | "lattes" | "address" | "payslip" | "supervisor_auth" | "payment_receipt";
+        /**
+         * IsolatedCandidateOut
+         * @description Um inscrito na oferta, como o docente responsável o vê.
+         *
+         *     Só o necessário para ordenar: nome, quando se inscreveu e a posição
+         *     atual. Documentação e situação de pagamento são da análise da
+         *     secretaria (US-012) e não entram aqui — o docente classifica por
+         *     mérito, não por pendência administrativa.
+         */
+        IsolatedCandidateOut: {
+            /** Item Id */
+            item_id: number;
+            /** Request Id */
+            request_id: number;
+            /** Person Id */
+            person_id: number;
+            /** Person Name */
+            person_name: string;
+            /** Rank */
+            rank: number | null;
+            /** Submitted At */
+            submitted_at: string | null;
+        };
+        /**
+         * IsolatedRankIn
+         * @description A ordem escolhida pelo docente, do primeiro ao último.
+         *
+         *     A posição não viaja no corpo: ela É o índice da lista, e mandar
+         *     `rank` explícito abriria a porta para buraco (1, 2, 4) e empate.
+         *     Lista vazia zera a classificação da oferta — é como o docente
+         *     recomeça, igual ao `items: []` do rascunho do candidato.
+         */
+        IsolatedRankIn: {
+            /**
+             * Item Ids
+             * @default []
+             */
+            item_ids: number[];
+        };
         /**
          * IsolatedSignupOut
          * @description Resposta única do auto-registro.
@@ -2298,7 +2392,9 @@ export interface operations {
     };
     apps_academic_router_list_isolated_offerings: {
         parameters: {
-            query?: never;
+            query?: {
+                mine?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2493,6 +2589,54 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    apps_academic_router_list_offering_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offering_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCandidateOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_rank_offering_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offering_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRankIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCandidateOut"][];
+                };
             };
         };
     };

@@ -1512,7 +1512,18 @@
       "get": {
         "operationId": "apps_academic_router_list_isolated_offerings",
         "summary": "List Isolated Offerings",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mine",
+            "schema": {
+              "default": false,
+              "title": "Mine",
+              "type": "boolean"
+            },
+            "required": false
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1529,7 +1540,7 @@
             }
           }
         },
-        "description": "As disciplinas do edital aberto, com o saldo de vagas.\n\nSem paginação: um edital oferece dezenas de disciplinas, não milhares,\ne a tela do candidato precisa da lista inteira para ele escolher duas.\nFora da janela de inscrição a resposta é `no_open_cycle` (400) — a\nmesma que o auto-registro dá, e a mesma mensagem que a tela exibe.",
+        "description": "As disciplinas do edital aberto, com o saldo de vagas.\n\nSem paginação: um edital oferece dezenas de disciplinas, não milhares,\ne a tela do candidato precisa da lista inteira para ele escolher duas.\nFora da janela de inscrição a resposta é `no_open_cycle` (400) — a\nmesma que o auto-registro dá, e a mesma mensagem que a tela exibe.\n\n`?mine=true` é a lista do docente e NÃO passa pelo ciclo aberto de\npropósito: ele classifica depois que a inscrição fecha, e amarrar a\njanela aqui deixaria a tela dele vazia justamente quando ela importa.\nO recorte então é o ciclo ativo, e `needs_ranking` diz onde falta\nresposta.",
         "tags": [
           "academic"
         ],
@@ -1863,6 +1874,100 @@
         "tags": [
           "academic"
         ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/offerings/{offering_id}/candidates": {
+      "get": {
+        "operationId": "apps_academic_router_list_offering_candidates",
+        "summary": "List Offering Candidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "offering_id",
+            "schema": {
+              "title": "Offering Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IsolatedCandidateOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Quem se inscreveu nesta oferta, na ordem atual da classificação.\n\nSem paginação, pela mesma razão da lista de ofertas: a fila de uma\ndisciplina isolada tem dezenas de nomes e o docente ordena todos de\numa vez — meia lista não dá para classificar.",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/offerings/{offering_id}/rank": {
+      "post": {
+        "operationId": "apps_academic_router_rank_offering_candidates",
+        "summary": "Rank Offering Candidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "offering_id",
+            "schema": {
+              "title": "Offering Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IsolatedCandidateOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Grava a ordem do docente como posição 1..N.\n\nSubstituição, e não acréscimo: a lista do corpo é a classificação\nfinal daquela oferta, e quem ficou de fora volta a não ter posição.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedRankIn"
+              }
+            }
+          },
+          "required": true
+        },
         "security": [
           {
             "SessionAuth": []
@@ -3787,6 +3892,10 @@
           "seats_available": {
             "title": "Seats Available",
             "type": "integer"
+          },
+          "needs_ranking": {
+            "title": "Needs Ranking",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3799,7 +3908,8 @@
           "teacher_id",
           "teacher_name",
           "seats",
-          "seats_available"
+          "seats_available",
+          "needs_ranking"
         ],
         "title": "DisciplineOfferingOut",
         "type": "object"
@@ -4119,6 +4229,75 @@
         ],
         "title": "RequestDocumentKind",
         "type": "string"
+      },
+      "IsolatedCandidateOut": {
+        "description": "Um inscrito na oferta, como o docente responsável o vê.\n\nSó o necessário para ordenar: nome, quando se inscreveu e a posição\natual. Documentação e situação de pagamento são da análise da\nsecretaria (US-012) e não entram aqui — o docente classifica por\nmérito, não por pendência administrativa.",
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "integer"
+          },
+          "person_id": {
+            "title": "Person Id",
+            "type": "integer"
+          },
+          "person_name": {
+            "title": "Person Name",
+            "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          }
+        },
+        "required": [
+          "item_id",
+          "request_id",
+          "person_id",
+          "person_name",
+          "rank",
+          "submitted_at"
+        ],
+        "title": "IsolatedCandidateOut",
+        "type": "object"
+      },
+      "IsolatedRankIn": {
+        "description": "A ordem escolhida pelo docente, do primeiro ao último.\n\nA posição não viaja no corpo: ela É o índice da lista, e mandar\n`rank` explícito abriria a porta para buraco (1, 2, 4) e empate.\nLista vazia zera a classificação da oferta — é como o docente\nrecomeça, igual ao `items: []` do rascunho do candidato.",
+        "properties": {
+          "item_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "title": "IsolatedRankIn",
+        "type": "object"
       },
       "IsolatedSignupOut": {
         "description": "Resposta única do auto-registro.\n\nCorpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem\nexatamente isto, senão a rota vira um oráculo de quem tem conta.",

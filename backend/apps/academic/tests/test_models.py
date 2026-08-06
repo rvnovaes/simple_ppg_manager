@@ -324,6 +324,28 @@ def test_clean_sem_relacionado_obrigatorio_nao_levanta():
     DisciplineOffering(program=programa, seats=5).clean()
 
 
+def test_oferta_sem_pk_nao_tem_candidato_nem_falta_classificar():
+    """Sem pk não existe item relacionado por definição — a resposta é essa,
+    e não um atalho para o teste rodar sem banco.
+    """
+    oferta = _oferta()
+
+    assert list(oferta.candidates()) == []
+    assert oferta.needs_ranking() is False
+
+
+def test_classificar_lista_vazia_nao_ordena_ninguem():
+    assert _oferta().rank_items([]) == []
+
+
+def test_classificar_item_que_nao_e_candidato_levanta():
+    with pytest.raises(DomainError) as exc:
+        _oferta().rank_items([7])
+
+    assert exc.value.code == "item_not_in_offering"
+    assert exc.value.status_code == 400
+
+
 def _requerimento(**kwargs) -> IsolatedEnrollmentRequest:
     programa = kwargs.pop("program", None) or Program(pk=1, acronym="PPGD")
     padrao = {

@@ -48,7 +48,9 @@ from .schemas import (
     EnrollmentAdjustmentRejectIn,
     EnrollmentAdjustmentRequestIn,
     EnrollmentAdjustmentRequestOut,
+    IsolatedCandidateOut,
     IsolatedItemIn,
+    IsolatedRankIn,
     IsolatedRequestIn,
     IsolatedRequestOut,
     IsolatedRequestPatch,
@@ -502,26 +504,39 @@ def reject_enrollment_request(
 
 
 @router.get("/isolated/offerings/", response=list[DisciplineOfferingOut])
-def list_isolated_offerings(request: HttpRequest):
+def list_isolated_offerings(request: HttpRequest, mine: bool = False):
     """As disciplinas do edital aberto, com o saldo de vagas.
 
     Sem paginação: um edital oferece dezenas de disciplinas, não milhares,
     e a tela do candidato precisa da lista inteira para ele escolher duas.
     Fora da janela de inscrição a resposta é `no_open_cycle` (400) — a
     mesma que o auto-registro dá, e a mesma mensagem que a tela exibe.
+
+    `?mine=true` é a lista do docente e NÃO passa pelo ciclo aberto de
+    propósito: ele classifica depois que a inscrição fecha, e amarrar a
+    janela aqui deixaria a tela dele vazia justamente quando ela importa.
+    O recorte então é o ciclo ativo, e `needs_ranking` diz onde falta
+    resposta.
     """
     require_perm(request, "academic.view_disciplineoffering")
     program: Program = current_program(request)
-    ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
-    # `seats_available()` faz um COUNT por oferta e não aproveita prefetch
-    # (é `filter` sobre o acessor reverso). São dezenas de consultas curtas
-    # num edital, não milhares — se um dia doer, o caminho é anotar o COUNT
-    # no queryset, e não espalhar a regra das vagas na tela.
-    return (
-        DisciplineOffering.objects.for_program(program)
-        .for_cycle(ciclo)
-        .select_related("discipline", "teacher__person")
+    # `seats_available()` e `needs_ranking()` fazem um COUNT por oferta e
+    # não aproveitam prefetch (são `filter` sobre o acessor reverso). São
+    # dezenas de consultas curtas num edital, não milhares — se um dia
+    # doer, o caminho é anotar o COUNT no queryset, e não espalhar a regra
+    # das vagas nem a da classificação na tela.
+    ofertas = DisciplineOffering.objects.for_program(program).select_related(
+        "discipline", "teacher__person"
     )
+    if mine:
+        # A posse sai da sessão, nunca de um `teacher_id` do chamador —
+        # senão qualquer docente lê a fila de qualquer outro.
+        pessoas = Person.objects.active().filter(user=request.user, program=program)
+        return ofertas.filter(
+            teacher__person__in=pessoas, cycle__is_active=True
+        ).order_by("cycle__term__year", "cycle__term__half", "discipline__code")
+    ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
+    return ofertas.for_cycle(ciclo)
 
 
 def _ofertas(
@@ -796,6 +811,86 @@ def download_isolated_document(request: HttpRequest, document_id: int):
         as_attachment=True,
         filename=Path(documento.file.name).name,
     )
+
+
+def _minha_oferta(
+    request: HttpRequest, program: Program, offering_id: int
+) -> DisciplineOffering:
+    """A oferta desta sessão — só a do docente responsável.
+
+    `rank_disciplineoffering` é permissão de papel: ela diz que a pessoa
+    classifica candidatos, não QUAIS ofertas. A posse é aqui, como em
+    `_meu_requerimento`.
+
+    403 e não 404, ao contrário do escopo de tenant: a oferta é do mesmo
+    programa e o docente sabe que ela existe — o que ele não pode é
+    ordenar a fila de um colega.
+    """
+    oferta = get_object_or_404(
+        DisciplineOffering.objects.for_program(program).select_related(
+            "teacher", "discipline"
+        ),
+        pk=offering_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if not pessoas.filter(pk=oferta.teacher.person_id).exists():
+        raise NotAllowed(
+            "Só o docente responsável classifica os candidatos desta oferta."
+        )
+    return oferta
+
+
+@router.get(
+    "/isolated/offerings/{int:offering_id}/candidates",
+    response=list[IsolatedCandidateOut],
+)
+def list_offering_candidates(request: HttpRequest, offering_id: int):
+    """Quem se inscreveu nesta oferta, na ordem atual da classificação.
+
+    Sem paginação, pela mesma razão da lista de ofertas: a fila de uma
+    disciplina isolada tem dezenas de nomes e o docente ordena todos de
+    uma vez — meia lista não dá para classificar.
+    """
+    require_perm(request, "academic.rank_disciplineoffering")
+    program: Program = current_program(request)
+    oferta = _minha_oferta(request, program, offering_id)
+    return oferta.candidates()
+
+
+@router.post(
+    "/isolated/offerings/{int:offering_id}/rank",
+    response=list[IsolatedCandidateOut],
+)
+def rank_offering_candidates(
+    request: HttpRequest, offering_id: int, payload: IsolatedRankIn
+):
+    """Grava a ordem do docente como posição 1..N.
+
+    Substituição, e não acréscimo: a lista do corpo é a classificação
+    final daquela oferta, e quem ficou de fora volta a não ter posição.
+    """
+    require_perm(request, "academic.rank_disciplineoffering")
+    program: Program = current_program(request)
+    oferta = _minha_oferta(request, program, offering_id)
+    # Id de fora da oferta é `item_not_in_offering` (400), cobrado no
+    # model e convertido pelo handler central (Seção 8).
+    ordenados = oferta.rank_items(payload.item_ids)
+    with transaction.atomic():
+        # Zerar antes de gravar não é zelo: `unique_classificacao_por_oferta`
+        # barraria a troca de posição entre dois candidatos se as escritas
+        # fossem incrementais, e a ordem em que elas sairiam do laço
+        # decidiria se a operação passa.
+        oferta.items.update(rank=None)
+        for item in ordenados:
+            item.save(update_fields=["rank"])
+        audit.record(
+            "academic.isolated.rank",
+            request=request,
+            target=oferta,
+            cycle_id=oferta.cycle_id,
+            item_ids=[item.pk for item in ordenados],
+        )
+    return oferta.candidates()
 
 
 @router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})
