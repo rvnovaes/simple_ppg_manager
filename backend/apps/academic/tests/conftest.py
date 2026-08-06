@@ -6,10 +6,11 @@ dentro dele; repetir esse arranjo em cada módulo é como as fixtures saem de
 sincronia. Testes em memória (`test_models.py`) não usam nada daqui.
 """
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from apps.academic.models import (
     DisciplineOffering,
@@ -90,6 +91,58 @@ def requerimento(
     program: Program, ciclo: IsolatedEnrollmentCycle
 ) -> IsolatedEnrollmentRequest:
     return criar_requerimento(program=program, ciclo=ciclo, nome="Carla Reis")
+
+
+@pytest.fixture
+def ciclo_aberto(program: Program) -> IsolatedEnrollmentCycle:
+    """Edital com a janela de inscrição em torno de agora.
+
+    As rotas do candidato resolvem o ciclo por `timezone.now()` — elas são
+    o formulário de quem se inscreve, e não recebem `at` de ninguém. Por
+    isso este ciclo é relativo ao relógio, ao contrário do `ciclo`, que
+    tem datas fixas para os testes de janela.
+
+    Período letivo próprio: `unique_ciclo_isolada_por_programa_e_periodo`
+    impede os dois ciclos de dividirem o mesmo semestre.
+    """
+    periodo = AcademicTerm.objects.create(
+        year=2027, half=1, starts_on=date(2027, 3, 1), ends_on=date(2027, 7, 17)
+    )
+    agora = timezone.now()
+    fecha = agora + timedelta(days=1)
+    return IsolatedEnrollmentCycle.objects.create(
+        program=program,
+        term=periodo,
+        submission_opens_at=agora - timedelta(days=1),
+        submission_closes_at=fecha,
+        result_published_on=date(2027, 2, 12),
+        appeal_opens_at=fecha + timedelta(days=1),
+        appeal_closes_at=fecha + timedelta(days=3),
+        final_result_on=date(2027, 2, 17),
+        payment_closes_at=fecha + timedelta(days=10),
+    )
+
+
+@pytest.fixture
+def ofertas_abertas(
+    program: Program, ciclo_aberto: IsolatedEnrollmentCycle, docente: Teacher
+) -> list[DisciplineOffering]:
+    return [
+        DisciplineOffering.objects.create(
+            program=program,
+            cycle=ciclo_aberto,
+            discipline=Discipline.objects.create(
+                program=program, code=codigo, name=nome
+            ),
+            teacher=docente,
+            seats=vagas,
+        )
+        for codigo, nome, vagas in (
+            ("DIR010", "Direito e Trabalho", 2),
+            ("DIR011", "Processo Constitucional", 3),
+            ("DIR012", "Filosofia do Direito", 1),
+        )
+    ]
 
 
 def anexar_documentos_obrigatorios(

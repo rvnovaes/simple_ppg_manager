@@ -14,8 +14,12 @@ from pydantic import EmailStr, model_validator
 from apps.people.models import Person
 
 from .models import (
+    MAX_ISOLATED_ITEMS,
+    DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
+    IsolatedEnrollmentItem,
+    IsolatedEnrollmentRequest,
     Student,
     Teacher,
 )
@@ -351,6 +355,161 @@ class EnrollmentAdjustmentRequestOut(Schema):
         obj: EnrollmentAdjustmentRequest,
     ) -> list[EnrollmentAdjustmentItem]:
         return list(obj.items.all())
+
+
+class DisciplineOfferingOut(Schema):
+    """Uma disciplina oferecida no edital, como o candidato a vê.
+
+    `seats_available` vem calculado do servidor: a tela não tem como
+    somar deferidos e matriculados, e deixar a conta para ela seria
+    espalhar a regra das vagas (Seção 12).
+    """
+
+    id: int
+    program_id: int
+    cycle_id: int
+    discipline_id: int
+    # Código e nome viajam junto para a tela não precisar de uma segunda
+    # chamada ao catálogo por oferta.
+    discipline_code: str
+    discipline_name: str
+    teacher_id: int
+    teacher_name: str
+    seats: int
+    seats_available: int
+
+    @staticmethod
+    def resolve_discipline_code(obj: DisciplineOffering) -> str:
+        return obj.discipline.code
+
+    @staticmethod
+    def resolve_discipline_name(obj: DisciplineOffering) -> str:
+        return obj.discipline.name
+
+    @staticmethod
+    def resolve_teacher_name(obj: DisciplineOffering) -> str:
+        return obj.teacher.person.full_name
+
+    @staticmethod
+    def resolve_seats_available(obj: DisciplineOffering) -> int:
+        return obj.seats_available()
+
+
+class IsolatedItemIn(Schema):
+    """Uma disciplina escolhida pelo candidato, pela oferta do ciclo."""
+
+    offering_id: int
+
+
+class IsolatedItemOut(Schema):
+    id: int
+    offering_id: int
+    discipline_code: str
+    discipline_name: str
+    # Nulo até o docente classificar (US-011). Nulo não é zero nem último.
+    rank: int | None
+
+    @staticmethod
+    def resolve_discipline_code(obj: IsolatedEnrollmentItem) -> str:
+        return obj.offering.discipline.code
+
+    @staticmethod
+    def resolve_discipline_name(obj: IsolatedEnrollmentItem) -> str:
+        return obj.offering.discipline.name
+
+
+def _itens_validos(itens: list[IsolatedItemIn]) -> list[IsolatedItemIn]:
+    """Repetição e excesso são 422 na borda.
+
+    A repetição já é barrada pela UniqueConstraint
+    `unique_item_por_requerimento_e_oferta` e o excesso por `submit()`,
+    mas o primeiro viraria IntegrityError 500 e o segundo só apareceria
+    na hora de enviar, depois de o candidato ter escolhido três.
+    """
+    ids = [item.offering_id for item in itens]
+    if len(set(ids)) != len(ids):
+        raise ValueError("A mesma disciplina aparece duas vezes.")
+    if len(ids) > MAX_ISOLATED_ITEMS:
+        raise ValueError(f"Escolha no máximo {MAX_ISOLATED_ITEMS} disciplinas.")
+    return itens
+
+
+class IsolatedRequestIn(Schema):
+    """Abertura do requerimento de isolada, sempre em rascunho.
+
+    Sem `program_id` nem `cycle_id`: o programa é o da requisição
+    (`current_program`) e o ciclo é o que está com inscrição aberta —
+    escolher o ciclo livremente seria inscrever-se em edital encerrado.
+    `person_id` é opcional e existe só para a tela ser explícita; a
+    pessoa vem sempre da sessão, e informar a de outra é 403.
+
+    A lista de disciplinas pode vir vazia: rascunho é rascunho, e é
+    `submit()` que exige de uma a duas.
+    """
+
+    person_id: int | None = None
+    is_ufmg_staff: bool = False
+    items: list[IsolatedItemIn] = []
+
+    @model_validator(mode="after")
+    def itens_validos(self) -> "IsolatedRequestIn":
+        _itens_validos(self.items)
+        return self
+
+
+class IsolatedRequestPatch(Schema):
+    """Alteração do rascunho: só o que o candidato escolheu.
+
+    Situação, pagamento e decisão não estão aqui de propósito — cada um
+    deles é um ato de outra pessoa, com endpoint próprio (US-011 a
+    US-014). `items` ausente mantém as disciplinas; `items: []` apaga
+    todas, que é o jeito de o candidato recomeçar a escolha.
+    """
+
+    is_ufmg_staff: bool | None = None
+    items: list[IsolatedItemIn] | None = None
+
+    @model_validator(mode="after")
+    def itens_validos(self) -> "IsolatedRequestPatch":
+        if self.items is not None:
+            _itens_validos(self.items)
+        return self
+
+
+class IsolatedRequestOut(Schema):
+    id: int
+    program_id: int
+    cycle_id: int
+    person_id: int
+    # O nome vem junto pela mesma razão do código da disciplina: a fila da
+    # secretaria lista muitos candidatos e não deve buscar cada um.
+    person_name: str
+    status: str
+    payment_status: str
+    is_ufmg_staff: bool
+    gru_url: str
+    decision_note: str
+    decided_at: datetime.datetime | None
+    appeal_note: str
+    appealed_at: datetime.datetime | None
+    submitted_at: datetime.datetime | None
+    created_at: datetime.datetime
+    items: list[IsolatedItemOut]
+    # O que ainda falta anexar, na ordem do edital: sem isto a tela do
+    # candidato só descobriria a pendência no 400 do envio.
+    missing_documents: list[str]
+
+    @staticmethod
+    def resolve_person_name(obj: IsolatedEnrollmentRequest) -> str:
+        return obj.person.full_name
+
+    @staticmethod
+    def resolve_items(obj: IsolatedEnrollmentRequest) -> list[IsolatedEnrollmentItem]:
+        return list(obj.items.all())
+
+    @staticmethod
+    def resolve_missing_documents(obj: IsolatedEnrollmentRequest) -> list[str]:
+        return obj.missing_documents()
 
 
 class IsolatedSignupIn(Schema):

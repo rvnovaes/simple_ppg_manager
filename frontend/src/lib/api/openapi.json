@@ -1508,6 +1508,223 @@
         ]
       }
     },
+    "/academic/isolated/offerings/": {
+      "get": {
+        "operationId": "apps_academic_router_list_isolated_offerings",
+        "summary": "List Isolated Offerings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DisciplineOfferingOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "As disciplinas do edital aberto, com o saldo de vagas.\n\nSem paginação: um edital oferece dezenas de disciplinas, não milhares,\ne a tela do candidato precisa da lista inteira para ele escolher duas.\nFora da janela de inscrição a resposta é `no_open_cycle` (400) — a\nmesma que o auto-registro dá, e a mesma mensagem que a tela exibe.",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/requests/": {
+      "get": {
+        "operationId": "apps_academic_router_list_isolated_requests",
+        "summary": "List Isolated Requests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cycle_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cycle Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedIsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_create_isolated_request_endpoint",
+        "summary": "Create Isolated Request Endpoint",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/requests/{request_id}/": {
+      "patch": {
+        "operationId": "apps_academic_router_update_isolated_request",
+        "summary": "Update Isolated Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedRequestPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/requests/{request_id}/submit": {
+      "post": {
+        "operationId": "apps_academic_router_submit_isolated_request",
+        "summary": "Submit Isolated Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/academic/isolated/signup": {
       "post": {
         "operationId": "apps_academic_router_isolated_signup",
@@ -3381,6 +3598,327 @@
           "note"
         ],
         "title": "EnrollmentAdjustmentRejectIn",
+        "type": "object"
+      },
+      "DisciplineOfferingOut": {
+        "description": "Uma disciplina oferecida no edital, como o candidato a vê.\n\n`seats_available` vem calculado do servidor: a tela não tem como\nsomar deferidos e matriculados, e deixar a conta para ela seria\nespalhar a regra das vagas (Seção 12).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "cycle_id": {
+            "title": "Cycle Id",
+            "type": "integer"
+          },
+          "discipline_id": {
+            "title": "Discipline Id",
+            "type": "integer"
+          },
+          "discipline_code": {
+            "title": "Discipline Code",
+            "type": "string"
+          },
+          "discipline_name": {
+            "title": "Discipline Name",
+            "type": "string"
+          },
+          "teacher_id": {
+            "title": "Teacher Id",
+            "type": "integer"
+          },
+          "teacher_name": {
+            "title": "Teacher Name",
+            "type": "string"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          },
+          "seats_available": {
+            "title": "Seats Available",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "cycle_id",
+          "discipline_id",
+          "discipline_code",
+          "discipline_name",
+          "teacher_id",
+          "teacher_name",
+          "seats",
+          "seats_available"
+        ],
+        "title": "DisciplineOfferingOut",
+        "type": "object"
+      },
+      "IsolatedItemOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "offering_id": {
+            "title": "Offering Id",
+            "type": "integer"
+          },
+          "discipline_code": {
+            "title": "Discipline Code",
+            "type": "string"
+          },
+          "discipline_name": {
+            "title": "Discipline Name",
+            "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          }
+        },
+        "required": [
+          "id",
+          "offering_id",
+          "discipline_code",
+          "discipline_name",
+          "rank"
+        ],
+        "title": "IsolatedItemOut",
+        "type": "object"
+      },
+      "IsolatedRequestOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "cycle_id": {
+            "title": "Cycle Id",
+            "type": "integer"
+          },
+          "person_id": {
+            "title": "Person Id",
+            "type": "integer"
+          },
+          "person_name": {
+            "title": "Person Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "payment_status": {
+            "title": "Payment Status",
+            "type": "string"
+          },
+          "is_ufmg_staff": {
+            "title": "Is Ufmg Staff",
+            "type": "boolean"
+          },
+          "gru_url": {
+            "title": "Gru Url",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "appeal_note": {
+            "title": "Appeal Note",
+            "type": "string"
+          },
+          "appealed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appealed At"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IsolatedItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "missing_documents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Documents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "cycle_id",
+          "person_id",
+          "person_name",
+          "status",
+          "payment_status",
+          "is_ufmg_staff",
+          "gru_url",
+          "decision_note",
+          "decided_at",
+          "appeal_note",
+          "appealed_at",
+          "submitted_at",
+          "created_at",
+          "items",
+          "missing_documents"
+        ],
+        "title": "IsolatedRequestOut",
+        "type": "object"
+      },
+      "PagedIsolatedRequestOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IsolatedRequestOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedIsolatedRequestOut",
+        "type": "object"
+      },
+      "IsolatedItemIn": {
+        "description": "Uma disciplina escolhida pelo candidato, pela oferta do ciclo.",
+        "properties": {
+          "offering_id": {
+            "title": "Offering Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "offering_id"
+        ],
+        "title": "IsolatedItemIn",
+        "type": "object"
+      },
+      "IsolatedRequestIn": {
+        "description": "Abertura do requerimento de isolada, sempre em rascunho.\n\nSem `program_id` nem `cycle_id`: o programa é o da requisição\n(`current_program`) e o ciclo é o que está com inscrição aberta —\nescolher o ciclo livremente seria inscrever-se em edital encerrado.\n`person_id` é opcional e existe só para a tela ser explícita; a\npessoa vem sempre da sessão, e informar a de outra é 403.\n\nA lista de disciplinas pode vir vazia: rascunho é rascunho, e é\n`submit()` que exige de uma a duas.",
+        "properties": {
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "is_ufmg_staff": {
+            "default": false,
+            "title": "Is Ufmg Staff",
+            "type": "boolean"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/IsolatedItemIn"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "IsolatedRequestIn",
+        "type": "object"
+      },
+      "IsolatedRequestPatch": {
+        "description": "Alteração do rascunho: só o que o candidato escolheu.\n\nSituação, pagamento e decisão não estão aqui de propósito — cada um\ndeles é um ato de outra pessoa, com endpoint próprio (US-011 a\nUS-014). `items` ausente mantém as disciplinas; `items: []` apaga\ntodas, que é o jeito de o candidato recomeçar a escolha.",
+        "properties": {
+          "is_ufmg_staff": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Ufmg Staff"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/IsolatedItemIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          }
+        },
+        "title": "IsolatedRequestPatch",
         "type": "object"
       },
       "IsolatedSignupOut": {

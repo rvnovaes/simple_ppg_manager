@@ -31,9 +31,12 @@ from apps.programs.models import (
 )
 
 from .models import (
+    DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
     IsolatedEnrollmentCycle,
+    IsolatedEnrollmentItem,
+    IsolatedEnrollmentRequest,
     Student,
     Teacher,
 )
@@ -234,6 +237,76 @@ def programa_com_inscricao_aberta(
             code="program_required",
         )
     return Program.objects.get(pk=next(iter(abertos)))
+
+
+def ciclo_com_inscricao_aberta(
+    *, program: Program, at: datetime
+) -> IsolatedEnrollmentCycle:
+    """O edital deste programa que aceita inscrição agora.
+
+    O ciclo não vem do payload pelo mesmo motivo que o programa não vem:
+    escolher o edital livremente seria inscrever-se num semestre encerrado
+    ou num que ainda não abriu. Um ciclo por programa por período letivo e
+    janelas que não se sobrepõem fazem deste `get` uma resposta única.
+    """
+    ciclo = (
+        IsolatedEnrollmentCycle.objects.for_program(program)
+        .active()
+        .filter(submission_opens_at__lte=at, submission_closes_at__gt=at)
+        .first()
+    )
+    if ciclo is None:
+        raise DomainError(
+            "Não há edital de disciplina isolada com inscrições abertas.",
+            code="no_open_cycle",
+        )
+    return ciclo
+
+
+@transaction.atomic
+def create_isolated_request(
+    *,
+    program: Program,
+    cycle: IsolatedEnrollmentCycle,
+    person: Person,
+    is_ufmg_staff: bool = False,
+    ofertas: Sequence[DisciplineOffering],
+    request: HttpRequest | None = None,
+) -> IsolatedEnrollmentRequest:
+    """Abre o requerimento em rascunho com as disciplinas escolhidas.
+
+    Está aqui, e não no router, porque escreve em três models
+    (IsolatedEnrollmentRequest, IsolatedEnrollmentItem e AuditLog) na
+    mesma transação (ADR-002).
+
+    As ofertas chegam já resolvidas e escopadas pelo router: id
+    inexistente ou de outro ciclo vira 404 lá, não IntegrityError aqui.
+    """
+    requerimento = IsolatedEnrollmentRequest(
+        program=program,
+        cycle=cycle,
+        person=person,
+        is_ufmg_staff=is_ufmg_staff,
+    )
+    # A regra mora no model; aqui só persistimos e auditamos.
+    requerimento.clean()
+    requerimento.save()
+    IsolatedEnrollmentItem.objects.bulk_create(
+        [
+            IsolatedEnrollmentItem(request=requerimento, offering=oferta)
+            for oferta in ofertas
+        ]
+    )
+
+    audit.record(
+        "academic.isolated.create",
+        request=request,
+        target=requerimento,
+        person_id=person.pk,
+        cycle_id=cycle.pk,
+        offering_ids=[oferta.pk for oferta in ofertas],
+    )
+    return requerimento
 
 
 @transaction.atomic

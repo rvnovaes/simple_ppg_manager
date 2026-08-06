@@ -924,6 +924,34 @@ class IsolatedEnrollmentRequestQuerySet(models.QuerySet):
     ) -> "IsolatedEnrollmentRequestQuerySet":
         return self.filter(cycle=cycle)
 
+    def visible_to(self, user, program) -> "IsolatedEnrollmentRequestQuerySet":
+        """O que esta sessão pode ler — sempre depois de `for_program`.
+
+        `view_isolatedenrollmentrequest` é permissão de papel: ela diz que
+        a pessoa acompanha requerimento, não QUAIS requerimentos. O recorte
+        é aqui, como em `EnrollmentAdjustmentRequestQuerySet.visible_to`.
+
+        Secretaria e Coordenação (e o superusuário, que opera a plataforma)
+        veem o edital inteiro. Todo o resto vê a união do que é seu como
+        candidato e do que chega a ele como docente responsável por uma
+        oferta — união, e não dois ramos, porque nada impede que o docente
+        também se inscreva numa isolada de outro programa... e, no mesmo
+        programa, que a mesma pessoa acumule os dois papéis.
+        """
+        if (
+            user.is_superuser
+            or user.groups.filter(name__in=PAPEIS_COM_VISAO_DO_PROGRAMA).exists()
+        ):
+            return self
+        pessoas = Person.objects.active().filter(user=user, program=program)
+        # `distinct` porque o lado do docente atravessa `items` (um-para-
+        # muitos): requerimento com duas disciplinas do mesmo docente
+        # apareceria duas vezes sem ele.
+        return self.filter(
+            models.Q(person__in=pessoas)
+            | models.Q(items__offering__teacher__person__in=pessoas)
+        ).distinct()
+
 
 class IsolatedEnrollmentRequest(models.Model):
     """Requerimento de uma pessoa para cursar isoladas num ciclo.
@@ -1066,6 +1094,19 @@ class IsolatedEnrollmentRequest(models.Model):
             )
         self.status = self.Status.SUBMITTED
         self.submitted_at = at
+
+    def ensure_editable(self) -> None:
+        """Só o rascunho aceita mudança de disciplina ou de vínculo.
+
+        Depois de inscrito, o requerimento é a peça que o docente
+        classifica e a secretaria julga: trocar as disciplinas ali dentro
+        mudaria a fila das vagas debaixo de quem já foi ordenado. Quem
+        errou a escolha cancela e o edital decide se cabe nova inscrição.
+        """
+        self._exigir_status(
+            self.Status.DRAFT,
+            "Só um requerimento em rascunho pode ser alterado.",
+        )
 
     def required_document_kinds(self) -> list[str]:
         """Tipos de documento que este requerimento precisa ter anexados.

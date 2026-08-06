@@ -28,12 +28,26 @@ from apps.programs.models import (
     ResearchLine,
 )
 
-from .models import AdjustmentStatus, EnrollmentAdjustmentRequest, Student, Teacher
+from .models import (
+    AdjustmentStatus,
+    DisciplineOffering,
+    EnrollmentAdjustmentRequest,
+    IsolatedEnrollmentCycle,
+    IsolatedEnrollmentItem,
+    IsolatedEnrollmentRequest,
+    Student,
+    Teacher,
+)
 from .schemas import (
+    DisciplineOfferingOut,
     EnrollmentAdjustmentApproveIn,
     EnrollmentAdjustmentRejectIn,
     EnrollmentAdjustmentRequestIn,
     EnrollmentAdjustmentRequestOut,
+    IsolatedItemIn,
+    IsolatedRequestIn,
+    IsolatedRequestOut,
+    IsolatedRequestPatch,
     IsolatedSignupIn,
     IsolatedSignupOut,
     StudentIn,
@@ -46,8 +60,10 @@ from .schemas import (
 from .services import (
     JANELA_DE_SIGNUP_EM_SEGUNDOS,
     LIMITE_DE_SIGNUP_POR_IP,
+    ciclo_com_inscricao_aberta,
     conferir_programa,
     create_enrollment_adjustment,
+    create_isolated_request,
     create_student,
     create_teacher,
     programa_com_inscricao_aberta,
@@ -478,6 +494,186 @@ def reject_enrollment_request(
             note=solicitacao.decision_note,
         )
     return solicitacao
+
+
+@router.get("/isolated/offerings/", response=list[DisciplineOfferingOut])
+def list_isolated_offerings(request: HttpRequest):
+    """As disciplinas do edital aberto, com o saldo de vagas.
+
+    Sem paginação: um edital oferece dezenas de disciplinas, não milhares,
+    e a tela do candidato precisa da lista inteira para ele escolher duas.
+    Fora da janela de inscrição a resposta é `no_open_cycle` (400) — a
+    mesma que o auto-registro dá, e a mesma mensagem que a tela exibe.
+    """
+    require_perm(request, "academic.view_disciplineoffering")
+    program: Program = current_program(request)
+    ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
+    # `seats_available()` faz um COUNT por oferta e não aproveita prefetch
+    # (é `filter` sobre o acessor reverso). São dezenas de consultas curtas
+    # num edital, não milhares — se um dia doer, o caminho é anotar o COUNT
+    # no queryset, e não espalhar a regra das vagas na tela.
+    return (
+        DisciplineOffering.objects.for_program(program)
+        .for_cycle(ciclo)
+        .select_related("discipline", "teacher__person")
+    )
+
+
+def _ofertas(
+    ciclo: IsolatedEnrollmentCycle, itens: list[IsolatedItemIn]
+) -> list[DisciplineOffering]:
+    """Resolve as escolhas em ofertas DO CICLO ABERTO.
+
+    O escopo entra na busca: oferta de outro ciclo ou de outro programa
+    não existe para esta requisição (404, nunca 403). É o que impede o
+    `cycle_mismatch` de `IsolatedEnrollmentItem.clean()` de chegar ao
+    banco pelo caminho normal.
+    """
+    return [
+        get_object_or_404(
+            DisciplineOffering.objects.for_cycle(ciclo), pk=item.offering_id
+        )
+        for item in itens
+    ]
+
+
+def _pessoa_da_sessao(
+    request: HttpRequest, program: Program, person_id: int | None
+) -> Person:
+    """A pessoa de quem está pedindo — nunca a do payload.
+
+    Aceitar `person_id` do corpo sem conferir seria deixar qualquer
+    candidato se inscrever em nome de outro. O campo só serve para a tela
+    ser explícita: se não for uma Person desta sessão, é 403.
+    """
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if person_id is not None:
+        pessoa = pessoas.filter(pk=person_id).first()
+        if pessoa is None:
+            raise NotAllowed("A inscrição é sempre em nome do próprio candidato.")
+        return pessoa
+    pessoa = pessoas.first()
+    if pessoa is None:
+        raise NotAllowed("Sua conta não tem cadastro neste programa.")
+    return pessoa
+
+
+def _meu_requerimento(
+    request: HttpRequest, program: Program, request_id: int
+) -> IsolatedEnrollmentRequest:
+    """O requerimento desta sessão — só o do próprio candidato.
+
+    `change_isolatedenrollmentrequest` é permissão de papel: ela diz que a
+    pessoa mexe no requerimento dela, não em QUALQUER um. Vale inclusive
+    para a Secretaria, que julga (US-012) mas não escolhe disciplina por
+    ninguém.
+    """
+    requerimento = get_object_or_404(
+        IsolatedEnrollmentRequest.objects.for_program(program).select_related(
+            "person", "cycle"
+        ),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if not pessoas.filter(pk=requerimento.person_id).exists():
+        raise NotAllowed("Só o próprio candidato altera o requerimento dele.")
+    return requerimento
+
+
+@router.get("/isolated/requests/", response=list[IsolatedRequestOut])
+@paginate
+def list_isolated_requests(request: HttpRequest, cycle_id: int | None = None):
+    require_perm(request, "academic.view_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimentos = (
+        # Duas camadas, nesta ordem: o tenant primeiro (não é opcional) e o
+        # papel depois. `visible_to` é quem recorta o candidato e o docente
+        # de secretaria/coordenação — ver o método no model.
+        IsolatedEnrollmentRequest.objects.for_program(program)
+        .visible_to(request.user, program)
+        .select_related("person")
+        .prefetch_related("items__offering__discipline")
+    )
+    if cycle_id is not None:
+        # Filtro de conveniência da tela. Não é escopo de tenant — esse já
+        # foi aplicado acima e não é opcional.
+        requerimentos = requerimentos.filter(cycle_id=cycle_id)
+    return requerimentos
+
+
+@router.post("/isolated/requests/", response={201: IsolatedRequestOut})
+def create_isolated_request_endpoint(request: HttpRequest, payload: IsolatedRequestIn):
+    require_perm(request, "academic.add_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    pessoa = _pessoa_da_sessao(request, program, payload.person_id)
+    ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
+    requerimento = create_isolated_request(
+        program=program,
+        cycle=ciclo,
+        person=pessoa,
+        is_ufmg_staff=payload.is_ufmg_staff,
+        ofertas=_ofertas(ciclo, payload.items),
+        request=request,
+    )
+    return Status(201, requerimento)
+
+
+@router.patch("/isolated/requests/{int:request_id}/", response=IsolatedRequestOut)
+def update_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedRequestPatch
+):
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    # A regra mora no model: fora do rascunho é InvalidStateTransition
+    # (409) e o handler central converte, sem try/except aqui (Seção 8).
+    requerimento.ensure_editable()
+
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    itens = campos.pop("items", None)
+    with transaction.atomic():
+        if "is_ufmg_staff" in campos:
+            requerimento.is_ufmg_staff = campos["is_ufmg_staff"]
+            requerimento.save(update_fields=["is_ufmg_staff"])
+        if itens is not None:
+            ofertas = _ofertas(requerimento.cycle, payload.items or [])
+            # Substituição, e não acréscimo: a lista do corpo é a escolha
+            # final do candidato, e apagar antes de inserir dispensa
+            # calcular a diferença.
+            requerimento.items.all().delete()
+            IsolatedEnrollmentItem.objects.bulk_create(
+                [
+                    IsolatedEnrollmentItem(request=requerimento, offering=oferta)
+                    for oferta in ofertas
+                ]
+            )
+        audit.record(
+            "academic.isolated.update",
+            request=request,
+            target=requerimento,
+            fields=sorted([*campos, *(["items"] if itens is not None else [])]),
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/submit", response=IsolatedRequestOut)
+def submit_isolated_request(request: HttpRequest, request_id: int):
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    with transaction.atomic():
+        # Janela, contagem de disciplinas e documentação faltante são
+        # cobrança do model e voltam como 4xx do handler central.
+        requerimento.submit(at=timezone.now())
+        requerimento.save(update_fields=["status", "submitted_at"])
+        audit.record(
+            "academic.isolated.submit",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+        )
+    return requerimento
 
 
 @router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})

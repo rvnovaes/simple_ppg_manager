@@ -432,6 +432,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/offerings/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Isolated Offerings
+         * @description As disciplinas do edital aberto, com o saldo de vagas.
+         *
+         *     Sem paginação: um edital oferece dezenas de disciplinas, não milhares,
+         *     e a tela do candidato precisa da lista inteira para ele escolher duas.
+         *     Fora da janela de inscrição a resposta é `no_open_cycle` (400) — a
+         *     mesma que o auto-registro dá, e a mesma mensagem que a tela exibe.
+         */
+        get: operations["apps_academic_router_list_isolated_offerings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Isolated Requests */
+        get: operations["apps_academic_router_list_isolated_requests"];
+        put?: never;
+        /** Create Isolated Request Endpoint */
+        post: operations["apps_academic_router_create_isolated_request_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Isolated Request */
+        patch: operations["apps_academic_router_update_isolated_request"];
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Isolated Request */
+        post: operations["apps_academic_router_submit_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/isolated/signup": {
         parameters: {
             query?: never;
@@ -1155,6 +1232,146 @@ export interface components {
         EnrollmentAdjustmentRejectIn: {
             /** Note */
             note: string;
+        };
+        /**
+         * DisciplineOfferingOut
+         * @description Uma disciplina oferecida no edital, como o candidato a vê.
+         *
+         *     `seats_available` vem calculado do servidor: a tela não tem como
+         *     somar deferidos e matriculados, e deixar a conta para ela seria
+         *     espalhar a regra das vagas (Seção 12).
+         */
+        DisciplineOfferingOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Discipline Id */
+            discipline_id: number;
+            /** Discipline Code */
+            discipline_code: string;
+            /** Discipline Name */
+            discipline_name: string;
+            /** Teacher Id */
+            teacher_id: number;
+            /** Teacher Name */
+            teacher_name: string;
+            /** Seats */
+            seats: number;
+            /** Seats Available */
+            seats_available: number;
+        };
+        /** IsolatedItemOut */
+        IsolatedItemOut: {
+            /** Id */
+            id: number;
+            /** Offering Id */
+            offering_id: number;
+            /** Discipline Code */
+            discipline_code: string;
+            /** Discipline Name */
+            discipline_name: string;
+            /** Rank */
+            rank: number | null;
+        };
+        /** IsolatedRequestOut */
+        IsolatedRequestOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Person Id */
+            person_id: number;
+            /** Person Name */
+            person_name: string;
+            /** Status */
+            status: string;
+            /** Payment Status */
+            payment_status: string;
+            /** Is Ufmg Staff */
+            is_ufmg_staff: boolean;
+            /** Gru Url */
+            gru_url: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Appeal Note */
+            appeal_note: string;
+            /** Appealed At */
+            appealed_at: string | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Items */
+            items: components["schemas"]["IsolatedItemOut"][];
+            /** Missing Documents */
+            missing_documents: string[];
+        };
+        /** PagedIsolatedRequestOut */
+        PagedIsolatedRequestOut: {
+            /** Items */
+            items: components["schemas"]["IsolatedRequestOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * IsolatedItemIn
+         * @description Uma disciplina escolhida pelo candidato, pela oferta do ciclo.
+         */
+        IsolatedItemIn: {
+            /** Offering Id */
+            offering_id: number;
+        };
+        /**
+         * IsolatedRequestIn
+         * @description Abertura do requerimento de isolada, sempre em rascunho.
+         *
+         *     Sem `program_id` nem `cycle_id`: o programa é o da requisição
+         *     (`current_program`) e o ciclo é o que está com inscrição aberta —
+         *     escolher o ciclo livremente seria inscrever-se em edital encerrado.
+         *     `person_id` é opcional e existe só para a tela ser explícita; a
+         *     pessoa vem sempre da sessão, e informar a de outra é 403.
+         *
+         *     A lista de disciplinas pode vir vazia: rascunho é rascunho, e é
+         *     `submit()` que exige de uma a duas.
+         */
+        IsolatedRequestIn: {
+            /** Person Id */
+            person_id?: number | null;
+            /**
+             * Is Ufmg Staff
+             * @default false
+             */
+            is_ufmg_staff: boolean;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["IsolatedItemIn"][];
+        };
+        /**
+         * IsolatedRequestPatch
+         * @description Alteração do rascunho: só o que o candidato escolheu.
+         *
+         *     Situação, pagamento e decisão não estão aqui de propósito — cada um
+         *     deles é um ato de outra pessoa, com endpoint próprio (US-011 a
+         *     US-014). `items` ausente mantém as disciplinas; `items: []` apaga
+         *     todas, que é o jeito de o candidato recomeçar a escolha.
+         */
+        IsolatedRequestPatch: {
+            /** Is Ufmg Staff */
+            is_ufmg_staff?: boolean | null;
+            /** Items */
+            items?: components["schemas"]["IsolatedItemIn"][] | null;
         };
         /**
          * IsolatedSignupOut
@@ -1972,6 +2189,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrollmentAdjustmentRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_isolated_offerings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOfferingOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_isolated_requests: {
+        parameters: {
+            query?: {
+                cycle_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedIsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_isolated_request_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRequestPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_submit_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
                 };
             };
         };
