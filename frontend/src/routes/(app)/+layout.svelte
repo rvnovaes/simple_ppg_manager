@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import Icone from '$lib/Icone.svelte';
 	import { sessao } from '$lib/sessao.svelte';
 
 	let { children } = $props();
@@ -45,7 +46,10 @@
 					<nav class="flex items-center gap-4">
 						<!-- Todo item é condicional: o Candidato da isolada não tem
 						permissão sobre pessoa, professor nem aluno, e link que só leva
-						a 403 é pior do que link ausente. -->
+						a 403 é pior do que link ausente.
+
+						O ícone acompanha o rótulo, nunca o substitui: no topo há espaço
+						para os dois, e ícone sozinho vira adivinhação. -->
 
 						<!-- Pessoas agrupa os quatro recortes do mesmo cadastro. Eles NÃO
 						são exclusivos: quem coordena e dá aula aparece em Professores e
@@ -54,22 +58,23 @@
 							<!-- <details> em vez de estado próprio: fecha no Esc, abre no
 							teclado e não precisa de listener de clique fora. -->
 							<details class="group relative">
-								<summary
-									class="text-grafite hover:text-tinta cursor-pointer list-none text-sm marker:content-['']"
-								>
+								<summary class="item-menu cursor-pointer list-none marker:content-['']">
+									<Icone nome="pessoas" tamanho={14} />
 									Pessoas
-									<span aria-hidden="true" class="text-cinza ml-0.5 text-[0.625rem]">▾</span>
+									<span aria-hidden="true" class="text-cinza text-[0.625rem]">▾</span>
 								</summary>
 								<div
-									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-44 flex-col border py-1 shadow-sm"
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-48 flex-col border py-1 shadow-sm"
 								>
 									{#if sessao.pode('academic.view_teacher')}
 										<a class="item-submenu" href={resolve('/professores')} onclick={fecharSubmenu}>
+											<Icone nome="professor" tamanho={14} />
 											Professores
 										</a>
 									{/if}
 									{#if sessao.pode('academic.view_student')}
 										<a class="item-submenu" href={resolve('/alunos')} onclick={fecharSubmenu}>
+											<Icone nome="aluno" tamanho={14} />
 											Alunos
 										</a>
 									{/if}
@@ -78,6 +83,7 @@
 										href={resolve('/pessoas/candidatos')}
 										onclick={fecharSubmenu}
 									>
+										<Icone nome="candidato" tamanho={14} />
 										Candidatos
 									</a>
 									<a
@@ -85,25 +91,29 @@
 										href={resolve('/pessoas/administrativo')}
 										onclick={fecharSubmenu}
 									>
+										<Icone nome="administrativo" tamanho={14} />
 										Administrativo
 									</a>
 								</div>
 							</details>
 						{/if}
 						{#if sessao.pode('programs.view_researchline')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/estrutura')}>
+							<a class="item-menu" href={resolve('/estrutura')}>
+								<Icone nome="estrutura" tamanho={14} />
 								Estrutura
 							</a>
 						{/if}
 						{#if sessao.pode('academic.add_isolatedenrollmentrequest')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/inscricao')}>
+							<a class="item-menu" href={resolve('/inscricao')}>
+								<Icone nome="inscricao" tamanho={14} />
 								Inscrição
 							</a>
 							<!-- Por papel, e não por permissão: os quatro papéis têm
 							`view_isolatedenrollmentrequest`, mas esta tela é a do próprio
 							candidato — a fila da secretaria é outra (US-019). -->
 							{#if sessao.temPapel('Candidato')}
-								<a class="text-grafite hover:text-tinta text-sm" href={resolve('/acompanhamento')}>
+								<a class="item-menu" href={resolve('/acompanhamento')}>
+									<Icone nome="acompanhamento" tamanho={14} />
 									Acompanhamento
 								</a>
 							{/if}
@@ -112,7 +122,8 @@
 						exclusiva do Docente (academic.0011) e é exatamente o que esta
 						tela exige. -->
 						{#if sessao.pode('academic.rank_disciplineoffering')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/classificacao')}>
+							<a class="item-menu" href={resolve('/classificacao')}>
+								<Icone nome="classificacao" tamanho={14} />
 								Classificação
 							</a>
 						{/if}
@@ -122,14 +133,13 @@
 						passa pelo edital, não a gestão dele. -->
 						{#if sessao.pode('academic.view_isolatedenrollmentcycle')}
 							<details class="group relative">
-								<summary
-									class="text-grafite hover:text-tinta cursor-pointer list-none text-sm marker:content-['']"
-								>
+								<summary class="item-menu cursor-pointer list-none marker:content-['']">
+									<Icone nome="isolada" tamanho={14} />
 									Disciplina isolada
-									<span aria-hidden="true" class="text-cinza ml-0.5 text-[0.625rem]">▾</span>
+									<span aria-hidden="true" class="text-cinza text-[0.625rem]">▾</span>
 								</summary>
 								<div
-									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-44 flex-col border py-1 shadow-sm"
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-48 flex-col border py-1 shadow-sm"
 								>
 									<!-- Por papel: `change_isolatedenrollmentrequest` também é do
 									Candidato (é com ela que ele monta o próprio requerimento), e
@@ -137,6 +147,7 @@
 									de fora porque esta tela só tem controles de decisão. -->
 									{#if sessao.temPapel('Secretaria')}
 										<a class="item-submenu" href={resolve('/analise')} onclick={fecharSubmenu}>
+											<Icone nome="analise" tamanho={14} />
 											Análise
 										</a>
 									{/if}
@@ -144,6 +155,7 @@
 									acompanha em modo somente leitura — as duas têm
 									`view_isolatedenrollmentcycle`, e nenhum outro papel tem. -->
 									<a class="item-submenu" href={resolve('/editais')} onclick={fecharSubmenu}>
+										<Icone nome="edital" tamanho={14} />
 										Editais
 									</a>
 								</div>
@@ -155,22 +167,23 @@
 						telas, não as permissões. -->
 						{#if sessao.pode('academic.add_enrollmentadjustmentrequest') || sessao.pode('academic.change_enrollmentadjustmentrequest') || sessao.temPapel('Secretaria', 'Coordenação')}
 							<details class="group relative">
-								<summary
-									class="text-grafite hover:text-tinta cursor-pointer list-none text-sm marker:content-['']"
-								>
+								<summary class="item-menu cursor-pointer list-none marker:content-['']">
+									<Icone nome="acerto" tamanho={14} />
 									Acerto de matrícula
-									<span aria-hidden="true" class="text-cinza ml-0.5 text-[0.625rem]">▾</span>
+									<span aria-hidden="true" class="text-cinza text-[0.625rem]">▾</span>
 								</summary>
 								<div
-									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-44 flex-col border py-1 shadow-sm"
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-48 flex-col border py-1 shadow-sm"
 								>
 									{#if sessao.pode('academic.add_enrollmentadjustmentrequest')}
 										<a class="item-submenu" href={resolve('/acertos')} onclick={fecharSubmenu}>
+											<Icone nome="documento" tamanho={14} />
 											Meus acertos
 										</a>
 									{/if}
 									{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
 										<a class="item-submenu" href={resolve('/orientandos')} onclick={fecharSubmenu}>
+											<Icone nome="orientandos" tamanho={14} />
 											Orientandos
 										</a>
 									{/if}
@@ -180,6 +193,7 @@
 											href={resolve('/acertos-do-programa')}
 											onclick={fecharSubmenu}
 										>
+											<Icone nome="programa" tamanho={14} />
 											Do programa
 										</a>
 									{/if}
@@ -187,7 +201,8 @@
 							</details>
 						{/if}
 						{#if sessao.pode('programs.view_discipline')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/disciplinas')}>
+							<a class="item-menu" href={resolve('/disciplinas')}>
+								<Icone nome="disciplinas" tamanho={14} />
 								Disciplinas
 							</a>
 						{/if}

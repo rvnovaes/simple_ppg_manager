@@ -160,9 +160,39 @@
 		color: var(--color-carimbo);
 	}
 
+	/* Item do menu principal. O ícone acompanha o rótulo com gap fixo; o
+	   texto nunca quebra, senão a barra desmonta ao encolher a janela. */
+	.item-menu {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.875rem;
+		color: var(--color-grafite);
+		white-space: nowrap;
+		transition: color 120ms ease;
+	}
+	.item-menu:hover {
+		color: var(--color-tinta);
+	}
+	/* O ícone é mais leve que o texto: a cor cheia em ambos faria a barra
+	   parecer o dobro de densa. No hover ele acompanha o rótulo. */
+	.item-menu svg,
+	.item-submenu svg {
+		color: var(--color-cinza);
+		flex-shrink: 0;
+		transition: color 120ms ease;
+	}
+	.item-menu:hover svg,
+	.item-submenu:hover svg {
+		color: currentColor;
+	}
+
 	/* Item de submenu do cabeçalho. Bloco inteiro clicável, sem borda: a
 	   caixa do submenu já é a moldura, e uma borda por item viraria grade. */
 	.item-submenu {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		padding: 0.375rem 0.875rem;
 		font-size: 0.8125rem;
 		color: var(--color-grafite);
