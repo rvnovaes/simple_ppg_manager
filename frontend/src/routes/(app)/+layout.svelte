@@ -164,7 +164,7 @@
 								class="text-grafite hover:text-tinta text-sm"
 								href={resolve('/acertos-do-programa')}
 							>
-								Acertos do programa
+								Acerto de matrícula
 							</a>
 						{/if}
 						{#if sessao.pode('programs.view_discipline')}

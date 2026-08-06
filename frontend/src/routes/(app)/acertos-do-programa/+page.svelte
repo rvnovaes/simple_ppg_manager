@@ -84,12 +84,12 @@
 </script>
 
 <svelte:head>
-	<title>Acertos do programa · PPGD Manager</title>
+	<title>Acerto de matrícula · PPGD Manager</title>
 </svelte:head>
 
 <header>
 	<p class="etiqueta">Acompanhamento</p>
-	<h1 class="text-grafite mt-1 text-2xl font-semibold tracking-tight">Acertos do programa</h1>
+	<h1 class="text-grafite mt-1 text-2xl font-semibold tracking-tight">Acerto de matrícula</h1>
 	<p class="text-cinza mt-2 text-sm">
 		Todas as solicitações de acerto de matrícula e sua situação. As aprovadas ainda precisam ser
 		replicadas manualmente no sistema da UFMG. Esta tela é somente leitura: quem decide é o
