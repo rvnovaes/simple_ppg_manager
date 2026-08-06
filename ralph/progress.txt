@@ -527,3 +527,48 @@ Started: qua. 05 ago 2026 20:19:36 -03
     `from datetime import UTC` e `datetime(..., tzinfo=UTC)`, como faz o `conftest.py`.
   - Sem verificação de browser: US-014 não toca UI. A tela é a US-019.
 ---
+
+## 2026-08-05 - US-015 (Endpoint — encerrar o período)
+- `POST /api/v1/academic/isolated/cycles/{id}/close` em `apps/academic/router.py`, com
+  `require_perm("academic.change_isolatedenrollmentcycle")` (Secretaria já a tinha desde a
+  US-007), `current_program` e escopo na busca (`IsolatedEnrollmentCycle.objects.for_program`
+  — ciclo de outro tenant é 404). Responde `IsolatedCycleCloseOut`.
+- `IsolatedEnrollmentCycle.close()`: transição de estado no model, NÃO salva; encerrar duas
+  vezes é `InvalidStateTransition(code="cycle_already_closed")` (409).
+- `services.close_isolated_cycle()`: `ciclo.close()` + `.update(status=EXCLUDED)` em lote sobre
+  `Student.objects.for_program(ciclo.program).for_term(ciclo.term).isolated().active()` +
+  `ciclo.save(update_fields=["is_active"])` + UM `AuditLog academic.isolated.close_cycle` com
+  `students_excluded` e `term_id` no payload — tudo numa `transaction.atomic()`.
+- `StudentQuerySet` ganhou `isolated()` e `for_term(term)`, no padrão de `regular()`/`active()`.
+- Schema `IsolatedCycleCloseOut` (`cycle_id`, `is_active`, `students_excluded`).
+- Testes: `apps/academic/tests/test_isolada_encerramento.py` (novo, 11 casos) e 2 casos em
+  memória de `close()` em `test_models.py`.
+- Arquivos alterados: `backend/apps/academic/{models,router,schemas,services}.py`,
+  `backend/apps/academic/tests/test_models.py`,
+  `backend/apps/academic/tests/test_isolada_encerramento.py` (novo),
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (87 arquivos), svelte-check (185 arquivos,
+  0 erros), pytest 510 passed. `make gen-api` rodado.
+- **Sem migração e sem `make migrate`**: nenhum campo novo, nenhuma permissão nova — os métodos
+  de QuerySet e a transição não tocam o schema.
+- **Learnings for future iterations:**
+  - **`Student` de isolada não pode ficar TRANCADO**: existe a CheckConstraint
+    `student_leave_only_when_regular`. Teste que quisesse provar "encerrar não mexe em
+    trancado" morre com IntegrityError na fixture — o recorte já exclui o regular, então o
+    caso não existe. Confira as CheckConstraint de `Student` antes de inventar combinação de
+    `modality`/`status` em fixture; regular também exige `level`, `project`,
+    `admission_date` e `deadline` juntos.
+  - **Escrita em lote é `.update()` do QuerySet, e é legítima**: a transição do aluno aqui não
+    tem invariante para proteger (sempre ACTIVE -> EXCLUDED) e um laço com `save()` gastaria
+    centenas de UPDATEs. O que NÃO se dilui é a auditoria: um evento só, com a contagem no
+    payload, porque o ato da secretaria é "encerrei o semestre" — N eventos afogariam o ato.
+  - **Encerrar duas vezes é 409, não no-op**: o segundo encerramento não teria mais aluno ativo
+    para fechar e gravaria `students_excluded: 0` como se fosse trabalho feito. Mesmo raciocínio
+    de `Person.archive()`.
+  - **`AcademicTerm` é institucional (ADR-007 dec. 4), então o lote PRECISA do `for_program`**:
+    o mesmo semestre tem isolada em vários programas e filtrar só por `term` fecharia vínculo
+    de outro tenant. Há teste para isso (`test_encerrar_nao_atravessa_o_tenant`).
+  - **Nada expira sozinho**: não há job, sinal nem checagem por data. Encerrar é sempre esta
+    rota, clicada pela secretaria — a tela é a US-020.
+  - Sem verificação de browser: US-015 não toca UI.
+---

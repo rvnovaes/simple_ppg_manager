@@ -270,7 +270,7 @@
         "Tests pass (encerrar marca só os ISOLATED ACTIVE daquele termo, e não toca em aluno regular nem em quem já estava excluído)"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
