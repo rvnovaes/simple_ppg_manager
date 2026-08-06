@@ -41,3 +41,35 @@ def assign_role_group(
         group=group_name,
     )
     return True
+
+
+@transaction.atomic
+def revoke_role_group(
+    user: User,
+    *,
+    group_name: str,
+    request: HttpRequest | None = None,
+) -> bool:
+    """Tira o usuário do papel indicado. Idempotente, como `assign_role_group`.
+
+    Devolve True quando o vínculo existia e foi removido agora, False quando
+    já não existia — perder um papel é evento auditável, mas não perdê-lo
+    duas vezes.
+
+    Existe para as trocas de papel, em que ficar nos dois é errado: o
+    candidato que vira aluno sai de Candidato e entra em Discente
+    (`academic.services.enroll_isolated_request`).
+    """
+    group = Group.objects.get(name=group_name)
+    if not user.groups.filter(pk=group.pk).exists():
+        return False
+
+    user.groups.remove(group)
+    audit.record(
+        "accounts.user.revoke_role_group",
+        request=request,
+        target=user,
+        username=user.username,
+        group=group_name,
+    )
+    return True

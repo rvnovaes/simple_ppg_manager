@@ -47,6 +47,26 @@ export async function garantirCsrf(): Promise<void> {
 	await api.GET('/auth/csrf');
 }
 
+/**
+ * Serializa o corpo como `multipart/form-data`.
+ *
+ * O `bodySerializer` padrão do openapi-fetch é `JSON.stringify`, que não
+ * serve para upload. Passar este aqui em `api.POST(..., { bodySerializer })`
+ * faz o navegador montar o `Content-Type` com o boundary — definir o header
+ * à mão quebraria o parsing no Django.
+ *
+ * O tipo gerado declara o arquivo como `string` (é `format: binary` no
+ * OpenAPI), então a tela precisa de um cast na hora de montar o corpo.
+ */
+export function comoFormData(corpo: Record<string, unknown>): FormData {
+	const dados = new FormData();
+	for (const [chave, valor] of Object.entries(corpo)) {
+		if (valor === undefined || valor === null) continue;
+		dados.append(chave, valor instanceof Blob ? valor : String(valor));
+	}
+	return dados;
+}
+
 /** Extrai a mensagem padronizada `{detail, code}` do backend. */
 export function mensagemDeErro(erro: unknown, padrao = 'Não foi possível concluir.'): string {
 	if (erro && typeof erro === 'object' && 'detail' in erro) {
@@ -54,4 +74,19 @@ export function mensagemDeErro(erro: unknown, padrao = 'Não foi possível concl
 		if (typeof detail === 'string') return detail;
 	}
 	return padrao;
+}
+
+/**
+ * Extrai o `code` estável do corpo de erro do backend.
+ *
+ * A mensagem é para a pessoa ler; o `code` é para a tela decidir. Só use
+ * quando o desfecho muda de verdade (janela do edital fechada, por exemplo)
+ * — comparar `detail` seria depender do texto.
+ */
+export function codigoDeErro(erro: unknown): string {
+	if (erro && typeof erro === 'object' && 'code' in erro) {
+		const { code } = erro as { code?: unknown };
+		if (typeof code === 'string') return code;
+	}
+	return '';
 }

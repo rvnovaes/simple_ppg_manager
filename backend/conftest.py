@@ -6,6 +6,7 @@ verifica que a migration continua criando os papéis certos.
 
 import pytest
 from django.contrib.auth.models import Group
+from django.core.cache import cache
 from django.test import Client
 
 # Import direto do model (e não get_user_model) para o mypy conseguir tipar
@@ -45,3 +46,27 @@ def client_secretaria(client: Client, secretaria: User) -> Client:
 def client_sem_permissao(client: Client, sem_permissao: User) -> Client:
     client.force_login(sem_permissao)
     return client
+
+
+@pytest.fixture(autouse=True)
+def cache_limpo() -> None:
+    """Cada teste começa com o cache vazio.
+
+    O cache local por processo (o padrão) sobrevive ao rollback do banco:
+    sem isto, o contador de `apps.core.ratelimit` vaza de um teste para o
+    seguinte e a suíte falha conforme a ORDEM em que roda — o pior tipo de
+    teste intermitente.
+    """
+    cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def media_temporaria(settings, tmp_path) -> None:
+    """Todo upload de teste cai num diretório descartável.
+
+    Sem isto, um `FileField` exercitado em teste grava de verdade em
+    `backend/media/` e o lixo fica no checkout — é autouse porque quem
+    escreve o teste não tem como lembrar de uma pegadinha que só aparece
+    no `git status` de outra pessoa.
+    """
+    settings.MEDIA_ROOT = tmp_path / "media"

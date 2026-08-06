@@ -5,15 +5,21 @@ depois, chamada ao model/service, schema de saída explícito. Zero regra de
 negócio aqui.
 """
 
+from pathlib import Path
+
 from django.db import transaction
-from django.http import HttpRequest
+from django.http import FileResponse, HttpRequest
 from django.shortcuts import get_object_or_404
-from ninja import Router, Status
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_protect
+from ninja import File, Form, Router, Status, UploadedFile
+from ninja.decorators import decorate_view
 from ninja.pagination import paginate
 
 from apps.core import audit
-from apps.core.exceptions import NotAllowed
+from apps.core.exceptions import DomainError, NotAllowed
 from apps.core.permissions import require_perm
+from apps.core.ratelimit import enforce_rate_limit
 from apps.core.tenancy import current_program
 from apps.people.models import Person
 from apps.programs.models import (
@@ -24,12 +30,44 @@ from apps.programs.models import (
     ResearchLine,
 )
 
-from .models import AdjustmentStatus, EnrollmentAdjustmentRequest, Student, Teacher
+from .models import (
+    AdjustmentStatus,
+    DisciplineOffering,
+    EnrollmentAdjustmentRequest,
+    IsolatedEnrollmentCycle,
+    IsolatedEnrollmentItem,
+    IsolatedEnrollmentRequest,
+    IsolatedRequestStatus,
+    RequestDocument,
+    RequestDocumentKind,
+    Student,
+    Teacher,
+)
 from .schemas import (
+    DisciplineOfferingIn,
+    DisciplineOfferingOut,
+    DisciplineOfferingPatch,
     EnrollmentAdjustmentApproveIn,
     EnrollmentAdjustmentRejectIn,
     EnrollmentAdjustmentRequestIn,
     EnrollmentAdjustmentRequestOut,
+    IsolatedCancelIn,
+    IsolatedCandidateOut,
+    IsolatedCycleCloseOut,
+    IsolatedCycleIn,
+    IsolatedCycleOut,
+    IsolatedCyclePatch,
+    IsolatedDeferIn,
+    IsolatedEnrollIn,
+    IsolatedItemIn,
+    IsolatedRankIn,
+    IsolatedRejectIn,
+    IsolatedRequestIn,
+    IsolatedRequestOut,
+    IsolatedRequestPatch,
+    IsolatedSignupIn,
+    IsolatedSignupOut,
+    RequestDocumentOut,
     StudentIn,
     StudentOut,
     StudentPatch,
@@ -38,10 +76,18 @@ from .schemas import (
     TeacherPatch,
 )
 from .services import (
+    JANELA_DE_SIGNUP_EM_SEGUNDOS,
+    LIMITE_DE_SIGNUP_POR_IP,
+    ciclo_com_inscricao_aberta,
+    close_isolated_cycle,
     conferir_programa,
     create_enrollment_adjustment,
+    create_isolated_request,
     create_student,
     create_teacher,
+    enroll_isolated_request,
+    programa_com_inscricao_aberta,
+    signup_isolated_candidate,
 )
 
 router = Router(tags=["academic"])
@@ -468,3 +514,895 @@ def reject_enrollment_request(
             note=solicitacao.decision_note,
         )
     return solicitacao
+
+
+@router.get("/isolated/cycles/", response=list[IsolatedCycleOut])
+def list_isolated_cycles(request: HttpRequest):
+    """Os editais do programa, do semestre mais recente para o mais antigo.
+
+    Sem paginação e sem filtro: é um edital por semestre, e a tela da
+    secretaria precisa da lista inteira para escolher qual analisar.
+
+    Só Secretaria e Coordenação chegam aqui (`academic.0011`). O candidato
+    não lê o edital como entidade — o que ele precisa saber do calendário
+    viaja dentro do requerimento dele.
+    """
+    require_perm(request, "academic.view_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    return IsolatedEnrollmentCycle.objects.for_program(program).select_related("term")
+
+
+@router.post("/isolated/cycles/", response={201: IsolatedCycleOut})
+def create_isolated_cycle(request: HttpRequest, payload: IsolatedCycleIn):
+    """A secretaria abre o edital do semestre.
+
+    O período letivo é institucional (ADR-007 dec. 4), então a busca dele
+    não passa por `for_program` — o calendário 2026/1 é o mesmo para todos
+    os programas. O tenant do ciclo continua vindo de `current_program`.
+    """
+    require_perm(request, "academic.add_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    campos = payload.model_dump()
+    periodo = get_object_or_404(AcademicTerm, pk=campos.pop("term_id"))
+    ciclo = IsolatedEnrollmentCycle(program=program, term=periodo, **campos)
+    with transaction.atomic():
+        ciclo.clean()
+        ciclo.save()
+        audit.record(
+            "academic.isolated_cycle.create",
+            request=request,
+            target=ciclo,
+            term_id=ciclo.term_id,
+        )
+    return Status(201, ciclo)
+
+
+@router.patch("/isolated/cycles/{int:cycle_id}/", response=IsolatedCycleOut)
+def update_isolated_cycle(
+    request: HttpRequest, cycle_id: int, payload: IsolatedCyclePatch
+):
+    """Correção do calendário do edital.
+
+    Prorrogar prazo é rotina de secretaria e por isso é tela, não Admin
+    (ADR-006). `is_active` não é editável aqui pela razão declarada em
+    `IsolatedCycleIn`.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    ciclo = get_object_or_404(
+        IsolatedEnrollmentCycle.objects.for_program(program), pk=cycle_id
+    )
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "term_id" in campos:
+        # Existência do período é 404 aqui também: id inválido não pode
+        # virar IntegrityError na hora do save.
+        get_object_or_404(AcademicTerm, pk=campos["term_id"])
+    for campo, valor in campos.items():
+        setattr(ciclo, campo, valor)
+    with transaction.atomic():
+        ciclo.clean()
+        ciclo.save(update_fields=list(campos) or None)
+        audit.record(
+            "academic.isolated_cycle.update",
+            request=request,
+            target=ciclo,
+            fields=sorted(campos),
+        )
+    return ciclo
+
+
+@router.get("/isolated/offerings/", response=list[DisciplineOfferingOut])
+def list_isolated_offerings(
+    request: HttpRequest, mine: bool = False, cycle_id: int | None = None
+):
+    """As disciplinas do edital aberto, com o saldo de vagas.
+
+    Sem paginação: um edital oferece dezenas de disciplinas, não milhares,
+    e a tela do candidato precisa da lista inteira para ele escolher duas.
+    Fora da janela de inscrição a resposta é `no_open_cycle` (400) — a
+    mesma que o auto-registro dá, e a mesma mensagem que a tela exibe.
+
+    `?mine=true` é a lista do docente e NÃO passa pelo ciclo aberto de
+    propósito: ele classifica depois que a inscrição fecha, e amarrar a
+    janela aqui deixaria a tela dele vazia justamente quando ela importa.
+    O recorte então é o ciclo ativo, e `needs_ranking` diz onde falta
+    resposta.
+
+    `?cycle_id=` é a lista da secretaria e também ignora a janela: ela
+    analisa depois que a inscrição fecha, e é justamente aí que precisa
+    das vagas restantes e de saber onde falta classificação. Escolher o
+    ciclo livremente exige `view_isolatedenrollmentcycle` — sem essa
+    trava, o candidato leria o edital de qualquer semestre a qualquer
+    hora, driblando a janela que a rota impõe a ele.
+    """
+    require_perm(request, "academic.view_disciplineoffering")
+    program: Program = current_program(request)
+    # `seats_available()` e `needs_ranking()` fazem um COUNT por oferta e
+    # não aproveitam prefetch (são `filter` sobre o acessor reverso). São
+    # dezenas de consultas curtas num edital, não milhares — se um dia
+    # doer, o caminho é anotar o COUNT no queryset, e não espalhar a regra
+    # das vagas nem a da classificação na tela.
+    ofertas = DisciplineOffering.objects.for_program(program).select_related(
+        "discipline", "teacher__person"
+    )
+    if mine:
+        # A posse sai da sessão, nunca de um `teacher_id` do chamador —
+        # senão qualquer docente lê a fila de qualquer outro.
+        pessoas = Person.objects.active().filter(user=request.user, program=program)
+        return ofertas.filter(
+            teacher__person__in=pessoas, cycle__is_active=True
+        ).order_by("cycle__term__year", "cycle__term__half", "discipline__code")
+    if cycle_id is not None:
+        require_perm(request, "academic.view_isolatedenrollmentcycle")
+        # O escopo entra na busca: ciclo de outro programa vira 404, nunca
+        # 403 — o padrão de tenant do projeto.
+        ciclo = get_object_or_404(
+            IsolatedEnrollmentCycle.objects.for_program(program), pk=cycle_id
+        )
+        return ofertas.for_cycle(ciclo).order_by("discipline__code")
+    ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
+    return ofertas.for_cycle(ciclo)
+
+
+@router.post("/isolated/offerings/", response={201: DisciplineOfferingOut})
+def create_isolated_offering(request: HttpRequest, payload: DisciplineOfferingIn):
+    """A secretaria põe uma disciplina no edital, com responsável e vagas.
+
+    Ciclo, disciplina e docente são buscados já escopados pelo programa:
+    referência de outro tenant vira 404, e não o `program_mismatch` do
+    model — este fica como rede de segurança para quem escrever pelo
+    Admin.
+    """
+    require_perm(request, "academic.add_disciplineoffering")
+    program: Program = current_program(request)
+    ciclo = get_object_or_404(
+        IsolatedEnrollmentCycle.objects.for_program(program), pk=payload.cycle_id
+    )
+    oferta = DisciplineOffering(
+        program=program,
+        cycle=ciclo,
+        discipline=get_object_or_404(
+            Discipline.objects.for_program(program), pk=payload.discipline_id
+        ),
+        teacher=get_object_or_404(
+            Teacher.objects.for_program(program), pk=payload.teacher_id
+        ),
+        seats=payload.seats,
+    )
+    with transaction.atomic():
+        oferta.clean()
+        oferta.save()
+        audit.record(
+            "academic.discipline_offering.create",
+            request=request,
+            target=oferta,
+            cycle_id=oferta.cycle_id,
+            discipline_id=oferta.discipline_id,
+            seats=oferta.seats,
+        )
+    return Status(201, oferta)
+
+
+@router.patch("/isolated/offerings/{int:offering_id}/", response=DisciplineOfferingOut)
+def update_isolated_offering(
+    request: HttpRequest, offering_id: int, payload: DisciplineOfferingPatch
+):
+    """Troca de responsável, de disciplina ou do número de vagas."""
+    require_perm(request, "academic.change_disciplineoffering")
+    program: Program = current_program(request)
+    oferta = get_object_or_404(
+        DisciplineOffering.objects.for_program(program).select_related(
+            "discipline", "teacher__person"
+        ),
+        pk=offering_id,
+    )
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "discipline_id" in campos:
+        oferta.discipline = get_object_or_404(
+            Discipline.objects.for_program(program), pk=campos["discipline_id"]
+        )
+    if "teacher_id" in campos:
+        oferta.teacher = get_object_or_404(
+            Teacher.objects.for_program(program), pk=campos["teacher_id"]
+        )
+    if "seats" in campos:
+        oferta.seats = campos["seats"]
+    with transaction.atomic():
+        oferta.clean()
+        oferta.save(update_fields=list(campos) or None)
+        audit.record(
+            "academic.discipline_offering.update",
+            request=request,
+            target=oferta,
+            fields=sorted(campos),
+        )
+    return oferta
+
+
+def _ofertas(
+    ciclo: IsolatedEnrollmentCycle, itens: list[IsolatedItemIn]
+) -> list[DisciplineOffering]:
+    """Resolve as escolhas em ofertas DO CICLO ABERTO.
+
+    O escopo entra na busca: oferta de outro ciclo ou de outro programa
+    não existe para esta requisição (404, nunca 403). É o que impede o
+    `cycle_mismatch` de `IsolatedEnrollmentItem.clean()` de chegar ao
+    banco pelo caminho normal.
+    """
+    return [
+        get_object_or_404(
+            DisciplineOffering.objects.for_cycle(ciclo), pk=item.offering_id
+        )
+        for item in itens
+    ]
+
+
+def _pessoa_da_sessao(
+    request: HttpRequest, program: Program, person_id: int | None
+) -> Person:
+    """A pessoa de quem está pedindo — nunca a do payload.
+
+    Aceitar `person_id` do corpo sem conferir seria deixar qualquer
+    candidato se inscrever em nome de outro. O campo só serve para a tela
+    ser explícita: se não for uma Person desta sessão, é 403.
+    """
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if person_id is not None:
+        pessoa = pessoas.filter(pk=person_id).first()
+        if pessoa is None:
+            raise NotAllowed("A inscrição é sempre em nome do próprio candidato.")
+        return pessoa
+    pessoa = pessoas.first()
+    if pessoa is None:
+        raise NotAllowed("Sua conta não tem cadastro neste programa.")
+    return pessoa
+
+
+def _meu_requerimento(
+    request: HttpRequest, program: Program, request_id: int
+) -> IsolatedEnrollmentRequest:
+    """O requerimento desta sessão — só o do próprio candidato.
+
+    `change_isolatedenrollmentrequest` é permissão de papel: ela diz que a
+    pessoa mexe no requerimento dela, não em QUALQUER um. Vale inclusive
+    para a Secretaria, que julga (US-012) mas não escolhe disciplina por
+    ninguém.
+    """
+    requerimento = get_object_or_404(
+        IsolatedEnrollmentRequest.objects.for_program(program).select_related(
+            "person", "cycle"
+        ),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if not pessoas.filter(pk=requerimento.person_id).exists():
+        raise NotAllowed("Só o próprio candidato altera o requerimento dele.")
+    return requerimento
+
+
+@router.get("/isolated/requests/", response=list[IsolatedRequestOut])
+@paginate
+def list_isolated_requests(
+    request: HttpRequest,
+    cycle_id: int | None = None,
+    status: IsolatedRequestStatus | None = None,
+):
+    require_perm(request, "academic.view_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimentos = (
+        # Duas camadas, nesta ordem: o tenant primeiro (não é opcional) e o
+        # papel depois. `visible_to` é quem recorta o candidato e o docente
+        # de secretaria/coordenação — ver o método no model.
+        IsolatedEnrollmentRequest.objects.for_program(program)
+        .visible_to(request.user, program)
+        # `cycle` entra porque `IsolatedRequestOut` publica as janelas do
+        # edital: sem ele a fila da secretaria faria uma consulta por linha.
+        .select_related("person", "cycle")
+        .prefetch_related("items__offering__discipline")
+    )
+    if cycle_id is not None:
+        # Filtro de conveniência da tela. Não é escopo de tenant — esse já
+        # foi aplicado acima e não é opcional.
+        requerimentos = requerimentos.filter(cycle_id=cycle_id)
+    if status is not None:
+        # A fila da secretaria é uma situação por vez: os inscritos para
+        # julgar, os deferidos para conferir pagamento. Valor fora do enum
+        # é 422 na borda, de graça.
+        requerimentos = requerimentos.filter(status=status)
+    return requerimentos
+
+
+@router.post("/isolated/requests/", response={201: IsolatedRequestOut})
+def create_isolated_request_endpoint(request: HttpRequest, payload: IsolatedRequestIn):
+    require_perm(request, "academic.add_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    pessoa = _pessoa_da_sessao(request, program, payload.person_id)
+    ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
+    requerimento = create_isolated_request(
+        program=program,
+        cycle=ciclo,
+        person=pessoa,
+        is_ufmg_staff=payload.is_ufmg_staff,
+        ofertas=_ofertas(ciclo, payload.items),
+        request=request,
+    )
+    return Status(201, requerimento)
+
+
+@router.patch("/isolated/requests/{int:request_id}/", response=IsolatedRequestOut)
+def update_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedRequestPatch
+):
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    # A regra mora no model: fora do rascunho é InvalidStateTransition
+    # (409) e o handler central converte, sem try/except aqui (Seção 8).
+    requerimento.ensure_editable()
+
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    itens = campos.pop("items", None)
+    with transaction.atomic():
+        if "is_ufmg_staff" in campos:
+            requerimento.is_ufmg_staff = campos["is_ufmg_staff"]
+            requerimento.save(update_fields=["is_ufmg_staff"])
+        if itens is not None:
+            ofertas = _ofertas(requerimento.cycle, payload.items or [])
+            # Substituição, e não acréscimo: a lista do corpo é a escolha
+            # final do candidato, e apagar antes de inserir dispensa
+            # calcular a diferença.
+            requerimento.items.all().delete()
+            IsolatedEnrollmentItem.objects.bulk_create(
+                [
+                    IsolatedEnrollmentItem(request=requerimento, offering=oferta)
+                    for oferta in ofertas
+                ]
+            )
+        audit.record(
+            "academic.isolated.update",
+            request=request,
+            target=requerimento,
+            fields=sorted([*campos, *(["items"] if itens is not None else [])]),
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/submit", response=IsolatedRequestOut)
+def submit_isolated_request(request: HttpRequest, request_id: int):
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    with transaction.atomic():
+        # Janela, contagem de disciplinas e documentação faltante são
+        # cobrança do model e voltam como 4xx do handler central.
+        requerimento.submit(at=timezone.now())
+        requerimento.save(update_fields=["status", "submitted_at"])
+        audit.record(
+            "academic.isolated.submit",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+        )
+    return requerimento
+
+
+@router.get(
+    "/isolated/requests/{int:request_id}/documents",
+    response=list[RequestDocumentOut],
+)
+def list_isolated_documents(request: HttpRequest, request_id: int):
+    """O que já foi anexado — nome, tipo, tamanho e data, sem o arquivo.
+
+    Escopo por papel igual ao da fila (`visible_to`): o candidato vê os
+    próprios anexos, o docente vê os de quem se inscreveu na oferta dele,
+    secretaria e coordenação veem todos. Quem enxerga a lista não
+    necessariamente baixa o conteúdo — isso é a rota de download.
+    """
+    require_perm(request, "academic.view_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = get_object_or_404(
+        IsolatedEnrollmentRequest.objects.for_program(program).visible_to(
+            request.user, program
+        ),
+        pk=request_id,
+    )
+    return requerimento.documents.all()
+
+
+def _substituir_documento(
+    requerimento: IsolatedEnrollmentRequest,
+    kind: str,
+    file: UploadedFile,
+) -> tuple[RequestDocument, bool]:
+    """Grava o anexo daquele tipo, apagando a versão anterior se houver.
+
+    Substituir apagando a linha, e não editando o `file`: `uploaded_at` é
+    `auto_now_add` e ficaria com a data do envio errado se o registro
+    fosse reaproveitado.
+
+    A remoção do arquivo do storage é explícita porque `delete()` do model
+    não a faz — sem ela cada reenvio deixaria um órfão no MEDIA_ROOT. E
+    vem antes de qualquer escrita que possa falhar, já que o storage não
+    participa do rollback da transação.
+    """
+    anterior = RequestDocument.objects.filter(request=requerimento, kind=kind).first()
+    if anterior is not None:
+        anterior.file.delete(save=False)
+        anterior.delete()
+    documento = RequestDocument.objects.create(
+        request=requerimento, kind=kind, file=file
+    )
+    return documento, anterior is not None
+
+
+@router.post(
+    "/isolated/requests/{int:request_id}/documents",
+    response={201: RequestDocumentOut},
+)
+def upload_isolated_document(
+    request: HttpRequest,
+    request_id: int,
+    kind: RequestDocumentKind = Form(...),
+    file: UploadedFile = File(...),
+):
+    """Anexa (ou substitui) o documento de um tipo.
+
+    A permissão é a de montar o requerimento — anexar é parte de montar —,
+    e `_meu_requerimento` garante que é o próprio: nem a Secretaria anexa
+    documento no lugar do candidato, pelo mesmo motivo de US-009.
+
+    Substituir, e não empilhar: um tipo tem uma versão
+    (`unique_documento_por_requerimento_e_tipo`), e o reenvio é a correção
+    de quem mandou a página errada.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    # As duas cobranças são do model e voltam como 4xx do handler central:
+    # estado errado é 409, arquivo recusado é 400 com code invalid_document.
+    requerimento.ensure_document_upload_allowed(kind)
+    RequestDocument.validate_upload(filename=file.name or "", size=file.size or 0)
+
+    with transaction.atomic():
+        documento, substituiu = _substituir_documento(requerimento, kind, file)
+        audit.record(
+            "academic.isolated.document_upload",
+            request=request,
+            target=requerimento,
+            document_id=documento.pk,
+            kind=str(kind),
+            filename=file.name,
+            replaced=substituiu,
+        )
+    return Status(201, documento)
+
+
+@router.get("/isolated/documents/{int:document_id}/download")
+def download_isolated_document(request: HttpRequest, document_id: int):
+    """Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.
+
+    Duas portas, e só duas: a Secretaria pela permissão
+    `download_requestdocument`, e o próprio candidato por posse. Docente e
+    Coordenação enxergam o requerimento e mesmo assim levam 403 aqui —
+    identidade e contracheque não são insumo de classificação.
+
+    A permissão ampla é checada só depois da posse porque ela é a exceção,
+    e não a regra: o dono do documento não precisa de permissão de
+    secretaria para ler o que ele mesmo enviou.
+    """
+    require_perm(request, "academic.view_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    documento = get_object_or_404(
+        RequestDocument.objects.for_program(program).select_related("request"),
+        pk=document_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if not pessoas.filter(pk=documento.request.person_id).exists():
+        require_perm(request, "academic.download_requestdocument")
+
+    with transaction.atomic():
+        # Auditar leitura é exceção no projeto e aqui é obrigatório: é o
+        # acesso ao documento de identidade de outra pessoa.
+        audit.record(
+            "academic.isolated.document_download",
+            request=request,
+            target=documento.request,
+            document_id=documento.pk,
+            kind=documento.kind,
+        )
+    return FileResponse(
+        documento.file.open("rb"),
+        as_attachment=True,
+        filename=Path(documento.file.name).name,
+    )
+
+
+def _minha_oferta(
+    request: HttpRequest, program: Program, offering_id: int
+) -> DisciplineOffering:
+    """A oferta desta sessão — só a do docente responsável.
+
+    `rank_disciplineoffering` é permissão de papel: ela diz que a pessoa
+    classifica candidatos, não QUAIS ofertas. A posse é aqui, como em
+    `_meu_requerimento`.
+
+    403 e não 404, ao contrário do escopo de tenant: a oferta é do mesmo
+    programa e o docente sabe que ela existe — o que ele não pode é
+    ordenar a fila de um colega.
+    """
+    oferta = get_object_or_404(
+        DisciplineOffering.objects.for_program(program).select_related(
+            "teacher", "discipline"
+        ),
+        pk=offering_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if not pessoas.filter(pk=oferta.teacher.person_id).exists():
+        raise NotAllowed(
+            "Só o docente responsável classifica os candidatos desta oferta."
+        )
+    return oferta
+
+
+@router.get(
+    "/isolated/offerings/{int:offering_id}/candidates",
+    response=list[IsolatedCandidateOut],
+)
+def list_offering_candidates(request: HttpRequest, offering_id: int):
+    """Quem se inscreveu nesta oferta, na ordem atual da classificação.
+
+    Sem paginação, pela mesma razão da lista de ofertas: a fila de uma
+    disciplina isolada tem dezenas de nomes e o docente ordena todos de
+    uma vez — meia lista não dá para classificar.
+    """
+    require_perm(request, "academic.rank_disciplineoffering")
+    program: Program = current_program(request)
+    oferta = _minha_oferta(request, program, offering_id)
+    return oferta.candidates()
+
+
+@router.post(
+    "/isolated/offerings/{int:offering_id}/rank",
+    response=list[IsolatedCandidateOut],
+)
+def rank_offering_candidates(
+    request: HttpRequest, offering_id: int, payload: IsolatedRankIn
+):
+    """Grava a ordem do docente como posição 1..N.
+
+    Substituição, e não acréscimo: a lista do corpo é a classificação
+    final daquela oferta, e quem ficou de fora volta a não ter posição.
+    """
+    require_perm(request, "academic.rank_disciplineoffering")
+    program: Program = current_program(request)
+    oferta = _minha_oferta(request, program, offering_id)
+    # Id de fora da oferta é `item_not_in_offering` (400), cobrado no
+    # model e convertido pelo handler central (Seção 8).
+    ordenados = oferta.rank_items(payload.item_ids)
+    with transaction.atomic():
+        # Zerar antes de gravar não é zelo: `unique_classificacao_por_oferta`
+        # barraria a troca de posição entre dois candidatos se as escritas
+        # fossem incrementais, e a ordem em que elas sairiam do laço
+        # decidiria se a operação passa.
+        oferta.items.update(rank=None)
+        for item in ordenados:
+            item.save(update_fields=["rank"])
+        audit.record(
+            "academic.isolated.rank",
+            request=request,
+            target=oferta,
+            cycle_id=oferta.cycle_id,
+            item_ids=[item.pk for item in ordenados],
+        )
+    return oferta.candidates()
+
+
+def _requerimento_para_decidir(
+    request: HttpRequest, program: Program, request_id: int
+) -> IsolatedEnrollmentRequest:
+    """O requerimento que esta sessão pode julgar — nunca o próprio.
+
+    `change_isolatedenrollmentrequest` tem duas faces no fluxo da isolada
+    (`academic.0011`): é a permissão de quem monta o requerimento e a de
+    quem o decide. O que separa os dois papéis é a posse, no espelho
+    exato de `_meu_requerimento`: quem julga é quem NÃO é o candidato.
+    Sem esta linha, o próprio candidato deferiria a inscrição dele.
+
+    Docente e Coordenação não chegam aqui: os dois só têm `view`.
+    """
+    requerimento = get_object_or_404(
+        IsolatedEnrollmentRequest.objects.for_program(program)
+        .select_related("person", "cycle")
+        .prefetch_related("items__offering__discipline"),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if pessoas.filter(pk=requerimento.person_id).exists():
+        raise NotAllowed("Ninguém decide o próprio requerimento.")
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/defer", response=IsolatedRequestOut)
+def defer_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedDeferIn
+):
+    """Defere o requerimento e, com ele, reserva a vaga.
+
+    O link da GRU entra no mesmo ato: deferir sem dizer como pagar
+    deixaria o candidato parado até a secretaria lembrar de voltar aqui.
+    Servidor da UFMG nasce isento dentro de `defer()` e para ele o campo
+    fica vazio.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    # As três cobranças são do model e voltam como 4xx do handler central:
+    # oferta sem classificação e sem vaga são 400 com code estável, estado
+    # errado é 409 (Seção 8).
+    requerimento.ensure_deferrable()
+    with transaction.atomic():
+        requerimento.defer(note=payload.note)
+        if payload.gru_url is not None:
+            requerimento.gru_url = str(payload.gru_url)
+        requerimento.save(
+            update_fields=[
+                "status",
+                "decision_note",
+                "decided_at",
+                "payment_status",
+                "gru_url",
+            ]
+        )
+        audit.record(
+            "academic.isolated.defer",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            payment_status=requerimento.payment_status,
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/reject", response=IsolatedRequestOut)
+def reject_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedRejectIn
+):
+    """Indefere com motivo obrigatório — é o texto do recurso (US-013)."""
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        requerimento.reject(note=payload.note)
+        requerimento.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.isolated.reject",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            note=requerimento.decision_note,
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/cancel", response=IsolatedRequestOut)
+def cancel_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedCancelIn
+):
+    """Cancela e devolve a vaga à oferta.
+
+    Não existe expiração automática no projeto — nada roda sozinho —,
+    então a vaga do deferido que não pagou só volta para a fila quando a
+    secretaria cancela aqui. A devolução é consequência de
+    `seats_taken()` parar de contar o cancelado, e não uma escrita à
+    parte.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        requerimento.cancel(note=payload.note)
+        requerimento.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.isolated.cancel",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            note=requerimento.decision_note,
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/appeal", response=IsolatedRequestOut)
+def appeal_isolated_request(
+    request: HttpRequest,
+    request_id: int,
+    note: str = Form(...),
+    kind: RequestDocumentKind | None = Form(None),
+    file: UploadedFile | None = File(None),
+):
+    """Interpõe recurso contra o indeferimento, com o documento que faltou.
+
+    Multipart, e não JSON, por causa do anexo: o motivo mais comum de
+    indeferimento é documentação, e recorrer sem poder juntar a página que
+    faltou seria pedir clemência em vez de corrigir. O anexo é opcional —
+    quem contesta a nota do docente não tem o que anexar.
+
+    Não existe rota de "rejulgar": a secretaria decide de novo pelos
+    mesmos `defer`/`reject` da US-012. O recurso não cria entidade nem
+    estado novo, ele reabre a decisão — e por isso não derruba a
+    classificação do docente nem dispensa a GRU.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    if (kind is None) != (file is None):
+        raise DomainError(
+            "O anexo do recurso precisa do tipo e do arquivo juntos.",
+            code="incomplete_document",
+        )
+    if kind is not None:
+        # Estado e janela são cobrança de `appeal()`, logo abaixo; aqui só
+        # o que é do anexo. Tipo proibido é 400 do model, arquivo recusado
+        # é 400 com code invalid_document.
+        requerimento.ensure_appeal_document_allowed(kind)
+        assert file is not None  # garantido pela checagem de par acima
+        RequestDocument.validate_upload(filename=file.name or "", size=file.size or 0)
+
+    with transaction.atomic():
+        # Estado errado é 409 e janela fechada é 400 appeal_window_closed,
+        # ambos do model e convertidos pelo handler central (Seção 8).
+        requerimento.appeal(note=note, at=timezone.now())
+        requerimento.save(update_fields=["appeal_note", "appealed_at"])
+        documento = None
+        if kind is not None and file is not None:
+            documento, _ = _substituir_documento(requerimento, kind, file)
+        audit.record(
+            "academic.isolated.appeal",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            document_id=documento.pk if documento is not None else None,
+            kind=str(kind) if kind is not None else None,
+        )
+    return requerimento
+
+
+@router.post(
+    "/isolated/requests/{int:request_id}/payment-receipt",
+    response=IsolatedRequestOut,
+)
+def upload_isolated_payment_receipt(
+    request: HttpRequest,
+    request_id: int,
+    file: UploadedFile = File(...),
+):
+    """Anexa o comprovante da GRU e dá a taxa por paga.
+
+    Sem `kind` no corpo: esta rota tem um tipo só, e recebê-lo de fora
+    deixaria o candidato marcar como pago o envio de qualquer papel. É por
+    isso que ela existe separada do upload genérico, que exige rascunho.
+
+    Anexar e marcar pago são o mesmo ato porque a conferência é humana e
+    posterior: a secretaria vê o comprovante na tela dela (US-019) e
+    cancela se não bater (US-012). O que o sistema garante aqui é que
+    ninguém fica PAGO sem ter anexado nada.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    # Estado errado é 409; isento e prazo vencido são 400 com code estável
+    # (payment_not_required, payment_window_closed) — tudo do model.
+    requerimento.register_payment(at=timezone.now())
+    RequestDocument.validate_upload(filename=file.name or "", size=file.size or 0)
+
+    with transaction.atomic():
+        documento, substituiu = _substituir_documento(
+            requerimento, RequestDocumentKind.PAYMENT_RECEIPT, file
+        )
+        requerimento.save(update_fields=["payment_status"])
+        audit.record(
+            "academic.isolated.payment_receipt",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            document_id=documento.pk,
+            filename=file.name,
+            replaced=substituiu,
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/enroll", response=IsolatedRequestOut)
+def enroll_isolated_request_endpoint(
+    request: HttpRequest, request_id: int, payload: IsolatedEnrollIn
+):
+    """Efetiva a matrícula: o requerimento deferido e pago vira `Student`.
+
+    A matrícula chega digitada porque quem emite o número é o sistema da
+    UFMG: a secretaria lança a inscrição lá, recebe o número e o registra
+    aqui. Este é o único ato do fluxo que depende de um sistema de fora, e
+    por isso não há como o servidor gerá-lo sozinho.
+
+    O trabalho todo está em `services.enroll_isolated_request`: escreve em
+    quatro models na mesma transação e não cabe no router (ADR-002).
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    enroll_isolated_request(
+        requerimento=requerimento,
+        registration_number=payload.registration_number,
+        request=request,
+    )
+    return requerimento
+
+
+@router.post("/isolated/cycles/{int:cycle_id}/close", response=IsolatedCycleCloseOut)
+def close_isolated_cycle_endpoint(request: HttpRequest, cycle_id: int):
+    """Encerra o edital do semestre e exclui os alunos de isolada dele.
+
+    É sempre um ato explícito da secretaria: nada expira sozinho por data.
+    Fosse automático, o sistema excluiria vínculo no meio de uma pendência
+    (recurso em análise, GRU paga e matrícula não lançada) sem ninguém
+    para responder por isso.
+
+    O trabalho está em `services.close_isolated_cycle` — lote numa só
+    transação, com um único AuditLog carregando a contagem (ADR-002).
+    """
+    require_perm(request, "academic.change_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    ciclo = get_object_or_404(
+        IsolatedEnrollmentCycle.objects.for_program(program), pk=cycle_id
+    )
+    excluidos = close_isolated_cycle(ciclo=ciclo, request=request)
+    return {
+        "cycle_id": ciclo.pk,
+        "is_active": ciclo.is_active,
+        "students_excluded": excluidos,
+    }
+
+
+@router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})
+@decorate_view(csrf_protect)
+def isolated_signup(request: HttpRequest, payload: IsolatedSignupIn):
+    # público: é o único endpoint de escrita sem sessão do projeto, e tem
+    # de ser — quem se inscreve em disciplina isolada não tem vínculo com a
+    # UFMG e portanto não tem conta para autenticar. Sem ele, a secretaria
+    # cadastraria à mão cada candidato do edital, que é exatamente o
+    # trabalho que este módulo existe para tirar dela.
+    #
+    # As três travas que substituem a sessão: só funciona enquanto há
+    # edital aberto (programa_com_inscricao_aberta), limite de tentativas
+    # por IP e csrf_protect explícito — auth=None desliga junto a checagem
+    # de CSRF que o SessionAuth faria, mesma armadilha do login.
+    enforce_rate_limit(
+        request,
+        scope="isolated-signup",
+        limit=LIMITE_DE_SIGNUP_POR_IP,
+        window_seconds=JANELA_DE_SIGNUP_EM_SEGUNDOS,
+    )
+    program = programa_com_inscricao_aberta(
+        at=timezone.now(), program_id=payload.program_id
+    )
+    signup_isolated_candidate(
+        program=program,
+        full_name=payload.full_name,
+        email=str(payload.email),
+        password=payload.password,
+        phone_number=payload.phone_number,
+        request=request,
+    )
+    # Corpo idêntico nos dois desfechos: dizer "e-mail já cadastrado" aqui
+    # transformaria a rota num verificador de contas para qualquer um.
+    return {
+        "detail": (
+            "Cadastro recebido. Use seu e-mail e sua senha para entrar e "
+            "concluir a inscrição."
+        )
+    }

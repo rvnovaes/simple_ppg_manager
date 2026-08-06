@@ -432,6 +432,500 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/cycles/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Isolated Cycles
+         * @description Os editais do programa, do semestre mais recente para o mais antigo.
+         *
+         *     Sem paginação e sem filtro: é um edital por semestre, e a tela da
+         *     secretaria precisa da lista inteira para escolher qual analisar.
+         *
+         *     Só Secretaria e Coordenação chegam aqui (`academic.0011`). O candidato
+         *     não lê o edital como entidade — o que ele precisa saber do calendário
+         *     viaja dentro do requerimento dele.
+         */
+        get: operations["apps_academic_router_list_isolated_cycles"];
+        put?: never;
+        /**
+         * Create Isolated Cycle
+         * @description A secretaria abre o edital do semestre.
+         *
+         *     O período letivo é institucional (ADR-007 dec. 4), então a busca dele
+         *     não passa por `for_program` — o calendário 2026/1 é o mesmo para todos
+         *     os programas. O tenant do ciclo continua vindo de `current_program`.
+         */
+        post: operations["apps_academic_router_create_isolated_cycle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/cycles/{cycle_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Isolated Cycle
+         * @description Correção do calendário do edital.
+         *
+         *     Prorrogar prazo é rotina de secretaria e por isso é tela, não Admin
+         *     (ADR-006). `is_active` não é editável aqui pela razão declarada em
+         *     `IsolatedCycleIn`.
+         */
+        patch: operations["apps_academic_router_update_isolated_cycle"];
+        trace?: never;
+    };
+    "/academic/isolated/offerings/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Isolated Offerings
+         * @description As disciplinas do edital aberto, com o saldo de vagas.
+         *
+         *     Sem paginação: um edital oferece dezenas de disciplinas, não milhares,
+         *     e a tela do candidato precisa da lista inteira para ele escolher duas.
+         *     Fora da janela de inscrição a resposta é `no_open_cycle` (400) — a
+         *     mesma que o auto-registro dá, e a mesma mensagem que a tela exibe.
+         *
+         *     `?mine=true` é a lista do docente e NÃO passa pelo ciclo aberto de
+         *     propósito: ele classifica depois que a inscrição fecha, e amarrar a
+         *     janela aqui deixaria a tela dele vazia justamente quando ela importa.
+         *     O recorte então é o ciclo ativo, e `needs_ranking` diz onde falta
+         *     resposta.
+         *
+         *     `?cycle_id=` é a lista da secretaria e também ignora a janela: ela
+         *     analisa depois que a inscrição fecha, e é justamente aí que precisa
+         *     das vagas restantes e de saber onde falta classificação. Escolher o
+         *     ciclo livremente exige `view_isolatedenrollmentcycle` — sem essa
+         *     trava, o candidato leria o edital de qualquer semestre a qualquer
+         *     hora, driblando a janela que a rota impõe a ele.
+         */
+        get: operations["apps_academic_router_list_isolated_offerings"];
+        put?: never;
+        /**
+         * Create Isolated Offering
+         * @description A secretaria põe uma disciplina no edital, com responsável e vagas.
+         *
+         *     Ciclo, disciplina e docente são buscados já escopados pelo programa:
+         *     referência de outro tenant vira 404, e não o `program_mismatch` do
+         *     model — este fica como rede de segurança para quem escrever pelo
+         *     Admin.
+         */
+        post: operations["apps_academic_router_create_isolated_offering"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/offerings/{offering_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Isolated Offering
+         * @description Troca de responsável, de disciplina ou do número de vagas.
+         */
+        patch: operations["apps_academic_router_update_isolated_offering"];
+        trace?: never;
+    };
+    "/academic/isolated/requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Isolated Requests */
+        get: operations["apps_academic_router_list_isolated_requests"];
+        put?: never;
+        /** Create Isolated Request Endpoint */
+        post: operations["apps_academic_router_create_isolated_request_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Isolated Request */
+        patch: operations["apps_academic_router_update_isolated_request"];
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Isolated Request */
+        post: operations["apps_academic_router_submit_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Isolated Documents
+         * @description O que já foi anexado — nome, tipo, tamanho e data, sem o arquivo.
+         *
+         *     Escopo por papel igual ao da fila (`visible_to`): o candidato vê os
+         *     próprios anexos, o docente vê os de quem se inscreveu na oferta dele,
+         *     secretaria e coordenação veem todos. Quem enxerga a lista não
+         *     necessariamente baixa o conteúdo — isso é a rota de download.
+         */
+        get: operations["apps_academic_router_list_isolated_documents"];
+        put?: never;
+        /**
+         * Upload Isolated Document
+         * @description Anexa (ou substitui) o documento de um tipo.
+         *
+         *     A permissão é a de montar o requerimento — anexar é parte de montar —,
+         *     e `_meu_requerimento` garante que é o próprio: nem a Secretaria anexa
+         *     documento no lugar do candidato, pelo mesmo motivo de US-009.
+         *
+         *     Substituir, e não empilhar: um tipo tem uma versão
+         *     (`unique_documento_por_requerimento_e_tipo`), e o reenvio é a correção
+         *     de quem mandou a página errada.
+         */
+        post: operations["apps_academic_router_upload_isolated_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/documents/{document_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Isolated Document
+         * @description Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.
+         *
+         *     Duas portas, e só duas: a Secretaria pela permissão
+         *     `download_requestdocument`, e o próprio candidato por posse. Docente e
+         *     Coordenação enxergam o requerimento e mesmo assim levam 403 aqui —
+         *     identidade e contracheque não são insumo de classificação.
+         *
+         *     A permissão ampla é checada só depois da posse porque ela é a exceção,
+         *     e não a regra: o dono do documento não precisa de permissão de
+         *     secretaria para ler o que ele mesmo enviou.
+         */
+        get: operations["apps_academic_router_download_isolated_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/offerings/{offering_id}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Offering Candidates
+         * @description Quem se inscreveu nesta oferta, na ordem atual da classificação.
+         *
+         *     Sem paginação, pela mesma razão da lista de ofertas: a fila de uma
+         *     disciplina isolada tem dezenas de nomes e o docente ordena todos de
+         *     uma vez — meia lista não dá para classificar.
+         */
+        get: operations["apps_academic_router_list_offering_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/offerings/{offering_id}/rank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rank Offering Candidates
+         * @description Grava a ordem do docente como posição 1..N.
+         *
+         *     Substituição, e não acréscimo: a lista do corpo é a classificação
+         *     final daquela oferta, e quem ficou de fora volta a não ter posição.
+         */
+        post: operations["apps_academic_router_rank_offering_candidates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/defer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Defer Isolated Request
+         * @description Defere o requerimento e, com ele, reserva a vaga.
+         *
+         *     O link da GRU entra no mesmo ato: deferir sem dizer como pagar
+         *     deixaria o candidato parado até a secretaria lembrar de voltar aqui.
+         *     Servidor da UFMG nasce isento dentro de `defer()` e para ele o campo
+         *     fica vazio.
+         */
+        post: operations["apps_academic_router_defer_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Isolated Request
+         * @description Indefere com motivo obrigatório — é o texto do recurso (US-013).
+         */
+        post: operations["apps_academic_router_reject_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Isolated Request
+         * @description Cancela e devolve a vaga à oferta.
+         *
+         *     Não existe expiração automática no projeto — nada roda sozinho —,
+         *     então a vaga do deferido que não pagou só volta para a fila quando a
+         *     secretaria cancela aqui. A devolução é consequência de
+         *     `seats_taken()` parar de contar o cancelado, e não uma escrita à
+         *     parte.
+         */
+        post: operations["apps_academic_router_cancel_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/appeal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Appeal Isolated Request
+         * @description Interpõe recurso contra o indeferimento, com o documento que faltou.
+         *
+         *     Multipart, e não JSON, por causa do anexo: o motivo mais comum de
+         *     indeferimento é documentação, e recorrer sem poder juntar a página que
+         *     faltou seria pedir clemência em vez de corrigir. O anexo é opcional —
+         *     quem contesta a nota do docente não tem o que anexar.
+         *
+         *     Não existe rota de "rejulgar": a secretaria decide de novo pelos
+         *     mesmos `defer`/`reject` da US-012. O recurso não cria entidade nem
+         *     estado novo, ele reabre a decisão — e por isso não derruba a
+         *     classificação do docente nem dispensa a GRU.
+         */
+        post: operations["apps_academic_router_appeal_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/payment-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Isolated Payment Receipt
+         * @description Anexa o comprovante da GRU e dá a taxa por paga.
+         *
+         *     Sem `kind` no corpo: esta rota tem um tipo só, e recebê-lo de fora
+         *     deixaria o candidato marcar como pago o envio de qualquer papel. É por
+         *     isso que ela existe separada do upload genérico, que exige rascunho.
+         *
+         *     Anexar e marcar pago são o mesmo ato porque a conferência é humana e
+         *     posterior: a secretaria vê o comprovante na tela dela (US-019) e
+         *     cancela se não bater (US-012). O que o sistema garante aqui é que
+         *     ninguém fica PAGO sem ter anexado nada.
+         */
+        post: operations["apps_academic_router_upload_isolated_payment_receipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll Isolated Request Endpoint
+         * @description Efetiva a matrícula: o requerimento deferido e pago vira `Student`.
+         *
+         *     A matrícula chega digitada porque quem emite o número é o sistema da
+         *     UFMG: a secretaria lança a inscrição lá, recebe o número e o registra
+         *     aqui. Este é o único ato do fluxo que depende de um sistema de fora, e
+         *     por isso não há como o servidor gerá-lo sozinho.
+         *
+         *     O trabalho todo está em `services.enroll_isolated_request`: escreve em
+         *     quatro models na mesma transação e não cabe no router (ADR-002).
+         */
+        post: operations["apps_academic_router_enroll_isolated_request_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/cycles/{cycle_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Isolated Cycle Endpoint
+         * @description Encerra o edital do semestre e exclui os alunos de isolada dele.
+         *
+         *     É sempre um ato explícito da secretaria: nada expira sozinho por data.
+         *     Fosse automático, o sistema excluiria vínculo no meio de uma pendência
+         *     (recurso em análise, GRU paga e matrícula não lançada) sem ninguém
+         *     para responder por isso.
+         *
+         *     O trabalho está em `services.close_isolated_cycle` — lote numa só
+         *     transação, com um único AuditLog carregando a contagem (ADR-002).
+         */
+        post: operations["apps_academic_router_close_isolated_cycle_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Isolated Signup */
+        post: operations["apps_academic_router_isolated_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1138,6 +1632,530 @@ export interface components {
         EnrollmentAdjustmentRejectIn: {
             /** Note */
             note: string;
+        };
+        /**
+         * IsolatedCycleOut
+         * @description O edital do semestre, como a secretaria e a coordenação o veem.
+         *
+         *     O calendário inteiro viaja porque a tela de análise (US-019) precisa
+         *     dizer em que fase o edital está — e `submission_open` vem resolvido do
+         *     servidor pela mesma razão de `IsolatedRequestOut`: comparar a data no
+         *     navegador deixaria a fase depender do relógio de quem acessa.
+         */
+        IsolatedCycleOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Term Id */
+            term_id: number;
+            /** Term Label */
+            term_label: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /**
+             * Result Published On
+             * Format: date
+             */
+            result_published_on: string;
+            /**
+             * Appeal Opens At
+             * Format: date-time
+             */
+            appeal_opens_at: string;
+            /**
+             * Appeal Closes At
+             * Format: date-time
+             */
+            appeal_closes_at: string;
+            /**
+             * Final Result On
+             * Format: date
+             */
+            final_result_on: string;
+            /**
+             * Payment Closes At
+             * Format: date-time
+             */
+            payment_closes_at: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Submission Open */
+            submission_open: boolean;
+            /** Students To Exclude */
+            students_to_exclude: number;
+        };
+        /**
+         * IsolatedCycleIn
+         * @description O calendário do edital, digitado pela secretaria.
+         *
+         *     Sem `program_id`: o programa é o da requisição (`current_program`).
+         *     `is_active` não entra — o ciclo nasce ativo e só sai do ar pelo
+         *     encerramento, que é ato explícito com contagem de vínculos fechados
+         *     (`POST /isolated/cycles/{id}/close`). Um `is_active=false` no
+         *     formulário desligaria o edital sem excluir aluno nenhum.
+         */
+        IsolatedCycleIn: {
+            /** Term Id */
+            term_id: number;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /**
+             * Result Published On
+             * Format: date
+             */
+            result_published_on: string;
+            /**
+             * Appeal Opens At
+             * Format: date-time
+             */
+            appeal_opens_at: string;
+            /**
+             * Appeal Closes At
+             * Format: date-time
+             */
+            appeal_closes_at: string;
+            /**
+             * Final Result On
+             * Format: date
+             */
+            final_result_on: string;
+            /**
+             * Payment Closes At
+             * Format: date-time
+             */
+            payment_closes_at: string;
+        };
+        /**
+         * IsolatedCyclePatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        IsolatedCyclePatch: {
+            /** Term Id */
+            term_id?: number | null;
+            /** Submission Opens At */
+            submission_opens_at?: string | null;
+            /** Submission Closes At */
+            submission_closes_at?: string | null;
+            /** Result Published On */
+            result_published_on?: string | null;
+            /** Appeal Opens At */
+            appeal_opens_at?: string | null;
+            /** Appeal Closes At */
+            appeal_closes_at?: string | null;
+            /** Final Result On */
+            final_result_on?: string | null;
+            /** Payment Closes At */
+            payment_closes_at?: string | null;
+        };
+        /**
+         * DisciplineOfferingOut
+         * @description Uma disciplina oferecida no edital, como o candidato a vê.
+         *
+         *     `seats_available` vem calculado do servidor: a tela não tem como
+         *     somar deferidos e matriculados, e deixar a conta para ela seria
+         *     espalhar a regra das vagas (Seção 12).
+         */
+        DisciplineOfferingOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Discipline Id */
+            discipline_id: number;
+            /** Discipline Code */
+            discipline_code: string;
+            /** Discipline Name */
+            discipline_name: string;
+            /** Teacher Id */
+            teacher_id: number;
+            /** Teacher Name */
+            teacher_name: string;
+            /** Seats */
+            seats: number;
+            /** Seats Available */
+            seats_available: number;
+            /** Needs Ranking */
+            needs_ranking: boolean;
+        };
+        /**
+         * DisciplineOfferingIn
+         * @description Uma disciplina posta no edital, com responsável e vagas.
+         *
+         *     Sem `program_id`: o tenant é o da requisição. `cycle_id` viaja porque
+         *     a secretaria monta o edital do semestre que ela escolheu na tela — e
+         *     não necessariamente o que está com inscrição aberta agora.
+         */
+        DisciplineOfferingIn: {
+            /** Cycle Id */
+            cycle_id: number;
+            /** Discipline Id */
+            discipline_id: number;
+            /** Teacher Id */
+            teacher_id: number;
+            /** Seats */
+            seats: number;
+        };
+        /**
+         * DisciplineOfferingPatch
+         * @description Atualização parcial: o ciclo não muda.
+         *
+         *     Trocar a oferta de edital reescreveria a história de quem já se
+         *     inscreveu nela; o caminho é apagar (quebra-vidro no Admin) e cadastrar
+         *     de novo no ciclo certo.
+         */
+        DisciplineOfferingPatch: {
+            /** Discipline Id */
+            discipline_id?: number | null;
+            /** Teacher Id */
+            teacher_id?: number | null;
+            /** Seats */
+            seats?: number | null;
+        };
+        /**
+         * IsolatedRequestStatus
+         * @description Situação do requerimento de isolada, no vocabulário do edital.
+         *
+         *     Mora fora do model, com nome único, porque o gerador de OpenAPI batiza
+         *     o schema do enum com o `__name__` da classe: dois `Status` aninhados
+         *     colidem e o último registrado sobrescreve o outro, silenciosamente.
+         *     `IsolatedEnrollmentRequest.Status` continua valendo pelo alias.
+         * @enum {string}
+         */
+        IsolatedRequestStatus: "draft" | "submitted" | "deferred" | "rejected" | "cancelled" | "enrolled";
+        /** IsolatedItemOut */
+        IsolatedItemOut: {
+            /** Id */
+            id: number;
+            /** Offering Id */
+            offering_id: number;
+            /** Discipline Code */
+            discipline_code: string;
+            /** Discipline Name */
+            discipline_name: string;
+            /** Rank */
+            rank: number | null;
+        };
+        /** IsolatedRequestOut */
+        IsolatedRequestOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Person Id */
+            person_id: number;
+            /** Person Name */
+            person_name: string;
+            /** Status */
+            status: string;
+            /** Payment Status */
+            payment_status: string;
+            /** Is Ufmg Staff */
+            is_ufmg_staff: boolean;
+            /** Gru Url */
+            gru_url: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Appeal Note */
+            appeal_note: string;
+            /** Appealed At */
+            appealed_at: string | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Items */
+            items: components["schemas"]["IsolatedItemOut"][];
+            /** Missing Documents */
+            missing_documents: string[];
+            /**
+             * Appeal Opens At
+             * Format: date-time
+             */
+            appeal_opens_at: string;
+            /**
+             * Appeal Closes At
+             * Format: date-time
+             */
+            appeal_closes_at: string;
+            /**
+             * Payment Closes At
+             * Format: date-time
+             */
+            payment_closes_at: string;
+            /** Appeal Open */
+            appeal_open: boolean;
+            /** Payment Open */
+            payment_open: boolean;
+        };
+        /** PagedIsolatedRequestOut */
+        PagedIsolatedRequestOut: {
+            /** Items */
+            items: components["schemas"]["IsolatedRequestOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * IsolatedItemIn
+         * @description Uma disciplina escolhida pelo candidato, pela oferta do ciclo.
+         */
+        IsolatedItemIn: {
+            /** Offering Id */
+            offering_id: number;
+        };
+        /**
+         * IsolatedRequestIn
+         * @description Abertura do requerimento de isolada, sempre em rascunho.
+         *
+         *     Sem `program_id` nem `cycle_id`: o programa é o da requisição
+         *     (`current_program`) e o ciclo é o que está com inscrição aberta —
+         *     escolher o ciclo livremente seria inscrever-se em edital encerrado.
+         *     `person_id` é opcional e existe só para a tela ser explícita; a
+         *     pessoa vem sempre da sessão, e informar a de outra é 403.
+         *
+         *     A lista de disciplinas pode vir vazia: rascunho é rascunho, e é
+         *     `submit()` que exige de uma a duas.
+         */
+        IsolatedRequestIn: {
+            /** Person Id */
+            person_id?: number | null;
+            /**
+             * Is Ufmg Staff
+             * @default false
+             */
+            is_ufmg_staff: boolean;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["IsolatedItemIn"][];
+        };
+        /**
+         * IsolatedRequestPatch
+         * @description Alteração do rascunho: só o que o candidato escolheu.
+         *
+         *     Situação, pagamento e decisão não estão aqui de propósito — cada um
+         *     deles é um ato de outra pessoa, com endpoint próprio (US-011 a
+         *     US-014). `items` ausente mantém as disciplinas; `items: []` apaga
+         *     todas, que é o jeito de o candidato recomeçar a escolha.
+         */
+        IsolatedRequestPatch: {
+            /** Is Ufmg Staff */
+            is_ufmg_staff?: boolean | null;
+            /** Items */
+            items?: components["schemas"]["IsolatedItemIn"][] | null;
+        };
+        /**
+         * RequestDocumentOut
+         * @description Um anexo, sem o caminho do arquivo.
+         *
+         *     Nem `file` nem `file.url` entram aqui de propósito: MEDIA é servido
+         *     pelo Nginx sem passar pelo Django, então publicar a URL entregaria a
+         *     identidade do candidato a quem descobrisse o endereço — e sem
+         *     AuditLog. O único caminho para o conteúdo é o endpoint de download,
+         *     que checa posse ou permissão e registra o acesso.
+         */
+        RequestDocumentOut: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Kind Label */
+            kind_label: string;
+            /** Filename */
+            filename: string;
+            /** Size */
+            size: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
+         * RequestDocumentKind
+         * @description Os documentos que o edital cobra do candidato.
+         *
+         *     Classe de módulo com nome único: dois enums aninhados de mesmo nome
+         *     colidem no gerador de OpenAPI e o último registrado sobrescreve o
+         *     outro, sem erro no backend.
+         * @enum {string}
+         */
+        RequestDocumentKind: "identity" | "diploma" | "lattes" | "address" | "payslip" | "supervisor_auth" | "payment_receipt";
+        /**
+         * IsolatedCandidateOut
+         * @description Um inscrito na oferta, como o docente responsável o vê.
+         *
+         *     Só o necessário para ordenar: nome, quando se inscreveu e a posição
+         *     atual. Documentação e situação de pagamento são da análise da
+         *     secretaria (US-012) e não entram aqui — o docente classifica por
+         *     mérito, não por pendência administrativa.
+         */
+        IsolatedCandidateOut: {
+            /** Item Id */
+            item_id: number;
+            /** Request Id */
+            request_id: number;
+            /** Person Id */
+            person_id: number;
+            /** Person Name */
+            person_name: string;
+            /** Rank */
+            rank: number | null;
+            /** Submitted At */
+            submitted_at: string | null;
+        };
+        /**
+         * IsolatedRankIn
+         * @description A ordem escolhida pelo docente, do primeiro ao último.
+         *
+         *     A posição não viaja no corpo: ela É o índice da lista, e mandar
+         *     `rank` explícito abriria a porta para buraco (1, 2, 4) e empate.
+         *     Lista vazia zera a classificação da oferta — é como o docente
+         *     recomeça, igual ao `items: []` do rascunho do candidato.
+         */
+        IsolatedRankIn: {
+            /**
+             * Item Ids
+             * @default []
+             */
+            item_ids: number[];
+        };
+        /**
+         * IsolatedDeferIn
+         * @description Deferimento: a nota é opcional, o link da GRU é o que vem junto.
+         *
+         *     O sistema não emite a guia — ela vem do sistema de arrecadação da
+         *     UFMG e a secretaria cola o link aqui, no mesmo ato em que defere.
+         *     `HttpUrl` cobra a forma na borda (422); o servidor da UFMG é isento e
+         *     para ele o campo fica vazio.
+         */
+        IsolatedDeferIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Gru Url */
+            gru_url?: string | null;
+        };
+        /**
+         * IsolatedRejectIn
+         * @description Indeferimento: o motivo é o que o candidato contesta no recurso.
+         *
+         *     A obrigatoriedade real é do model (`reject` levanta
+         *     `rejection_requires_note`): aqui o campo é exigido na borda, mas
+         *     string em branco só é barrada lá, com `code` estável.
+         */
+        IsolatedRejectIn: {
+            /** Note */
+            note: string;
+        };
+        /**
+         * IsolatedCancelIn
+         * @description Cancelamento: a nota é opcional porque o cancelamento tem dois
+         *     motivos legítimos e só um deles é decisão da secretaria — o candidato
+         *     que desistiu e o deferido que não pagou a GRU no prazo.
+         */
+        IsolatedCancelIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * IsolatedEnrollIn
+         * @description Efetivação: só a matrícula, digitada pela secretaria.
+         *
+         *     O número vem do sistema da UFMG — este sistema não o emite, apenas o
+         *     guarda. Como em `IsolatedRejectIn`, o campo é exigido aqui e a string
+         *     em branco é barrada no service, com `code` estável; a unicidade é do
+         *     banco e sai pelo mesmo caminho.
+         */
+        IsolatedEnrollIn: {
+            /** Registration Number */
+            registration_number: string;
+        };
+        /**
+         * IsolatedCycleCloseOut
+         * @description Recibo do encerramento do edital.
+         *
+         *     A contagem volta para a tela porque encerrar é irreversível pelo
+         *     caminho normal: a secretaria precisa ver quantos vínculos a ação
+         *     fechou, e é o mesmo número que ficou no AuditLog.
+         */
+        IsolatedCycleCloseOut: {
+            /** Cycle Id */
+            cycle_id: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Students Excluded */
+            students_excluded: number;
+        };
+        /**
+         * IsolatedSignupOut
+         * @description Resposta única do auto-registro.
+         *
+         *     Corpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem
+         *     exatamente isto, senão a rota vira um oráculo de quem tem conta.
+         */
+        IsolatedSignupOut: {
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * IsolatedSignupIn
+         * @description Auto-registro do candidato a disciplina isolada.
+         *
+         *     Não tem `program_id` obrigatório pela mesma razão dos demais schemas de
+         *     entrada — o tenant não é escolha livre de quem chama. Aqui não há
+         *     sessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;
+         *     o campo só existe (opcional) para desempatar quando mais de um programa
+         *     está com edital aberto no mesmo instante.
+         */
+        IsolatedSignupIn: {
+            /** Full Name */
+            full_name: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            /** Password */
+            password: string;
+            /** Program Id */
+            program_id?: number | null;
         };
     };
     responses: never;
@@ -1916,6 +2934,592 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrollmentAdjustmentRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_isolated_cycles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_isolated_cycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedCycleIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_isolated_cycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedCyclePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_isolated_offerings: {
+        parameters: {
+            query?: {
+                mine?: boolean;
+                cycle_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOfferingOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_isolated_offering: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisciplineOfferingIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOfferingOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_isolated_offering: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offering_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisciplineOfferingPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOfferingOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_isolated_requests: {
+        parameters: {
+            query?: {
+                cycle_id?: number | null;
+                status?: components["schemas"]["IsolatedRequestStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedIsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_isolated_request_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRequestPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_submit_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_isolated_documents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestDocumentOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_upload_isolated_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * RequestDocumentKind
+                     * @description Os documentos que o edital cobra do candidato.
+                     *
+                     *     Classe de módulo com nome único: dois enums aninhados de mesmo nome
+                     *     colidem no gerador de OpenAPI e o último registrado sobrescreve o
+                     *     outro, sem erro no backend.
+                     * @enum {string}
+                     */
+                    kind: "identity" | "diploma" | "lattes" | "address" | "payslip" | "supervisor_auth" | "payment_receipt";
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestDocumentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_download_isolated_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_academic_router_list_offering_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offering_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCandidateOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_rank_offering_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offering_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRankIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCandidateOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_defer_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedDeferIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_reject_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRejectIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_cancel_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedCancelIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_appeal_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Note */
+                    note: string;
+                    kind?: components["schemas"]["RequestDocumentKind"] | null;
+                    /** File */
+                    file?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_upload_isolated_payment_receipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_enroll_isolated_request_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedEnrollIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_close_isolated_cycle_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleCloseOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_isolated_signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedSignupIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedSignupOut"];
                 };
             };
         };

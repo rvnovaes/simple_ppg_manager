@@ -6,7 +6,7 @@ import pytest
 from django.contrib.auth.models import Group
 
 from apps.accounts.models import User
-from apps.accounts.services import assign_role_group
+from apps.accounts.services import assign_role_group, revoke_role_group
 from apps.audit.models import AuditLog
 from apps.core.exceptions import DomainError, InvalidStateTransition
 
@@ -121,3 +121,21 @@ def test_assign_role_group_nao_remove_papel_existente(conta_nova):
         "Docente",
         "Discente",
     }
+
+
+def test_revoke_role_group_e_idempotente(conta_nova):
+    assign_role_group(conta_nova, group_name="Docente")
+
+    assert revoke_role_group(conta_nova, group_name="Docente") is True
+    assert revoke_role_group(conta_nova, group_name="Docente") is False
+
+    assert list(conta_nova.groups.values_list("name", flat=True)) == []
+    assert AuditLog.objects.filter(event="accounts.user.revoke_role_group").count() == 1
+
+
+def test_revoke_role_group_mexe_so_no_papel_pedido(conta_nova):
+    conta_nova.groups.set(Group.objects.filter(name__in=("Docente", "Discente")))
+
+    revoke_role_group(conta_nova, group_name="Docente")
+
+    assert list(conta_nova.groups.values_list("name", flat=True)) == ["Discente"]

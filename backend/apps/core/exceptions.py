@@ -47,6 +47,17 @@ class NotAuthenticated(DomainError):
     code = "not_authenticated"
 
 
+class TooManyRequests(DomainError):
+    """Chamador excedeu o limite de tentativas da rota.
+
+    Só faz sentido em rota pública: onde há sessão, o dono das tentativas
+    é uma conta conhecida e o rastro é o AuditLog.
+    """
+
+    status_code = 429
+    code = "rate_limited"
+
+
 class NoProgramInContext(DomainError):
     """Não dá para dizer a que programa a requisição pertence.
 

@@ -5,7 +5,7 @@ letivo) e de `people` (a pessoa por trás do vínculo). A dependência é
 sempre nesta direção — `programs` e `people` não conhecem `academic`.
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
@@ -147,6 +147,12 @@ class StudentQuerySet(models.QuerySet):
 
     def regular(self) -> "StudentQuerySet":
         return self.filter(modality=Student.Modality.REGULAR)
+
+    def isolated(self) -> "StudentQuerySet":
+        return self.filter(modality=Student.Modality.ISOLATED)
+
+    def for_term(self, term) -> "StudentQuerySet":
+        return self.filter(term=term)
 
 
 class Student(models.Model):
@@ -638,3 +644,1051 @@ class EnrollmentAdjustmentItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_action_display()} {self.discipline}"
+
+
+class IsolatedEnrollmentCycleQuerySet(models.QuerySet):
+    def for_program(self, program) -> "IsolatedEnrollmentCycleQuerySet":
+        return self.filter(program=program)
+
+    def active(self) -> "IsolatedEnrollmentCycleQuerySet":
+        return self.filter(is_active=True)
+
+
+class IsolatedEnrollmentCycle(models.Model):
+    """Edital de matrícula em disciplina isolada de um semestre.
+
+    O ciclo é o calendário do edital transformado em dado: enquanto as
+    datas moram aqui, é o sistema que recusa a inscrição fora do prazo, e
+    não a secretaria conferindo à mão. Um ciclo por período letivo por
+    programa — o edital é único no semestre.
+
+    A FK `program` é direta mesmo sendo alcançável por navegação
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None` e o rastro perde a chave de tenant. `term` não tem
+    programa para comparar — período letivo é institucional (ADR-007
+    dec. 4).
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="isolated_cycles",
+        verbose_name="programa",
+    )
+    term = models.ForeignKey(
+        "programs.AcademicTerm",
+        on_delete=models.PROTECT,
+        related_name="isolated_cycles",
+        verbose_name="período letivo",
+    )
+    submission_opens_at = models.DateTimeField("inscrições abrem em")
+    submission_closes_at = models.DateTimeField("inscrições encerram em")
+    # Data, e não instante: o edital publica o resultado num dia, sem hora.
+    result_published_on = models.DateField("resultado publicado em")
+    appeal_opens_at = models.DateTimeField("recursos abrem em")
+    appeal_closes_at = models.DateTimeField("recursos encerram em")
+    final_result_on = models.DateField("resultado final em")
+    payment_closes_at = models.DateTimeField("pagamento encerra em")
+    is_active = models.BooleanField("ativo", default=True)
+
+    objects = IsolatedEnrollmentCycleQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "ciclo de matrícula em isolada"
+        verbose_name_plural = "ciclos de matrícula em isolada"
+        ordering = ["-term__year", "-term__half"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["program", "term"],
+                name="unique_ciclo_isolada_por_programa_e_periodo",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Isoladas {self.term}"
+
+    def clean(self) -> None:
+        """As datas do edital só fazem sentido em ordem.
+
+        Uma janela de recurso que abre antes das inscrições fecharem, ou um
+        prazo de pagamento anterior ao resultado, deixaria `submit()` e
+        `appeal()` (US-004) aceitando e recusando pelas razões erradas pelo
+        resto do semestre. O erro é do formulário da secretaria, então é
+        400 (`DomainError`) e não 409.
+
+        `<=` entre fechamento e abertura da fase seguinte porque encadear
+        as duas no mesmo instante é legítimo; `<` dentro de cada janela
+        porque janela de duração zero não aceita ninguém.
+        """
+        super().clean()
+        campos = (
+            self.submission_opens_at,
+            self.submission_closes_at,
+            self.appeal_opens_at,
+            self.appeal_closes_at,
+            self.payment_closes_at,
+        )
+        if any(campo is None for campo in campos):
+            # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+            return
+        if not (
+            self.submission_opens_at
+            < self.submission_closes_at
+            <= self.appeal_opens_at
+            < self.appeal_closes_at
+            <= self.payment_closes_at
+        ):
+            raise DomainError(
+                "As datas do ciclo precisam estar em ordem: abertura e "
+                "encerramento das inscrições, janela de recurso e prazo de "
+                "pagamento.",
+                code="invalid_cycle_dates",
+            )
+        if self.program_id is None or self.term_id is None:
+            return
+        duplicatas = IsolatedEnrollmentCycle.objects.filter(
+            program_id=self.program_id, term_id=self.term_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            # A constraint do banco já barra; validar aqui é o que faz a
+            # violação chegar como 400 com code estável em vez de
+            # IntegrityError virando 500.
+            raise DomainError(
+                "Já existe um edital de isolada para este período neste programa.",
+                code="duplicate_cycle",
+            )
+
+    def submission_open(self, at: datetime) -> bool:
+        """A janela de inscrição inclui a abertura e exclui o fechamento —
+        quem chega no instante exato do prazo chegou tarde.
+        """
+        return self.submission_opens_at <= at < self.submission_closes_at
+
+    def appeal_open(self, at: datetime) -> bool:
+        return self.appeal_opens_at <= at < self.appeal_closes_at
+
+    def payment_open(self, at: datetime) -> bool:
+        """O prazo da GRU só tem fim, e não começo.
+
+        A guia nasce no deferimento (US-012), que já é a abertura de fato:
+        antes dela não existe o que pagar, e um `payment_opens_at` seria
+        uma data a mais para a secretaria errar no formulário do edital.
+        """
+        return at < self.payment_closes_at
+
+    def students_to_exclude(self) -> int:
+        """Quantos vínculos o encerramento fecharia se rodasse agora.
+
+        Mesmo recorte de `services.close_isolated_cycle` — e por isso mora
+        aqui, e não na tela: encerrar é irreversível pelo caminho normal, e
+        a secretaria confirma sabendo o número. Contagem espelhada na tela
+        sairia de sincronia com o serviço no dia em que o recorte mudar.
+        """
+        if self.pk is None or self.program_id is None or self.term_id is None:
+            return 0
+        return (
+            Student.objects.filter(program_id=self.program_id, term_id=self.term_id)
+            .isolated()
+            .active()
+            .count()
+        )
+
+    def close(self) -> None:
+        """Encerra o edital: o ciclo sai do ar e não recebe mais nada.
+
+        Não salva, como toda transição do projeto — quem persiste é
+        `services.close_isolated_cycle`, que na mesma transação exclui os
+        alunos de isolada do semestre. Encerrar duas vezes é 409: o
+        segundo encerramento não teria mais aluno ativo para excluir e o
+        AuditLog registraria zero como se fosse trabalho feito.
+
+        Não existe encerramento automático por data: a exclusão dos alunos
+        é irreversível pelo caminho normal e só a secretaria decide quando
+        o semestre acabou de fato.
+        """
+        if not self.is_active:
+            raise InvalidStateTransition(
+                "Este ciclo já foi encerrado.", code="cycle_already_closed"
+            )
+        self.is_active = False
+
+
+class DisciplineOfferingQuerySet(models.QuerySet):
+    def for_program(self, program) -> "DisciplineOfferingQuerySet":
+        return self.filter(program=program)
+
+    def for_cycle(self, cycle: IsolatedEnrollmentCycle) -> "DisciplineOfferingQuerySet":
+        return self.filter(cycle=cycle)
+
+
+class DisciplineOffering(models.Model):
+    """Disciplina oferecida às isoladas num ciclo, com vagas e responsável.
+
+    A oferta é a disciplina do catálogo recortada por um semestre: o mesmo
+    `Discipline` reaparece a cada ciclo com outro número de vagas e, às
+    vezes, outro docente. Uma oferta por disciplina por ciclo — repetir a
+    disciplina no mesmo edital dividiria as vagas em duas contagens que
+    ninguém consegue somar.
+
+    `teacher` é obrigatório porque a classificação dos candidatos
+    (US-011) é ato dele: sem responsável definido a oferta trava o fluxo,
+    e é melhor travar no cadastro do que na hora do deferimento.
+
+    A FK `program` é direta mesmo sendo alcançável por `cycle`
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None`.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="programa",
+    )
+    cycle = models.ForeignKey(
+        IsolatedEnrollmentCycle,
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="ciclo",
+    )
+    discipline = models.ForeignKey(
+        "programs.Discipline",
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="disciplina",
+    )
+    teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.PROTECT,
+        related_name="offerings",
+        verbose_name="docente responsável",
+    )
+    seats = models.PositiveSmallIntegerField("vagas")
+
+    objects = DisciplineOfferingQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "oferta de disciplina"
+        verbose_name_plural = "ofertas de disciplina"
+        ordering = ["discipline__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cycle", "discipline"],
+                name="unique_oferta_por_ciclo_e_disciplina",
+            ),
+        ]
+        permissions = [
+            # Classificar é ato do docente responsável e nada mais: quem
+            # ordena os candidatos não precisa poder editar a oferta, e
+            # quem edita a oferta (secretaria) não classifica ninguém.
+            ("rank_disciplineoffering", "Pode classificar candidatos da oferta"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.discipline} ({self.cycle})"
+
+    def seats_taken(self) -> int:
+        """Vagas já comprometidas nesta oferta.
+
+        Conta o deferido e o matriculado: deferir é o ato que reserva a
+        vaga, e a matrícula é o mesmo candidato um passo adiante — contar
+        só DEFERRED faria a vaga reaparecer no instante em que a
+        secretaria efetiva a matrícula (US-014), e a oferta aceitaria mais
+        gente do que tem lugar.
+
+        Inscrito NÃO conta: a vaga é da decisão da secretaria, não da
+        intenção do candidato — senão a fila de inscritos esgotaria as
+        vagas antes de alguém ser julgado. Cancelado devolve a vaga, que é
+        exatamente para isso que `cancel()` existe (US-004).
+        """
+        return self.items.filter(
+            request__status__in=(
+                IsolatedRequestStatus.DEFERRED,
+                IsolatedRequestStatus.ENROLLED,
+            )
+        ).count()
+
+    def seats_available(self) -> int:
+        """Nunca negativo: `seats` reduzido depois de deferimentos deixaria
+        a conta abaixo de zero, e vaga negativa não significa nada para
+        quem lê a tela.
+        """
+        return max(self.seats - self.seats_taken(), 0)
+
+    def candidates(self) -> "models.QuerySet[IsolatedEnrollmentItem]":
+        """Quem disputa esta oferta, na ordem em que o docente decidiu.
+
+        Só o inscrito: rascunho ainda não é candidatura, e deferido,
+        recusado ou cancelado já passou pela secretaria — classificar
+        depois da decisão mudaria o corte de vagas por baixo dela.
+
+        Sem posição vem por último (`nulls_last`), não primeiro: a lista
+        classificada é a resposta do docente e tem de ficar no topo
+        quando ele reabre a tela. Empate de "sem posição" desempata pelo
+        nome, para a ordem não variar entre duas leituras.
+        """
+        if self.pk is None:
+            return IsolatedEnrollmentItem.objects.none()
+        return (
+            self.items.filter(request__status=IsolatedRequestStatus.SUBMITTED)
+            .select_related("request__person")
+            .order_by(
+                models.F("rank").asc(nulls_last=True), "request__person__full_name"
+            )
+        )
+
+    def needs_ranking(self) -> bool:
+        """Ainda falta classificar alguém aqui.
+
+        É o marcador da lista do docente (`?mine=true`): oferta sem
+        inscrito nenhum não "falta classificar" — não há o que ordenar —,
+        e oferta com todo mundo posicionado já foi respondida.
+        """
+        if self.pk is None:
+            return False
+        return self.items.filter(
+            request__status=IsolatedRequestStatus.SUBMITTED, rank__isnull=True
+        ).exists()
+
+    def rank_items(self, item_ids: list[int]) -> list["IsolatedEnrollmentItem"]:
+        """Posição 1..N na ordem recebida, SEM salvar.
+
+        Devolve os itens já com o `rank` em memória; quem persiste é o
+        router, no mesmo `transaction.atomic()` do AuditLog — igual às
+        transições de estado do requerimento.
+
+        Item que não é candidato desta oferta é `item_not_in_offering`
+        (400): a lista que o docente devolve é a MESMA que ele recebeu de
+        `candidates()`, então id de fora é erro de chamada, não escolha.
+        """
+        candidatos = {item.pk: item for item in self.candidates()}
+        if any(item_id not in candidatos for item_id in item_ids):
+            raise DomainError(
+                "A classificação só aceita candidatos inscritos nesta oferta.",
+                code="item_not_in_offering",
+            )
+        ordenados = []
+        for posicao, item_id in enumerate(item_ids, start=1):
+            item = candidatos[item_id]
+            item.rank = posicao
+            ordenados.append(item)
+        return ordenados
+
+    def clean(self) -> None:
+        """Ciclo, disciplina e docente têm de ser todos do mesmo programa.
+
+        Cada um deles carrega a própria FK de programa, então nada impede
+        no banco montar uma oferta que mistura tenants — e a mistura só
+        apareceria lá na frente, com candidato inscrito em disciplina de
+        outro programa. É invariante, não detalhe de formulário.
+        """
+        super().clean()
+        if self.seats is not None and self.seats < 1:
+            # A coluna é PositiveSmallInteger: sem esta checagem um número
+            # negativo do formulário viraria erro do banco (500) em vez de
+            # 400, e zero vaga é oferta que não recebe ninguém.
+            raise DomainError(
+                "A oferta precisa ter pelo menos uma vaga.",
+                code="invalid_seats",
+            )
+        outros = []
+        for campo in ("cycle", "discipline", "teacher"):
+            try:
+                relacionado = getattr(self, campo)
+            except ObjectDoesNotExist:
+                # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+                continue
+            outros.append(relacionado.program_id)
+        if self.program_id is None or not outros:
+            return
+        if any(program_id != self.program_id for program_id in outros):
+            raise DomainError(
+                "O ciclo, a disciplina e o docente da oferta precisam ser do "
+                "mesmo programa.",
+                code="program_mismatch",
+            )
+        if self.cycle_id is None or self.discipline_id is None:
+            return
+        duplicatas = DisciplineOffering.objects.filter(
+            cycle_id=self.cycle_id, discipline_id=self.discipline_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            # Mesma razão da linha de pesquisa: a constraint barra, mas só
+            # aqui a violação vira 400 com code estável.
+            raise DomainError(
+                "Esta disciplina já está ofertada neste edital.",
+                code="duplicate_offering",
+            )
+
+
+# Limite do edital: até duas disciplinas por candidato por semestre. Mora
+# no módulo, e não dentro do model, porque a borda (schema Ninja e tela)
+# precisa do mesmo número para impedir a terceira antes de submeter.
+MAX_ISOLATED_ITEMS = 2
+
+
+class IsolatedRequestStatus(models.TextChoices):
+    """Situação do requerimento de isolada, no vocabulário do edital.
+
+    Mora fora do model, com nome único, porque o gerador de OpenAPI batiza
+    o schema do enum com o `__name__` da classe: dois `Status` aninhados
+    colidem e o último registrado sobrescreve o outro, silenciosamente.
+    `IsolatedEnrollmentRequest.Status` continua valendo pelo alias.
+    """
+
+    DRAFT = "draft", "Rascunho"
+    SUBMITTED = "submitted", "Inscrito"
+    DEFERRED = "deferred", "Deferido"
+    REJECTED = "rejected", "Indeferido"
+    CANCELLED = "cancelled", "Cancelado"
+    ENROLLED = "enrolled", "Matriculado"
+
+
+class IsolatedPaymentStatus(models.TextChoices):
+    """Situação da taxa (GRU) do requerimento.
+
+    Separada do `status` porque as duas caminham em ritmos diferentes: o
+    deferimento é decisão da secretaria, o pagamento é ato do candidato, e
+    é a combinação das duas que libera a matrícula (US-004 `enroll()`).
+    Fora do model pelo mesmo motivo de colisão de nome no OpenAPI.
+    """
+
+    PENDING = "pending", "Pendente"
+    PAID = "paid", "Pago"
+    EXEMPT = "exempt", "Isento"
+
+
+class IsolatedEnrollmentRequestQuerySet(models.QuerySet):
+    def for_program(self, program) -> "IsolatedEnrollmentRequestQuerySet":
+        return self.filter(program=program)
+
+    def for_cycle(
+        self, cycle: IsolatedEnrollmentCycle
+    ) -> "IsolatedEnrollmentRequestQuerySet":
+        return self.filter(cycle=cycle)
+
+    def visible_to(self, user, program) -> "IsolatedEnrollmentRequestQuerySet":
+        """O que esta sessão pode ler — sempre depois de `for_program`.
+
+        `view_isolatedenrollmentrequest` é permissão de papel: ela diz que
+        a pessoa acompanha requerimento, não QUAIS requerimentos. O recorte
+        é aqui, como em `EnrollmentAdjustmentRequestQuerySet.visible_to`.
+
+        Secretaria e Coordenação (e o superusuário, que opera a plataforma)
+        veem o edital inteiro. Todo o resto vê a união do que é seu como
+        candidato e do que chega a ele como docente responsável por uma
+        oferta — união, e não dois ramos, porque nada impede que o docente
+        também se inscreva numa isolada de outro programa... e, no mesmo
+        programa, que a mesma pessoa acumule os dois papéis.
+        """
+        if (
+            user.is_superuser
+            or user.groups.filter(name__in=PAPEIS_COM_VISAO_DO_PROGRAMA).exists()
+        ):
+            return self
+        pessoas = Person.objects.active().filter(user=user, program=program)
+        # `distinct` porque o lado do docente atravessa `items` (um-para-
+        # muitos): requerimento com duas disciplinas do mesmo docente
+        # apareceria duas vezes sem ele.
+        return self.filter(
+            models.Q(person__in=pessoas)
+            | models.Q(items__offering__teacher__person__in=pessoas)
+        ).distinct()
+
+
+class IsolatedEnrollmentRequest(models.Model):
+    """Requerimento de uma pessoa para cursar isoladas num ciclo.
+
+    Um requerimento por pessoa por ciclo: a inscrição carrega até duas
+    disciplinas (`items`, US-005), e não duas inscrições. É o que mantém
+    documentação e taxa únicas — o edital cobra uma GRU por candidato, não
+    uma por disciplina.
+
+    `person` e não `student`: quem se inscreve ainda não é aluno. O
+    `Student` com `modality=ISOLATED` só nasce na efetivação (US-014).
+
+    A FK `program` é direta mesmo sendo alcançável por `cycle`
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None` e o rastro perde a chave de tenant.
+    """
+
+    Status = IsolatedRequestStatus
+    PaymentStatus = IsolatedPaymentStatus
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="isolated_requests",
+        verbose_name="programa",
+    )
+    cycle = models.ForeignKey(
+        IsolatedEnrollmentCycle,
+        on_delete=models.PROTECT,
+        related_name="requests",
+        verbose_name="ciclo",
+    )
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.PROTECT,
+        related_name="isolated_requests",
+        verbose_name="candidato",
+    )
+    status = models.CharField(
+        "situação",
+        max_length=20,
+        choices=Status,
+        default=Status.DRAFT,
+    )
+    payment_status = models.CharField(
+        "situação do pagamento",
+        max_length=20,
+        choices=PaymentStatus,
+        default=PaymentStatus.PENDING,
+    )
+    # Servidor da UFMG é isento da taxa, mas em troca precisa juntar
+    # contracheque e autorização da chefia (US-006).
+    is_ufmg_staff = models.BooleanField("é servidor da UFMG", default=False)
+    # Link da GRU, gravado pela secretaria no deferimento (US-012). O
+    # sistema não emite a guia; ela vem do sistema de arrecadação da UFMG.
+    gru_url = models.URLField("link da GRU", blank=True)
+    decision_note = models.TextField("motivo da decisão", blank=True)
+    # Vazio enquanto não decidido; carimbado por defer()/reject() (US-004).
+    decided_at = models.DateTimeField("decidido em", null=True, blank=True)
+    appeal_note = models.TextField("razões do recurso", blank=True)
+    appealed_at = models.DateTimeField("recurso interposto em", null=True, blank=True)
+    # Vazio enquanto Rascunho; carimbado por submit() (US-004).
+    submitted_at = models.DateTimeField("inscrito em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = IsolatedEnrollmentRequestQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "requerimento de isolada"
+        verbose_name_plural = "requerimentos de isolada"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cycle", "person"],
+                name="unique_requerimento_isolada_por_ciclo_e_pessoa",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Requerimento de {self.person} em {self.cycle}"
+
+    def clean(self) -> None:
+        """A FK `program` é direta (ADR-007 dec. 5) e por isso pode divergir
+        da do ciclo e da pessoa. Divergir significa AuditLog com a chave de
+        tenant errada — é invariante, não detalhe de formulário.
+        """
+        super().clean()
+        outros = []
+        for campo in ("cycle", "person"):
+            try:
+                relacionado = getattr(self, campo)
+            except ObjectDoesNotExist:
+                # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+                continue
+            outros.append(relacionado.program_id)
+        if self.program_id is None or not outros:
+            return
+        if any(program_id != self.program_id for program_id in outros):
+            raise DomainError(
+                "O ciclo e o candidato do requerimento precisam ser do mesmo programa.",
+                code="program_mismatch",
+            )
+
+    def submit(self, *, at: datetime) -> None:
+        """Inscreve o candidato: Rascunho vira Inscrito.
+
+        `at` vem por parâmetro, e não de `timezone.now()` aqui dentro,
+        porque a janela é do edital e o teste precisa poder escolher o
+        instante sem congelar o relógio — mesmo motivo de
+        `IsolatedEnrollmentCycle.submission_open()`.
+
+        A contagem de itens é validação de método, e não constraint de
+        banco: ela depende de contar linhas relacionadas, coisa que
+        `CheckConstraint` não faz. Vem depois da checagem de estado e de
+        janela de propósito — as duas primeiras não tocam o banco, então
+        o erro barato sai antes da consulta.
+
+        A documentação obrigatória é a última cobrança, e não a primeira,
+        pelo mesmo motivo: ela consulta os anexos.
+        """
+        self._exigir_status(
+            self.Status.DRAFT,
+            "Só um requerimento em rascunho pode ser inscrito.",
+        )
+        if not self.cycle.submission_open(at):
+            raise DomainError(
+                "As inscrições deste ciclo não estão abertas.",
+                code="submission_window_closed",
+            )
+        if not 1 <= self.items.count() <= MAX_ISOLATED_ITEMS:
+            raise DomainError(
+                "A inscrição precisa ter uma ou duas disciplinas.",
+                code="invalid_item_count",
+            )
+        if self.missing_documents():
+            raise DomainError(
+                "A inscrição só pode ser enviada com toda a documentação "
+                "obrigatória anexada.",
+                code="missing_documents",
+            )
+        self.status = self.Status.SUBMITTED
+        self.submitted_at = at
+
+    def ensure_editable(self) -> None:
+        """Só o rascunho aceita mudança de disciplina ou de vínculo.
+
+        Depois de inscrito, o requerimento é a peça que o docente
+        classifica e a secretaria julga: trocar as disciplinas ali dentro
+        mudaria a fila das vagas debaixo de quem já foi ordenado. Quem
+        errou a escolha cancela e o edital decide se cabe nova inscrição.
+        """
+        self._exigir_status(
+            self.Status.DRAFT,
+            "Só um requerimento em rascunho pode ser alterado.",
+        )
+
+    def ensure_document_upload_allowed(self, kind: str) -> None:
+        """Quando cada tipo de anexo ainda pode ser enviado.
+
+        A documentação da inscrição acompanha `ensure_editable()`: depois
+        de inscrito, trocar a identidade ou o diploma mudaria a peça que o
+        docente classifica e a secretaria julga.
+
+        O comprovante da GRU é o oposto e por isso tem regra própria: ele
+        não existe no rascunho — a guia só é emitida no deferimento —, e
+        exigi-lo no mesmo estado dos outros fecharia a porta do pagamento
+        (US-013).
+        """
+        if kind == RequestDocumentKind.PAYMENT_RECEIPT:
+            self._exigir_status(
+                self.Status.DEFERRED,
+                "O comprovante da GRU só é anexado depois do deferimento.",
+            )
+            return
+        self._exigir_status(
+            self.Status.DRAFT,
+            "A documentação só é anexada enquanto o requerimento é rascunho.",
+        )
+
+    def required_document_kinds(self) -> list[str]:
+        """Tipos de documento que este requerimento precisa ter anexados.
+
+        Servidor da UFMG junta contracheque e autorização da chefia: é o
+        que sustenta a isenção da taxa (`defer()`) e a liberação do
+        horário. O comprovante da GRU fica de fora de propósito — ele só
+        existe depois do deferimento, quando a secretaria emite a guia.
+        """
+        obrigatorios = [
+            RequestDocumentKind.IDENTITY,
+            RequestDocumentKind.DIPLOMA,
+            RequestDocumentKind.LATTES,
+            RequestDocumentKind.ADDRESS,
+        ]
+        if self.is_ufmg_staff:
+            obrigatorios += [
+                RequestDocumentKind.PAYSLIP,
+                RequestDocumentKind.SUPERVISOR_AUTH,
+            ]
+        return [str(kind) for kind in obrigatorios]
+
+    def missing_documents(self) -> list[str]:
+        """Os tipos obrigatórios que ainda faltam anexar, na ordem do edital.
+
+        Requerimento sem pk não tem anexo nenhum por definição, e o
+        acessor reverso levantaria `ValueError` nele — a saída antecipada
+        mantém o invariante testável em memória, sem banco.
+        """
+        exigidos = self.required_document_kinds()
+        if self.pk is None:
+            return exigidos
+        anexados = set(self.documents.values_list("kind", flat=True))
+        return [kind for kind in exigidos if kind not in anexados]
+
+    def ensure_deferrable(self) -> None:
+        """As duas travas do deferimento, que dependem das ofertas pedidas.
+
+        Ficam fora de `defer()` porque consultam linhas relacionadas, e
+        `defer()` é invariante de estado testável em memória — mesmo
+        motivo de `ensure_editable()` existir separado.
+
+        A classificação vem antes da vaga: sem a lista do docente ninguém
+        é matriculado, e recusar por falta de vaga uma oferta que sequer
+        foi ordenada diria à secretaria a coisa errada.
+        """
+        for item in self.items.select_related("offering__discipline"):
+            oferta = item.offering
+            if oferta.needs_ranking():
+                raise DomainError(
+                    f"O docente ainda não classificou os candidatos de "
+                    f"{oferta.discipline}.",
+                    code="offering_not_ranked",
+                )
+            if oferta.seats_available() <= 0:
+                raise DomainError(
+                    f"A oferta de {oferta.discipline} não tem vaga disponível.",
+                    code="no_seats_available",
+                )
+
+    def defer(self, *, note: str = "") -> None:
+        """Defere o requerimento.
+
+        A nota é opcional: quem defere não deve satisfação; quem indefere,
+        sim. Servidor da UFMG nasce isento aqui — a isenção é consequência
+        automática do vínculo declarado, e não uma segunda decisão da
+        secretaria que ela poderia esquecer de tomar.
+        """
+        self._exigir_status(
+            self.Status.SUBMITTED,
+            "Só um requerimento inscrito pode ser deferido.",
+        )
+        self.status = self.Status.DEFERRED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+        if self.is_ufmg_staff:
+            self.payment_status = self.PaymentStatus.EXEMPT
+
+    def reject(self, *, note: str) -> None:
+        """Indefere o requerimento, com motivo obrigatório.
+
+        O motivo é o que o candidato lê na tela dele e o que ele contesta
+        no recurso; indeferir sem motivo é uma porta fechada sem
+        explicação e um recurso impossível de escrever.
+        """
+        self._exigir_status(
+            self.Status.SUBMITTED,
+            "Só um requerimento inscrito pode ser indeferido.",
+        )
+        if not note.strip():
+            raise DomainError(
+                "Indeferir exige um motivo.",
+                code="rejection_requires_note",
+            )
+        self.status = self.Status.REJECTED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+
+    def cancel(self, *, note: str = "") -> None:
+        """Cancela o requerimento e, com ele, devolve a vaga.
+
+        É a única saída de um deferido que não pagou: não existe
+        expiração automática no projeto (nada roda sozinho), então a vaga
+        só volta para a fila quando a secretaria cancela explicitamente.
+        Cancelar um inscrito é a desistência do candidato antes da
+        decisão.
+        """
+        if self.status not in (self.Status.SUBMITTED, self.Status.DEFERRED):
+            raise InvalidStateTransition(
+                "Só um requerimento inscrito ou deferido pode ser cancelado."
+            )
+        self.status = self.Status.CANCELLED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+
+    def appeal(self, *, note: str, at: datetime) -> None:
+        """Interpõe recurso contra o indeferimento.
+
+        Não mexe no `status` de propósito: o recurso é pedido de
+        rejulgamento, não deferimento automático. O requerimento continua
+        Indeferido até a secretaria decidir de novo — e é o `appealed_at`
+        que a coloca na fila de rejulgamento.
+        """
+        self._exigir_status(
+            self.Status.REJECTED,
+            "Só cabe recurso de requerimento indeferido.",
+        )
+        if not self.cycle.appeal_open(at):
+            raise DomainError(
+                "A janela de recurso deste ciclo não está aberta.",
+                code="appeal_window_closed",
+            )
+        if not note.strip():
+            raise DomainError(
+                "O recurso exige as razões do pedido.",
+                code="appeal_requires_note",
+            )
+        self.appeal_note = note
+        self.appealed_at = at
+
+    def ensure_appeal_document_allowed(self, kind: str) -> None:
+        """O que o recurso aceita anexar.
+
+        A documentação da inscrição, sim: documento faltante ou ilegível é
+        o motivo mais comum de indeferimento, e obrigar o candidato a
+        recorrer sem poder juntar a página que faltou transformaria o
+        recurso em pedido de clemência. Por isso este caminho existe
+        separado de `ensure_document_upload_allowed()`, que exige rascunho.
+
+        O comprovante da GRU, não: a guia só é emitida no deferimento, e
+        quem recorre está indeferido — não há o que comprovar.
+        """
+        if kind == RequestDocumentKind.PAYMENT_RECEIPT:
+            raise DomainError(
+                "O comprovante da GRU não é documento de recurso.",
+                code="invalid_document_kind",
+            )
+
+    def register_payment(self, *, at: datetime) -> None:
+        """Registra o pagamento da taxa a partir do comprovante anexado.
+
+        Não mexe no `status`: pagar não matricula ninguém. A matrícula é
+        `enroll()` (US-014), e é lá que deferimento e pagamento se juntam.
+
+        `at` vem por parâmetro porque o prazo é do edital, como em
+        `submit()` e `appeal()`.
+        """
+        self._exigir_status(
+            self.Status.DEFERRED,
+            "O comprovante da GRU só é aceito em requerimento deferido.",
+        )
+        if self.payment_status == self.PaymentStatus.EXEMPT:
+            raise DomainError(
+                "Este requerimento é isento da taxa e não tem GRU a pagar.",
+                code="payment_not_required",
+            )
+        if not self.cycle.payment_open(at):
+            raise DomainError(
+                "O prazo de pagamento deste ciclo já encerrou.",
+                code="payment_window_closed",
+            )
+        self.payment_status = self.PaymentStatus.PAID
+
+    def enroll(self) -> None:
+        """Efetiva a matrícula: Deferido vira Matriculado.
+
+        Deferimento e pagamento são atos de pessoas diferentes e é a
+        combinação dos dois que libera a matrícula. Isento passa sem
+        comprovante nenhum — é o servidor da UFMG, que já pagou com o
+        contracheque que anexou.
+        """
+        self._exigir_status(
+            self.Status.DEFERRED,
+            "Só um requerimento deferido pode virar matrícula.",
+        )
+        if self.payment_status not in (
+            self.PaymentStatus.PAID,
+            self.PaymentStatus.EXEMPT,
+        ):
+            raise DomainError(
+                "A taxa do requerimento ainda não foi paga.",
+                code="payment_required",
+            )
+        self.status = self.Status.ENROLLED
+
+    def _exigir_status(self, esperado: str, mensagem: str) -> None:
+        """Transição a partir do estado errado é 409, no padrão de
+        `Person.archive()`: erro do chamador, não no-op silencioso.
+        """
+        if self.status != esperado:
+            raise InvalidStateTransition(mensagem)
+
+
+class IsolatedEnrollmentItem(models.Model):
+    """Uma disciplina pedida dentro de um requerimento de isolada.
+
+    O requerimento é único por pessoa por ciclo e carrega de uma a duas
+    disciplinas (`MAX_ISOLATED_ITEMS`, cobrado em
+    `IsolatedEnrollmentRequest.submit()`): documentação e taxa são do
+    candidato, a escolha é por disciplina.
+
+    `rank` é a posição que o docente responsável atribui na oferta
+    (US-011) e nasce nulo — antes de ele classificar, ninguém tem
+    posição, e é essa ausência que a secretaria vê como "oferta ainda não
+    classificada" no deferimento (US-012). Nulo não é zero nem último.
+
+    Sem FK `program` direta, ao contrário do resto (ADR-007 dec. 5): o
+    item não é alvo de AuditLog próprio — quem é auditado é o
+    requerimento, que já carrega o tenant. O `on_delete=CASCADE` para
+    `request` diz o mesmo: item não existe sem o requerimento dele.
+    """
+
+    request = models.ForeignKey(
+        IsolatedEnrollmentRequest,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="requerimento",
+    )
+    offering = models.ForeignKey(
+        DisciplineOffering,
+        on_delete=models.PROTECT,
+        related_name="items",
+        verbose_name="oferta",
+    )
+    rank = models.PositiveSmallIntegerField("classificação", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "item do requerimento de isolada"
+        verbose_name_plural = "itens do requerimento de isolada"
+        ordering = ["offering__discipline__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "offering"],
+                name="unique_item_por_requerimento_e_oferta",
+            ),
+            # Duas pessoas na mesma posição da mesma oferta tornam o corte
+            # das vagas indecidível. A condição deixa de fora o rank nulo:
+            # antes da classificação todo mundo empata em "sem posição", e
+            # isso é o estado normal, não uma violação.
+            models.UniqueConstraint(
+                fields=["offering", "rank"],
+                condition=models.Q(rank__isnull=False),
+                name="unique_classificacao_por_oferta",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.offering} em {self.request}"
+
+    def clean(self) -> None:
+        """O item só pode apontar para uma oferta do mesmo ciclo.
+
+        Nada no banco impede montar um requerimento de 2026/1 com uma
+        oferta de 2026/2 — e a mistura só apareceria no deferimento, com
+        a vaga sendo descontada do edital errado.
+        """
+        super().clean()
+        try:
+            requerimento = self.request
+            oferta = self.offering
+        except ObjectDoesNotExist:
+            # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+            return
+        if requerimento.cycle_id != oferta.cycle_id:
+            raise DomainError(
+                "A disciplina escolhida precisa ser uma oferta do mesmo ciclo "
+                "do requerimento.",
+                code="cycle_mismatch",
+            )
+
+
+def caminho_do_documento(instance: "RequestDocument", filename: str) -> str:
+    """Onde o anexo é gravado dentro do MEDIA_ROOT.
+
+    Particionado por ciclo e por requerimento porque a operação do
+    edital é por lote: a secretaria arquiva, copia ou apaga um semestre
+    inteiro, e um diretório plano com milhares de arquivos torna isso
+    manual. Função de módulo, e não lambda, porque a migração precisa
+    conseguir serializar a referência.
+    """
+    return (
+        f"isoladas/ciclo-{instance.request.cycle_id}/"
+        f"requerimento-{instance.request_id}/{filename}"
+    )
+
+
+# O que o edital aceita como anexo. PDF é o formato do diploma e do
+# Lattes; imagem entra porque comprovante de endereço e identidade quase
+# sempre chegam como foto de celular. Nada além disso: documento de
+# candidato é lido pela secretaria, não executado.
+EXTENSOES_DE_DOCUMENTO = (".pdf", ".jpg", ".jpeg", ".png")
+# 10 MB por arquivo — foto de celular cabe com folga e PDF digitalizado
+# também; acima disso é digitalização mal configurada, não documento.
+TAMANHO_MAXIMO_DO_DOCUMENTO = 10 * 1024 * 1024
+
+
+class RequestDocumentQuerySet(models.QuerySet):
+    def for_program(self, program) -> "RequestDocumentQuerySet":
+        """O anexo não tem FK `program` (ele mora no requerimento), então
+        o escopo de tenant atravessa a FK — mas continua obrigatório e
+        continua sendo o primeiro filtro de toda busca.
+        """
+        return self.filter(request__program=program)
+
+
+class RequestDocumentKind(models.TextChoices):
+    """Os documentos que o edital cobra do candidato.
+
+    Classe de módulo com nome único: dois enums aninhados de mesmo nome
+    colidem no gerador de OpenAPI e o último registrado sobrescreve o
+    outro, sem erro no backend.
+    """
+
+    IDENTITY = "identity", "Identidade e CPF"
+    DIPLOMA = "diploma", "Diploma de graduação ou certidão de conclusão"
+    LATTES = "lattes", "Currículo Lattes em PDF"
+    ADDRESS = "address", "Comprovante de endereço"
+    PAYSLIP = "payslip", "Contracheque de servidor da UFMG"
+    SUPERVISOR_AUTH = "supervisor_auth", "Autorização da chefia"
+    PAYMENT_RECEIPT = "payment_receipt", "Comprovante de pagamento da GRU"
+
+
+class RequestDocument(models.Model):
+    """Um documento anexado a um requerimento de isolada.
+
+    Um por tipo (`UniqueConstraint`): reenviar o comprovante de endereço
+    é substituir o anterior, não empilhar duas versões e deixar a
+    secretaria adivinhar qual vale.
+
+    Sem FK `program` direta, como `IsolatedEnrollmentItem` e pelo mesmo
+    motivo (ADR-007 dec. 5): o anexo não é alvo de AuditLog próprio —
+    quem é auditado é o requerimento, que carrega o tenant — e o
+    `on_delete=CASCADE` diz que ele não existe fora dele.
+    """
+
+    Kind = RequestDocumentKind
+
+    request = models.ForeignKey(
+        IsolatedEnrollmentRequest,
+        on_delete=models.CASCADE,
+        related_name="documents",
+        verbose_name="requerimento",
+    )
+    kind = models.CharField("tipo", max_length=20, choices=Kind)
+    file = models.FileField("arquivo", upload_to=caminho_do_documento)
+    uploaded_at = models.DateTimeField("anexado em", auto_now_add=True)
+
+    objects = RequestDocumentQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "documento do requerimento"
+        verbose_name_plural = "documentos do requerimento"
+        ordering = ["kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "kind"],
+                name="unique_documento_por_requerimento_e_tipo",
+            ),
+        ]
+        permissions = [
+            # Baixar o anexo é mais do que ver o requerimento: são dados
+            # pessoais do candidato (documento de identidade,
+            # contracheque). Quem lista a fila não precisa disso.
+            ("download_requestdocument", "Pode baixar documento do requerimento"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} de {self.request}"
+
+    @classmethod
+    def validate_upload(cls, *, filename: str, size: int) -> None:
+        """Formato e tamanho do que chega — invariante, não detalhe da borda.
+
+        Fica no model, e não num validador de campo, porque o arquivo que
+        interessa validar é o que a requisição traz: `FileField.validators`
+        só roda em `full_clean()` e não vê o tamanho do upload. Método de
+        classe porque a checagem antecede a instância — recusar antes de
+        gravar é o ponto.
+
+        Um único `code="invalid_document"` para os dois casos: a tela
+        mostra a mensagem, e distinguir extensão de tamanho no `code` só
+        multiplicaria contrato.
+        """
+        if not filename or not filename.lower().endswith(EXTENSOES_DE_DOCUMENTO):
+            aceitas = ", ".join(EXTENSOES_DE_DOCUMENTO)
+            raise DomainError(
+                f"O documento precisa ser um arquivo {aceitas}.",
+                code="invalid_document",
+            )
+        if size > TAMANHO_MAXIMO_DO_DOCUMENTO:
+            limite = TAMANHO_MAXIMO_DO_DOCUMENTO // (1024 * 1024)
+            raise DomainError(
+                f"O documento tem no máximo {limite} MB.",
+                code="invalid_document",
+            )

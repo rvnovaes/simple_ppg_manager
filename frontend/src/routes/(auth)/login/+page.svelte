@@ -15,7 +15,7 @@
 		enviando = true;
 		try {
 			await sessao.entrar(username, password);
-			await goto(resolve('/pessoas'));
+			await goto(resolve(sessao.rotaInicial));
 		} catch (falha) {
 			erro = mensagemDeErro(falha, 'Não foi possível entrar. Tente novamente.');
 		} finally {
@@ -84,6 +84,11 @@
 			<button class="botao mt-8 w-full" type="submit" disabled={enviando}>
 				{enviando ? 'Entrando…' : 'Entrar'}
 			</button>
+
+			<p class="text-cinza mt-6 text-sm">
+				Vai cursar disciplina isolada e ainda não tem conta?
+				<a class="text-tinta underline" href={resolve('/cadastro')}>Cadastre-se</a>
+			</p>
 		</form>
 	</main>
 </div>
