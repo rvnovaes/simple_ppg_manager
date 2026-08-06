@@ -44,6 +44,11 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Cache é estado que sobrevive ao rollback do banco**: fixture autouse `cache_limpo` em `backend/conftest.py` limpa o cache do Django entre testes. Sem ela, contador de rate limit vaza de um teste para o outro e a suíte falha conforme a ORDEM em que roda.
 - **Ordem cronológica é invariante de `clean()`, não CheckConstraint**: `DomainError(code="invalid_cycle_dates")` sai 400 (erro do formulário da secretaria). A convenção do calendário é `<` dentro de cada janela (janela de duração zero não aceita ninguém) e `<=` entre o fechamento de uma fase e a abertura da seguinte (encadear no mesmo instante é legítimo).
 
+- **Ciclo aberto é resolvido pelo relógio, nunca pelo payload** (`ciclo_com_inscricao_aberta(program, at)` em `apps/academic/services.py`): mesma lógica de `current_program` para o tenant. Consequência: as rotas do candidato só funcionam dentro da janela de inscrição e devolvem `no_open_cycle` (400) fora dela — a tela precisa tratar esse código.
+- **Rota que edita coleção de filhos substitui, não faz diferença**: `items` ausente mantém, `items: []` apaga, lista preenchida troca (delete + `bulk_create`) dentro de um `transaction.atomic()`. Calcular a diferença custaria código sem ganho — a lista do corpo É a escolha final.
+- **`missing_documents`/`seats_available` viajam calculados no schema de saída**: a tela não soma deferidos nem confere anexos, senão a regra vaza para o front (Seção 12). Métodos assim não aproveitam `prefetch_related` (são `filter`/`values_list` sobre o acessor reverso) — o custo é um COUNT por linha e está documentado no router.
+- **Usuário de papel sem `Person` ativa no programa não passa de `current_program`**: fixture de papel (`secretaria`, `sem_permissao`) precisa de uma `Person` acompanhando, senão o teste leva 403 `no_program` em vez do que ele queria medir. Ver `secretaria_no_programa`.
+
 ---
 
 ## 2026-08-05 - US-001
@@ -206,4 +211,45 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - `frontend/package-lock.json` aparece modificado desde o início do ciclo (ruído de
     reordenação, não é desta US) — continua fora do commit.
   - Sem verificação de browser: US-008 não toca UI. A tela pública é a US-016.
+---
+
+## 2026-08-05 - US-009 (Endpoints — candidato monta e envia o requerimento)
+- Cinco rotas em `apps/academic/router.py`: `GET /isolated/offerings/` (ofertas do edital
+  aberto com `seats`/`seats_available`), `GET /isolated/requests/` (paginada, recortada por
+  papel), `POST /isolated/requests/` (rascunho + itens, 201), `PATCH /isolated/requests/{id}/`
+  (só em DRAFT) e `POST /isolated/requests/{id}/submit`.
+- `apps/academic/schemas.py`: `DisciplineOfferingOut`, `IsolatedItemIn/Out`,
+  `IsolatedRequestIn/Patch/Out` (com `missing_documents` e `person_name`), e o validador
+  `_itens_validos` compartilhado (repetida e mais de `MAX_ISOLATED_ITEMS` são 422 na borda).
+- `apps/academic/services.py`: `ciclo_com_inscricao_aberta(program, at)` e
+  `create_isolated_request(...)` (requerimento + itens + AuditLog numa `transaction.atomic()`).
+- `apps/academic/models.py`: `IsolatedEnrollmentRequestQuerySet.visible_to(user, program)`
+  (Secretaria/Coordenação/superusuário veem tudo; o resto vê o que é seu como candidato ou
+  como docente responsável pela oferta, com `distinct`) e `ensure_editable()` (409 fora do
+  rascunho).
+- Fixtures novas em `apps/academic/tests/conftest.py`: `ciclo_aberto` (janela em torno de
+  `timezone.now()`, período letivo próprio por causa da UniqueConstraint) e `ofertas_abertas`.
+- `apps/academic/tests/test_isolada_requerimento.py` (novo): 31 casos.
+- Arquivos alterados: `backend/apps/academic/{models,router,schemas,services}.py`,
+  `backend/apps/academic/tests/conftest.py`, `backend/apps/academic/tests/test_isolada_requerimento.py`
+  (novo), `frontend/src/lib/api/openapi.json` e `schema.d.ts` (gerados), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (81 arquivos), svelte-check (185 arquivos,
+  0 erros), pytest 375 passed. `make gen-api` rodado.
+- **Sem migração e sem `make migrate`**: a US só acrescenta métodos, rotas e schemas
+  (`makemigrations --check` confirma "No changes detected").
+- **Learnings for future iterations:**
+  - A permissão de escrita **não** decide QUAL requerimento: `_meu_requerimento()` exige que a
+    `Person` do requerimento seja da sessão, e isso vale inclusive para a Secretaria — ela
+    julga (US-012) mas não escolhe disciplina por ninguém. As rotas dela vão precisar de um
+    seletor próprio, não deste helper.
+  - `_ofertas()` busca sempre dentro do ciclo (`DisciplineOffering.objects.for_cycle(ciclo)`),
+    então oferta de outro edital ou de outro programa vira 404 e o `cycle_mismatch` de
+    `IsolatedEnrollmentItem.clean()` nunca chega ao banco pelo caminho normal — a checagem do
+    model continua sendo a rede de segurança do Admin e do shell.
+  - `bulk_create` não chama `clean()`; é o escopo da busca no router que sustenta o invariante,
+    igual a `create_enrollment_adjustment`.
+  - A US-016 (tela do candidato) tem tudo de que precisa no `IsolatedRequestOut`:
+    `missing_documents` lista o que falta anexar antes de o candidato levar o 400 de
+    `missing_documents` no envio.
+  - Sem verificação de browser: US-009 não toca UI. A tela é a US-016.
 ---

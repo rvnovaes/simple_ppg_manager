@@ -165,8 +165,8 @@
         "Tests pass (candidato não vê nem edita requerimento de outro; submissão fora da janela é recusada; edição depois de submetido é recusada)"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "O ciclo não vem do payload, como o programa não vem: ciclo_com_inscricao_aberta() resolve o edital pelo relógio, então criar requerimento e listar ofertas só funciona dentro da janela (code no_open_cycle fora dela). Rascunho aceita lista vazia de disciplinas — é submit() que exige de uma a duas. visible_to() dá ao docente os requerimentos que pedem oferta dele, com distinct."
     },
     {
       "id": "US-010",
