@@ -34,6 +34,10 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Transição de estado é método do model que NÃO salva**: muda os campos em memória e devolve; quem persiste é o router, com `save(update_fields=[...])` no mesmo `transaction.atomic()` do `audit.record()`. Estado errado levanta `InvalidStateTransition` (409); regra violada dentro do estado certo (janela, motivo, pagamento) levanta `DomainError` (400) com `code` próprio. Ver `IsolatedEnrollmentRequest.submit()/defer()/reject()/cancel()/appeal()/enroll()`.
 - **Instante do edital entra por parâmetro; instante da decisão sai de `timezone.now()`**: `submit(at=...)`/`appeal(at=...)` recebem o momento porque a janela é do calendário e o teste precisa escolhê-lo; `defer()`/`reject()`/`cancel()` carimbam `decided_at` com o agora do servidor.
 - **Validação que conta linhas relacionadas vai depois das que não tocam o banco**: `self.items.count()` levanta `ValueError` em instância sem pk, então o teste do caso de sucesso migra para módulo com banco. Dentro do método, ponha estado e janela antes da contagem — assim os erros baratos continuam testáveis em memória. Ver `IsolatedEnrollmentRequest.submit()` (`test_models.py` para os erros, `test_isolada_itens.py` para o sucesso).
+- **Duplicata em `clean()` custa o teste em memória do caminho feliz**: a checagem consulta o banco, então `test_clean_aceita_*` daquele model sai de `test_models.py` para um módulo com banco; os testes de ERRO ficam, porque não chegam à consulta. Mesmo trade do `submit()`.
+- **`AuditLog` guarda os detalhes em `.payload`** (`JSONField`), nunca `.metadata`.
+- **`save(update_fields=[...])` aceita o attname da FK** (`term_id`), o que deixa o `model_dump(exclude_unset=True)` do PATCH ser repassado direto.
+- **Confirmação destrutiva recebe a contagem do servidor**: `students_to_exclude` viaja em `IsolatedCycleOut` e sai do MESMO recorte de `close_isolated_cycle`, como método do model. Contagem espelhada na tela sai de sincronia no dia em que o recorte mudar.
 - **`UniqueConstraint` com `condition=Q(campo__isnull=False)`** é o padrão para "único quando preenchido": vários nulos convivem (estado normal antes de alguém preencher) e a constraint só morde depois. Ver `unique_classificacao_por_oferta`.
 - **Permissão ampla checada DEPOIS da posse** quando o dono do dado também acessa: no download do anexo, a 1ª linha é a permissão de piso (`view_isolatedenrollmentrequest`) e só quem não é dono cai no `require_perm` da permissão exclusiva (`download_requestdocument`). Checar a exclusiva primeiro obrigaria a dar permissão de Secretaria ao candidato.
 - **Arquivo: valide no model, apague no storage à mão.** `FileField.validators` não vê o upload (só rodam em `full_clean()`, sem tamanho), então a checagem é `classmethod` chamada pelo router; e `delete()` do model não remove o arquivo — substituir anexo exige `file.delete(save=False)` antes de apagar a linha.
@@ -749,3 +753,45 @@ Started: qua. 05 ago 2026 20:19:36 -03
     no link da GRU — `resolve()` é para rota da SPA.
   - **`bind:value` de `<select>` com `value={numero}`** guarda number, e não string: o
     `cycle_id: number | null` do filtro chega tipado no `params.query` sem conversão.
+
+## 2026-08-05 - US-020
+- Tela Svelte do edital de isolada (`/editais`): formulário do ciclo com as sete
+  datas e validação da ordem cronológica antes de enviar, cadastro de ofertas
+  (disciplina, docente responsável, vagas) e encerramento do período com
+  confirmação em dois passos informando quantos alunos serão excluídos.
+- A US era só de tela, mas as rotas de escrita do ciclo e da oferta não
+  existiam (só `GET` e o `close`). Foram entregues junto, no padrão fixo de
+  CRUD do projeto: `POST/PATCH /academic/isolated/cycles/` e
+  `POST/PATCH /academic/isolated/offerings/`.
+- Arquivos:
+  - `backend/apps/academic/models.py` — duplicata em `IsolatedEnrollmentCycle.clean()`
+    (`duplicate_cycle`) e em `DisciplineOffering.clean()` (`duplicate_offering`),
+    `invalid_seats` para vaga < 1, e `IsolatedEnrollmentCycle.students_to_exclude()`
+  - `backend/apps/academic/schemas.py` — `IsolatedCycleIn/Patch`,
+    `DisciplineOfferingIn/Patch`, campo `students_to_exclude` em `IsolatedCycleOut`
+  - `backend/apps/academic/router.py` — as quatro rotas de escrita
+  - `backend/apps/academic/tests/test_isolada_edital_escrita.py` (novo, 19 casos)
+  - `backend/apps/academic/tests/test_isolada_encerramento.py` — prévia da contagem
+  - `backend/apps/academic/tests/test_models.py` — dois casos de sucesso movidos
+  - `frontend/src/routes/(app)/editais/+page.svelte` (novo),
+    `frontend/src/routes/(app)/+layout.svelte`, `frontend/src/lib/api/schema.d.ts`
+- Sem migração: só métodos e `clean()` mudaram (`makemigrations --check` limpo).
+- Verificação: `make ready` verde (537 testes). A tela responde 200 em
+  http://localhost:8080/editais (o Vite de :5173 é desta worktree). Os quatro
+  endpoints novos foram exercitados por curl com sessão forjada em :8080 —
+  criação, duplicata, `invalid_cycle_dates`, `invalid_seats`, PATCH — e a
+  Coordenação levou 403 em criar oferta e em encerrar, confirmando o modo
+  somente leitura. Dados de teste e sessões forjadas apagados no fim.
+  Sem ferramenta de navegador com consentimento: falta conferência visual manual.
+- **Learnings for future iterations:**
+  - Checagem de duplicata em `clean()` consulta o banco, e isso derruba o teste
+    do CAMINHO FELIZ em `test_models.py` (módulo sem banco) — o de erro
+    continua lá. Ao acrescentar duplicata a um `clean()` existente, mova os
+    `test_clean_aceita_*` daquele model para um módulo com banco.
+  - `AuditLog` guarda o payload em `.payload`, não em `.metadata`.
+  - `save(update_fields=[...])` aceita o attname da FK (`term_id`), não só o
+    nome do campo.
+  - `students_to_exclude` no schema do ciclo é o padrão de "a tela não calcula
+    o que o edital exige" aplicado a uma confirmação destrutiva: a contagem sai
+    do mesmo recorte de `close_isolated_cycle`, num método do model.
+---

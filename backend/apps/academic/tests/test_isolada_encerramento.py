@@ -312,3 +312,32 @@ def test_encerrar_sem_csrf_devolve_403(
     assert resposta.status_code == 403
     ciclo.refresh_from_db()
     assert ciclo.is_active is True
+
+
+# --- a prévia da confirmação -----------------------------------------
+
+
+def test_ciclo_anuncia_quantos_alunos_o_encerramento_excluiria(
+    client_secretaria: Client,
+    secretaria_no_programa: Person,
+    program: Program,
+    periodo: AcademicTerm,
+    ciclo: IsolatedEnrollmentCycle,
+):
+    """A tela confirma sabendo o número, e ele é o mesmo do recorte do lote."""
+    criar_aluno(program=program, periodo=periodo, nome="Ana Souza")
+    criar_aluno(program=program, periodo=periodo, nome="Bruno Lima")
+    criar_aluno(
+        program=program,
+        periodo=periodo,
+        nome="Dora Reis",
+        status=Student.Status.EXCLUDED,
+    )
+
+    resposta = client_secretaria.get("/api/v1/academic/isolated/cycles/")
+
+    assert resposta.status_code == 200
+    (corpo,) = resposta.json()
+    assert corpo["students_to_exclude"] == 2
+
+    assert _post(client_secretaria, _url(ciclo)).json()["students_excluded"] == 2

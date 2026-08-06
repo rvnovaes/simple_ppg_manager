@@ -44,7 +44,9 @@ from .models import (
     Teacher,
 )
 from .schemas import (
+    DisciplineOfferingIn,
     DisciplineOfferingOut,
+    DisciplineOfferingPatch,
     EnrollmentAdjustmentApproveIn,
     EnrollmentAdjustmentRejectIn,
     EnrollmentAdjustmentRequestIn,
@@ -52,7 +54,9 @@ from .schemas import (
     IsolatedCancelIn,
     IsolatedCandidateOut,
     IsolatedCycleCloseOut,
+    IsolatedCycleIn,
     IsolatedCycleOut,
+    IsolatedCyclePatch,
     IsolatedDeferIn,
     IsolatedEnrollIn,
     IsolatedItemIn,
@@ -528,6 +532,65 @@ def list_isolated_cycles(request: HttpRequest):
     return IsolatedEnrollmentCycle.objects.for_program(program).select_related("term")
 
 
+@router.post("/isolated/cycles/", response={201: IsolatedCycleOut})
+def create_isolated_cycle(request: HttpRequest, payload: IsolatedCycleIn):
+    """A secretaria abre o edital do semestre.
+
+    O período letivo é institucional (ADR-007 dec. 4), então a busca dele
+    não passa por `for_program` — o calendário 2026/1 é o mesmo para todos
+    os programas. O tenant do ciclo continua vindo de `current_program`.
+    """
+    require_perm(request, "academic.add_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    campos = payload.model_dump()
+    periodo = get_object_or_404(AcademicTerm, pk=campos.pop("term_id"))
+    ciclo = IsolatedEnrollmentCycle(program=program, term=periodo, **campos)
+    with transaction.atomic():
+        ciclo.clean()
+        ciclo.save()
+        audit.record(
+            "academic.isolated_cycle.create",
+            request=request,
+            target=ciclo,
+            term_id=ciclo.term_id,
+        )
+    return Status(201, ciclo)
+
+
+@router.patch("/isolated/cycles/{int:cycle_id}/", response=IsolatedCycleOut)
+def update_isolated_cycle(
+    request: HttpRequest, cycle_id: int, payload: IsolatedCyclePatch
+):
+    """Correção do calendário do edital.
+
+    Prorrogar prazo é rotina de secretaria e por isso é tela, não Admin
+    (ADR-006). `is_active` não é editável aqui pela razão declarada em
+    `IsolatedCycleIn`.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    ciclo = get_object_or_404(
+        IsolatedEnrollmentCycle.objects.for_program(program), pk=cycle_id
+    )
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "term_id" in campos:
+        # Existência do período é 404 aqui também: id inválido não pode
+        # virar IntegrityError na hora do save.
+        get_object_or_404(AcademicTerm, pk=campos["term_id"])
+    for campo, valor in campos.items():
+        setattr(ciclo, campo, valor)
+    with transaction.atomic():
+        ciclo.clean()
+        ciclo.save(update_fields=list(campos) or None)
+        audit.record(
+            "academic.isolated_cycle.update",
+            request=request,
+            target=ciclo,
+            fields=sorted(campos),
+        )
+    return ciclo
+
+
 @router.get("/isolated/offerings/", response=list[DisciplineOfferingOut])
 def list_isolated_offerings(
     request: HttpRequest, mine: bool = False, cycle_id: int | None = None
@@ -579,6 +642,81 @@ def list_isolated_offerings(
         return ofertas.for_cycle(ciclo).order_by("discipline__code")
     ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
     return ofertas.for_cycle(ciclo)
+
+
+@router.post("/isolated/offerings/", response={201: DisciplineOfferingOut})
+def create_isolated_offering(request: HttpRequest, payload: DisciplineOfferingIn):
+    """A secretaria põe uma disciplina no edital, com responsável e vagas.
+
+    Ciclo, disciplina e docente são buscados já escopados pelo programa:
+    referência de outro tenant vira 404, e não o `program_mismatch` do
+    model — este fica como rede de segurança para quem escrever pelo
+    Admin.
+    """
+    require_perm(request, "academic.add_disciplineoffering")
+    program: Program = current_program(request)
+    ciclo = get_object_or_404(
+        IsolatedEnrollmentCycle.objects.for_program(program), pk=payload.cycle_id
+    )
+    oferta = DisciplineOffering(
+        program=program,
+        cycle=ciclo,
+        discipline=get_object_or_404(
+            Discipline.objects.for_program(program), pk=payload.discipline_id
+        ),
+        teacher=get_object_or_404(
+            Teacher.objects.for_program(program), pk=payload.teacher_id
+        ),
+        seats=payload.seats,
+    )
+    with transaction.atomic():
+        oferta.clean()
+        oferta.save()
+        audit.record(
+            "academic.discipline_offering.create",
+            request=request,
+            target=oferta,
+            cycle_id=oferta.cycle_id,
+            discipline_id=oferta.discipline_id,
+            seats=oferta.seats,
+        )
+    return Status(201, oferta)
+
+
+@router.patch("/isolated/offerings/{int:offering_id}/", response=DisciplineOfferingOut)
+def update_isolated_offering(
+    request: HttpRequest, offering_id: int, payload: DisciplineOfferingPatch
+):
+    """Troca de responsável, de disciplina ou do número de vagas."""
+    require_perm(request, "academic.change_disciplineoffering")
+    program: Program = current_program(request)
+    oferta = get_object_or_404(
+        DisciplineOffering.objects.for_program(program).select_related(
+            "discipline", "teacher__person"
+        ),
+        pk=offering_id,
+    )
+    campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "discipline_id" in campos:
+        oferta.discipline = get_object_or_404(
+            Discipline.objects.for_program(program), pk=campos["discipline_id"]
+        )
+    if "teacher_id" in campos:
+        oferta.teacher = get_object_or_404(
+            Teacher.objects.for_program(program), pk=campos["teacher_id"]
+        )
+    if "seats" in campos:
+        oferta.seats = campos["seats"]
+    with transaction.atomic():
+        oferta.clean()
+        oferta.save(update_fields=list(campos) or None)
+        audit.record(
+            "academic.discipline_offering.update",
+            request=request,
+            target=oferta,
+            fields=sorted(campos),
+        )
+    return oferta
 
 
 def _ofertas(

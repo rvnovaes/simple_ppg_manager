@@ -87,6 +87,14 @@
 								Análise
 							</a>
 						{/if}
+						<!-- Por permissão: Secretaria monta o edital e Coordenação o
+						acompanha em modo somente leitura — as duas têm
+						`view_isolatedenrollmentcycle`, e nenhum outro papel tem. -->
+						{#if sessao.pode('academic.view_isolatedenrollmentcycle')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/editais')}>
+								Editais
+							</a>
+						{/if}
 						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>
 								Orientandos

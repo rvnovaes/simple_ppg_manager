@@ -361,6 +361,33 @@ class EnrollmentAdjustmentRequestOut(Schema):
         return list(obj.items.all())
 
 
+class DisciplineOfferingIn(Schema):
+    """Uma disciplina posta no edital, com responsável e vagas.
+
+    Sem `program_id`: o tenant é o da requisição. `cycle_id` viaja porque
+    a secretaria monta o edital do semestre que ela escolheu na tela — e
+    não necessariamente o que está com inscrição aberta agora.
+    """
+
+    cycle_id: int
+    discipline_id: int
+    teacher_id: int
+    seats: int
+
+
+class DisciplineOfferingPatch(Schema):
+    """Atualização parcial: o ciclo não muda.
+
+    Trocar a oferta de edital reescreveria a história de quem já se
+    inscreveu nela; o caminho é apagar (quebra-vidro no Admin) e cadastrar
+    de novo no ciclo certo.
+    """
+
+    discipline_id: int | None = None
+    teacher_id: int | None = None
+    seats: int | None = None
+
+
 class DisciplineOfferingOut(Schema):
     """Uma disciplina oferecida no edital, como o candidato a vê.
 
@@ -584,6 +611,39 @@ class IsolatedEnrollIn(Schema):
     registration_number: str
 
 
+class IsolatedCycleIn(Schema):
+    """O calendário do edital, digitado pela secretaria.
+
+    Sem `program_id`: o programa é o da requisição (`current_program`).
+    `is_active` não entra — o ciclo nasce ativo e só sai do ar pelo
+    encerramento, que é ato explícito com contagem de vínculos fechados
+    (`POST /isolated/cycles/{id}/close`). Um `is_active=false` no
+    formulário desligaria o edital sem excluir aluno nenhum.
+    """
+
+    term_id: int
+    submission_opens_at: datetime.datetime
+    submission_closes_at: datetime.datetime
+    result_published_on: datetime.date
+    appeal_opens_at: datetime.datetime
+    appeal_closes_at: datetime.datetime
+    final_result_on: datetime.date
+    payment_closes_at: datetime.datetime
+
+
+class IsolatedCyclePatch(Schema):
+    """Atualização parcial: só os campos presentes no corpo são aplicados."""
+
+    term_id: int | None = None
+    submission_opens_at: datetime.datetime | None = None
+    submission_closes_at: datetime.datetime | None = None
+    result_published_on: datetime.date | None = None
+    appeal_opens_at: datetime.datetime | None = None
+    appeal_closes_at: datetime.datetime | None = None
+    final_result_on: datetime.date | None = None
+    payment_closes_at: datetime.datetime | None = None
+
+
 class IsolatedCycleOut(Schema):
     """O edital do semestre, como a secretaria e a coordenação o veem.
 
@@ -608,6 +668,14 @@ class IsolatedCycleOut(Schema):
     payment_closes_at: datetime.datetime
     is_active: bool
     submission_open: bool
+    # Quantos alunos o encerramento excluiria agora: a confirmação da
+    # secretaria precisa do número ANTES de executar, e a tela não conta
+    # vínculo por conta própria (Seção 12).
+    students_to_exclude: int
+
+    @staticmethod
+    def resolve_students_to_exclude(obj: IsolatedEnrollmentCycle) -> int:
+        return obj.students_to_exclude()
 
     @staticmethod
     def resolve_term_label(obj: IsolatedEnrollmentCycle) -> str:

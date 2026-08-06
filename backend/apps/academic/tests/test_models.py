@@ -198,13 +198,10 @@ def _ciclo(**kwargs) -> IsolatedEnrollmentCycle:
     return IsolatedEnrollmentCycle(**{**padrao, **kwargs})
 
 
-def test_clean_aceita_ciclo_com_as_datas_em_ordem():
-    _ciclo().clean()
-
-
-def test_clean_aceita_recurso_comecando_no_instante_em_que_a_inscricao_fecha():
-    """Encadear as duas fases no mesmo instante é o edital sem intervalo."""
-    _ciclo(appeal_opens_at=datetime(2026, 2, 10, tzinfo=UTC)).clean()
+# Os casos de sucesso de `IsolatedEnrollmentCycle.clean()` moram em
+# `test_isolada_edital_escrita.py`: passar de todas as validações inclui a
+# de duplicata, que consulta o banco. Os erros de calendário continuam
+# aqui, em memória, porque são os que a secretaria comete no formulário.
 
 
 def test_clean_rejeita_inscricao_que_fecha_antes_de_abrir():
@@ -275,8 +272,8 @@ def _oferta(**kwargs) -> DisciplineOffering:
     return DisciplineOffering(**{**padrao, **kwargs})
 
 
-def test_clean_aceita_oferta_com_tudo_no_mesmo_programa():
-    _oferta().clean()
+# O caso de sucesso de `DisciplineOffering.clean()` também mora em
+# `test_isolada_edital_escrita.py`, pela mesma razão do ciclo.
 
 
 def test_clean_rejeita_docente_de_outro_programa():

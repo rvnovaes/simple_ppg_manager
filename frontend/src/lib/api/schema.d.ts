@@ -452,11 +452,43 @@ export interface paths {
          */
         get: operations["apps_academic_router_list_isolated_cycles"];
         put?: never;
-        post?: never;
+        /**
+         * Create Isolated Cycle
+         * @description A secretaria abre o edital do semestre.
+         *
+         *     O período letivo é institucional (ADR-007 dec. 4), então a busca dele
+         *     não passa por `for_program` — o calendário 2026/1 é o mesmo para todos
+         *     os programas. O tenant do ciclo continua vindo de `current_program`.
+         */
+        post: operations["apps_academic_router_create_isolated_cycle"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/cycles/{cycle_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Isolated Cycle
+         * @description Correção do calendário do edital.
+         *
+         *     Prorrogar prazo é rotina de secretaria e por isso é tela, não Admin
+         *     (ADR-006). `is_active` não é editável aqui pela razão declarada em
+         *     `IsolatedCycleIn`.
+         */
+        patch: operations["apps_academic_router_update_isolated_cycle"];
         trace?: never;
     };
     "/academic/isolated/offerings/": {
@@ -490,11 +522,40 @@ export interface paths {
          */
         get: operations["apps_academic_router_list_isolated_offerings"];
         put?: never;
-        post?: never;
+        /**
+         * Create Isolated Offering
+         * @description A secretaria põe uma disciplina no edital, com responsável e vagas.
+         *
+         *     Ciclo, disciplina e docente são buscados já escopados pelo programa:
+         *     referência de outro tenant vira 404, e não o `program_mismatch` do
+         *     model — este fica como rede de segurança para quem escrever pelo
+         *     Admin.
+         */
+        post: operations["apps_academic_router_create_isolated_offering"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/offerings/{offering_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Isolated Offering
+         * @description Troca de responsável, de disciplina ou do número de vagas.
+         */
+        patch: operations["apps_academic_router_update_isolated_offering"];
         trace?: never;
     };
     "/academic/isolated/requests/": {
@@ -1629,6 +1690,79 @@ export interface components {
             is_active: boolean;
             /** Submission Open */
             submission_open: boolean;
+            /** Students To Exclude */
+            students_to_exclude: number;
+        };
+        /**
+         * IsolatedCycleIn
+         * @description O calendário do edital, digitado pela secretaria.
+         *
+         *     Sem `program_id`: o programa é o da requisição (`current_program`).
+         *     `is_active` não entra — o ciclo nasce ativo e só sai do ar pelo
+         *     encerramento, que é ato explícito com contagem de vínculos fechados
+         *     (`POST /isolated/cycles/{id}/close`). Um `is_active=false` no
+         *     formulário desligaria o edital sem excluir aluno nenhum.
+         */
+        IsolatedCycleIn: {
+            /** Term Id */
+            term_id: number;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /**
+             * Result Published On
+             * Format: date
+             */
+            result_published_on: string;
+            /**
+             * Appeal Opens At
+             * Format: date-time
+             */
+            appeal_opens_at: string;
+            /**
+             * Appeal Closes At
+             * Format: date-time
+             */
+            appeal_closes_at: string;
+            /**
+             * Final Result On
+             * Format: date
+             */
+            final_result_on: string;
+            /**
+             * Payment Closes At
+             * Format: date-time
+             */
+            payment_closes_at: string;
+        };
+        /**
+         * IsolatedCyclePatch
+         * @description Atualização parcial: só os campos presentes no corpo são aplicados.
+         */
+        IsolatedCyclePatch: {
+            /** Term Id */
+            term_id?: number | null;
+            /** Submission Opens At */
+            submission_opens_at?: string | null;
+            /** Submission Closes At */
+            submission_closes_at?: string | null;
+            /** Result Published On */
+            result_published_on?: string | null;
+            /** Appeal Opens At */
+            appeal_opens_at?: string | null;
+            /** Appeal Closes At */
+            appeal_closes_at?: string | null;
+            /** Final Result On */
+            final_result_on?: string | null;
+            /** Payment Closes At */
+            payment_closes_at?: string | null;
         };
         /**
          * DisciplineOfferingOut
@@ -1661,6 +1795,40 @@ export interface components {
             seats_available: number;
             /** Needs Ranking */
             needs_ranking: boolean;
+        };
+        /**
+         * DisciplineOfferingIn
+         * @description Uma disciplina posta no edital, com responsável e vagas.
+         *
+         *     Sem `program_id`: o tenant é o da requisição. `cycle_id` viaja porque
+         *     a secretaria monta o edital do semestre que ela escolheu na tela — e
+         *     não necessariamente o que está com inscrição aberta agora.
+         */
+        DisciplineOfferingIn: {
+            /** Cycle Id */
+            cycle_id: number;
+            /** Discipline Id */
+            discipline_id: number;
+            /** Teacher Id */
+            teacher_id: number;
+            /** Seats */
+            seats: number;
+        };
+        /**
+         * DisciplineOfferingPatch
+         * @description Atualização parcial: o ciclo não muda.
+         *
+         *     Trocar a oferta de edital reescreveria a história de quem já se
+         *     inscreveu nela; o caminho é apagar (quebra-vidro no Admin) e cadastrar
+         *     de novo no ciclo certo.
+         */
+        DisciplineOfferingPatch: {
+            /** Discipline Id */
+            discipline_id?: number | null;
+            /** Teacher Id */
+            teacher_id?: number | null;
+            /** Seats */
+            seats?: number | null;
         };
         /**
          * IsolatedRequestStatus
@@ -2790,6 +2958,56 @@ export interface operations {
             };
         };
     };
+    apps_academic_router_create_isolated_cycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedCycleIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_isolated_cycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedCyclePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleOut"];
+                };
+            };
+        };
+    };
     apps_academic_router_list_isolated_offerings: {
         parameters: {
             query?: {
@@ -2809,6 +3027,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DisciplineOfferingOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_create_isolated_offering: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisciplineOfferingIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOfferingOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_update_isolated_offering: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offering_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisciplineOfferingPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisciplineOfferingOut"];
                 };
             };
         };

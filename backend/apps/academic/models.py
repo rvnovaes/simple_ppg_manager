@@ -744,6 +744,21 @@ class IsolatedEnrollmentCycle(models.Model):
                 "pagamento.",
                 code="invalid_cycle_dates",
             )
+        if self.program_id is None or self.term_id is None:
+            return
+        duplicatas = IsolatedEnrollmentCycle.objects.filter(
+            program_id=self.program_id, term_id=self.term_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            # A constraint do banco já barra; validar aqui é o que faz a
+            # violação chegar como 400 com code estável em vez de
+            # IntegrityError virando 500.
+            raise DomainError(
+                "Já existe um edital de isolada para este período neste programa.",
+                code="duplicate_cycle",
+            )
 
     def submission_open(self, at: datetime) -> bool:
         """A janela de inscrição inclui a abertura e exclui o fechamento —
@@ -762,6 +777,23 @@ class IsolatedEnrollmentCycle(models.Model):
         uma data a mais para a secretaria errar no formulário do edital.
         """
         return at < self.payment_closes_at
+
+    def students_to_exclude(self) -> int:
+        """Quantos vínculos o encerramento fecharia se rodasse agora.
+
+        Mesmo recorte de `services.close_isolated_cycle` — e por isso mora
+        aqui, e não na tela: encerrar é irreversível pelo caminho normal, e
+        a secretaria confirma sabendo o número. Contagem espelhada na tela
+        sairia de sincronia com o serviço no dia em que o recorte mudar.
+        """
+        if self.pk is None or self.program_id is None or self.term_id is None:
+            return 0
+        return (
+            Student.objects.filter(program_id=self.program_id, term_id=self.term_id)
+            .isolated()
+            .active()
+            .count()
+        )
 
     def close(self) -> None:
         """Encerra o edital: o ciclo sai do ar e não recebe mais nada.
@@ -953,6 +985,14 @@ class DisciplineOffering(models.Model):
         outro programa. É invariante, não detalhe de formulário.
         """
         super().clean()
+        if self.seats is not None and self.seats < 1:
+            # A coluna é PositiveSmallInteger: sem esta checagem um número
+            # negativo do formulário viraria erro do banco (500) em vez de
+            # 400, e zero vaga é oferta que não recebe ninguém.
+            raise DomainError(
+                "A oferta precisa ter pelo menos uma vaga.",
+                code="invalid_seats",
+            )
         outros = []
         for campo in ("cycle", "discipline", "teacher"):
             try:
@@ -968,6 +1008,20 @@ class DisciplineOffering(models.Model):
                 "O ciclo, a disciplina e o docente da oferta precisam ser do "
                 "mesmo programa.",
                 code="program_mismatch",
+            )
+        if self.cycle_id is None or self.discipline_id is None:
+            return
+        duplicatas = DisciplineOffering.objects.filter(
+            cycle_id=self.cycle_id, discipline_id=self.discipline_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            # Mesma razão da linha de pesquisa: a constraint barra, mas só
+            # aqui a violação vira 400 com code estável.
+            raise DomainError(
+                "Esta disciplina já está ofertada neste edital.",
+                code="duplicate_offering",
             )
 
 

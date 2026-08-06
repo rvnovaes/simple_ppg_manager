@@ -1538,6 +1538,90 @@
             "SessionAuth": []
           }
         ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_create_isolated_cycle",
+        "summary": "Create Isolated Cycle",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedCycleOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria abre o edital do semestre.\n\nO período letivo é institucional (ADR-007 dec. 4), então a busca dele\nnão passa por `for_program` — o calendário 2026/1 é o mesmo para todos\nos programas. O tenant do ciclo continua vindo de `current_program`.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedCycleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/cycles/{cycle_id}/": {
+      "patch": {
+        "operationId": "apps_academic_router_update_isolated_cycle",
+        "summary": "Update Isolated Cycle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedCycleOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Correção do calendário do edital.\n\nProrrogar prazo é rotina de secretaria e por isso é tela, não Admin\n(ADR-006). `is_active` não é editável aqui pela razão declarada em\n`IsolatedCycleIn`.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedCyclePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
       }
     },
     "/academic/isolated/offerings/": {
@@ -1592,6 +1676,90 @@
         "tags": [
           "academic"
         ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_create_isolated_offering",
+        "summary": "Create Isolated Offering",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisciplineOfferingOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria põe uma disciplina no edital, com responsável e vagas.\n\nCiclo, disciplina e docente são buscados já escopados pelo programa:\nreferência de outro tenant vira 404, e não o `program_mismatch` do\nmodel — este fica como rede de segurança para quem escrever pelo\nAdmin.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisciplineOfferingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/offerings/{offering_id}/": {
+      "patch": {
+        "operationId": "apps_academic_router_update_isolated_offering",
+        "summary": "Update Isolated Offering",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "offering_id",
+            "schema": {
+              "title": "Offering Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisciplineOfferingOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Troca de responsável, de disciplina ou do número de vagas.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisciplineOfferingPatch"
+              }
+            }
+          },
+          "required": true
+        },
         "security": [
           {
             "SessionAuth": []
@@ -4343,6 +4511,10 @@
           "submission_open": {
             "title": "Submission Open",
             "type": "boolean"
+          },
+          "students_to_exclude": {
+            "title": "Students To Exclude",
+            "type": "integer"
           }
         },
         "required": [
@@ -4358,9 +4530,168 @@
           "final_result_on",
           "payment_closes_at",
           "is_active",
-          "submission_open"
+          "submission_open",
+          "students_to_exclude"
         ],
         "title": "IsolatedCycleOut",
+        "type": "object"
+      },
+      "IsolatedCycleIn": {
+        "description": "O calendário do edital, digitado pela secretaria.\n\nSem `program_id`: o programa é o da requisição (`current_program`).\n`is_active` não entra — o ciclo nasce ativo e só sai do ar pelo\nencerramento, que é ato explícito com contagem de vínculos fechados\n(`POST /isolated/cycles/{id}/close`). Um `is_active=false` no\nformulário desligaria o edital sem excluir aluno nenhum.",
+        "properties": {
+          "term_id": {
+            "title": "Term Id",
+            "type": "integer"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "result_published_on": {
+            "format": "date",
+            "title": "Result Published On",
+            "type": "string"
+          },
+          "appeal_opens_at": {
+            "format": "date-time",
+            "title": "Appeal Opens At",
+            "type": "string"
+          },
+          "appeal_closes_at": {
+            "format": "date-time",
+            "title": "Appeal Closes At",
+            "type": "string"
+          },
+          "final_result_on": {
+            "format": "date",
+            "title": "Final Result On",
+            "type": "string"
+          },
+          "payment_closes_at": {
+            "format": "date-time",
+            "title": "Payment Closes At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "term_id",
+          "submission_opens_at",
+          "submission_closes_at",
+          "result_published_on",
+          "appeal_opens_at",
+          "appeal_closes_at",
+          "final_result_on",
+          "payment_closes_at"
+        ],
+        "title": "IsolatedCycleIn",
+        "type": "object"
+      },
+      "IsolatedCyclePatch": {
+        "description": "Atualização parcial: só os campos presentes no corpo são aplicados.",
+        "properties": {
+          "term_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Id"
+          },
+          "submission_opens_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Opens At"
+          },
+          "submission_closes_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Closes At"
+          },
+          "result_published_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Published On"
+          },
+          "appeal_opens_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appeal Opens At"
+          },
+          "appeal_closes_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appeal Closes At"
+          },
+          "final_result_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Result On"
+          },
+          "payment_closes_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Closes At"
+          }
+        },
+        "title": "IsolatedCyclePatch",
         "type": "object"
       },
       "DisciplineOfferingOut": {
@@ -4425,6 +4756,75 @@
           "needs_ranking"
         ],
         "title": "DisciplineOfferingOut",
+        "type": "object"
+      },
+      "DisciplineOfferingIn": {
+        "description": "Uma disciplina posta no edital, com responsável e vagas.\n\nSem `program_id`: o tenant é o da requisição. `cycle_id` viaja porque\na secretaria monta o edital do semestre que ela escolheu na tela — e\nnão necessariamente o que está com inscrição aberta agora.",
+        "properties": {
+          "cycle_id": {
+            "title": "Cycle Id",
+            "type": "integer"
+          },
+          "discipline_id": {
+            "title": "Discipline Id",
+            "type": "integer"
+          },
+          "teacher_id": {
+            "title": "Teacher Id",
+            "type": "integer"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cycle_id",
+          "discipline_id",
+          "teacher_id",
+          "seats"
+        ],
+        "title": "DisciplineOfferingIn",
+        "type": "object"
+      },
+      "DisciplineOfferingPatch": {
+        "description": "Atualização parcial: o ciclo não muda.\n\nTrocar a oferta de edital reescreveria a história de quem já se\ninscreveu nela; o caminho é apagar (quebra-vidro no Admin) e cadastrar\nde novo no ciclo certo.",
+        "properties": {
+          "discipline_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discipline Id"
+          },
+          "teacher_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teacher Id"
+          },
+          "seats": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seats"
+          }
+        },
+        "title": "DisciplineOfferingPatch",
         "type": "object"
       },
       "IsolatedRequestStatus": {
