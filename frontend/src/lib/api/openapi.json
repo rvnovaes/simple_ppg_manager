@@ -2321,6 +2321,44 @@
         ]
       }
     },
+    "/academic/isolated/cycles/{cycle_id}/close": {
+      "post": {
+        "operationId": "apps_academic_router_close_isolated_cycle_endpoint",
+        "summary": "Close Isolated Cycle Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedCycleCloseOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Encerra o edital do semestre e exclui os alunos de isolada dele.\n\nÉ sempre um ato explícito da secretaria: nada expira sozinho por data.\nFosse automático, o sistema excluiria vínculo no meio de uma pendência\n(recurso em análise, GRU paga e matrícula não lançada) sem ninguém\npara responder por isso.\n\nO trabalho está em `services.close_isolated_cycle` — lote numa só\ntransação, com um único AuditLog carregando a contagem (ADR-002).",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/academic/isolated/signup": {
       "post": {
         "operationId": "apps_academic_router_isolated_signup",
@@ -4722,6 +4760,30 @@
           "registration_number"
         ],
         "title": "IsolatedEnrollIn",
+        "type": "object"
+      },
+      "IsolatedCycleCloseOut": {
+        "description": "Recibo do encerramento do edital.\n\nA contagem volta para a tela porque encerrar é irreversível pelo\ncaminho normal: a secretaria precisa ver quantos vínculos a ação\nfechou, e é o mesmo número que ficou no AuditLog.",
+        "properties": {
+          "cycle_id": {
+            "title": "Cycle Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "students_excluded": {
+            "title": "Students Excluded",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cycle_id",
+          "is_active",
+          "students_excluded"
+        ],
+        "title": "IsolatedCycleCloseOut",
         "type": "object"
       },
       "IsolatedSignupOut": {

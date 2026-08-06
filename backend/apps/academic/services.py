@@ -376,6 +376,50 @@ def signup_isolated_candidate(
 
 
 @transaction.atomic
+def close_isolated_cycle(
+    *,
+    ciclo: IsolatedEnrollmentCycle,
+    request: HttpRequest | None = None,
+) -> int:
+    """Encerra o edital e exclui, de uma vez, os alunos de isolada do semestre.
+
+    Está aqui, e não no router, porque escreve em três models
+    (IsolatedEnrollmentCycle, Student e AuditLog) na mesma transação
+    (ADR-002). Ciclo encerrado com aluno ainda ativo continuaria contando
+    como vínculo vigente no semestre seguinte.
+
+    O recorte é estreito de propósito: só `modality=ISOLATED`, só do
+    `term` DESTE ciclo, só quem está `ACTIVE` e só do programa do ciclo. O
+    aluno regular tem calendário próprio e quem já saiu (trancado ou
+    excluído) não é reprocessado — reabrir o status de quem já estava fora
+    apagaria a razão original da saída.
+
+    Um `.update()` em lote, e não um laço com `save()`: a transição do
+    aluno aqui não tem invariante para proteger (é sempre ACTIVE ->
+    EXCLUDED) e um edital grande gastaria centenas de UPDATEs. Também é
+    um só `AuditLog`, com a contagem no payload: o ato da secretaria é
+    "encerrei o semestre", e N eventos soltos afogariam esse ato.
+    """
+    ciclo.close()
+    alunos = (
+        Student.objects.for_program(ciclo.program)
+        .for_term(ciclo.term)
+        .isolated()
+        .active()
+    )
+    excluidos = alunos.update(status=Student.Status.EXCLUDED)
+    ciclo.save(update_fields=["is_active"])
+    audit.record(
+        "academic.isolated.close_cycle",
+        request=request,
+        target=ciclo,
+        term_id=ciclo.term_id,
+        students_excluded=excluidos,
+    )
+    return excluidos
+
+
+@transaction.atomic
 def enroll_isolated_request(
     *,
     requerimento: IsolatedEnrollmentRequest,

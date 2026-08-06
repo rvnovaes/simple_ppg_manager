@@ -51,6 +51,7 @@ from .schemas import (
     EnrollmentAdjustmentRequestOut,
     IsolatedCancelIn,
     IsolatedCandidateOut,
+    IsolatedCycleCloseOut,
     IsolatedDeferIn,
     IsolatedEnrollIn,
     IsolatedItemIn,
@@ -73,6 +74,7 @@ from .services import (
     JANELA_DE_SIGNUP_EM_SEGUNDOS,
     LIMITE_DE_SIGNUP_POR_IP,
     ciclo_com_inscricao_aberta,
+    close_isolated_cycle,
     conferir_programa,
     create_enrollment_adjustment,
     create_isolated_request,
@@ -1165,6 +1167,31 @@ def enroll_isolated_request_endpoint(
         request=request,
     )
     return requerimento
+
+
+@router.post("/isolated/cycles/{int:cycle_id}/close", response=IsolatedCycleCloseOut)
+def close_isolated_cycle_endpoint(request: HttpRequest, cycle_id: int):
+    """Encerra o edital do semestre e exclui os alunos de isolada dele.
+
+    É sempre um ato explícito da secretaria: nada expira sozinho por data.
+    Fosse automático, o sistema excluiria vínculo no meio de uma pendência
+    (recurso em análise, GRU paga e matrícula não lançada) sem ninguém
+    para responder por isso.
+
+    O trabalho está em `services.close_isolated_cycle` — lote numa só
+    transação, com um único AuditLog carregando a contagem (ADR-002).
+    """
+    require_perm(request, "academic.change_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    ciclo = get_object_or_404(
+        IsolatedEnrollmentCycle.objects.for_program(program), pk=cycle_id
+    )
+    excluidos = close_isolated_cycle(ciclo=ciclo, request=request)
+    return {
+        "cycle_id": ciclo.pk,
+        "is_active": ciclo.is_active,
+        "students_excluded": excluidos,
+    }
 
 
 @router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})

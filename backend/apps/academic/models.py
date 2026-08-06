@@ -148,6 +148,12 @@ class StudentQuerySet(models.QuerySet):
     def regular(self) -> "StudentQuerySet":
         return self.filter(modality=Student.Modality.REGULAR)
 
+    def isolated(self) -> "StudentQuerySet":
+        return self.filter(modality=Student.Modality.ISOLATED)
+
+    def for_term(self, term) -> "StudentQuerySet":
+        return self.filter(term=term)
+
 
 class Student(models.Model):
     """Vínculo de aluno com o programa.
@@ -756,6 +762,25 @@ class IsolatedEnrollmentCycle(models.Model):
         uma data a mais para a secretaria errar no formulário do edital.
         """
         return at < self.payment_closes_at
+
+    def close(self) -> None:
+        """Encerra o edital: o ciclo sai do ar e não recebe mais nada.
+
+        Não salva, como toda transição do projeto — quem persiste é
+        `services.close_isolated_cycle`, que na mesma transação exclui os
+        alunos de isolada do semestre. Encerrar duas vezes é 409: o
+        segundo encerramento não teria mais aluno ativo para excluir e o
+        AuditLog registraria zero como se fosse trabalho feito.
+
+        Não existe encerramento automático por data: a exclusão dos alunos
+        é irreversível pelo caminho normal e só a secretaria decide quando
+        o semestre acabou de fato.
+        """
+        if not self.is_active:
+            raise InvalidStateTransition(
+                "Este ciclo já foi encerrado.", code="cycle_already_closed"
+            )
+        self.is_active = False
 
 
 class DisciplineOfferingQuerySet(models.QuerySet):

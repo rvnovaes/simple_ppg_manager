@@ -649,6 +649,27 @@ def test_prazo_de_pagamento_so_tem_fim():
     assert not ciclo.payment_open(datetime(2026, 2, 25, tzinfo=UTC))
 
 
+def test_encerrar_o_ciclo_o_desativa_sem_salvar():
+    ciclo = _ciclo()
+
+    ciclo.close()
+
+    assert ciclo.is_active is False
+
+
+def test_encerrar_ciclo_ja_encerrado_e_bloqueado():
+    """409 e não silêncio: o segundo encerramento não teria mais aluno
+    ativo para excluir e registraria zero como se fosse trabalho feito.
+    """
+    ciclo = _ciclo()
+    ciclo.is_active = False
+
+    with pytest.raises(InvalidStateTransition) as exc:
+        ciclo.close()
+
+    assert exc.value.code == "cycle_already_closed"
+
+
 def test_registrar_pagamento_marca_pago_sem_matricular():
     """Pagar não matricula ninguém: a matrícula é `enroll()` (US-014)."""
     requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)

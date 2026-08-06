@@ -582,6 +582,19 @@ class IsolatedEnrollIn(Schema):
     registration_number: str
 
 
+class IsolatedCycleCloseOut(Schema):
+    """Recibo do encerramento do edital.
+
+    A contagem volta para a tela porque encerrar é irreversível pelo
+    caminho normal: a secretaria precisa ver quantos vínculos a ação
+    fechou, e é o mesmo número que ficou no AuditLog.
+    """
+
+    cycle_id: int
+    is_active: bool
+    students_excluded: int
+
+
 class IsolatedRequestOut(Schema):
     id: int
     program_id: int

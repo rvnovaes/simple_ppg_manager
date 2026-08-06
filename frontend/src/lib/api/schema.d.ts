@@ -786,6 +786,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/cycles/{cycle_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Isolated Cycle Endpoint
+         * @description Encerra o edital do semestre e exclui os alunos de isolada dele.
+         *
+         *     É sempre um ato explícito da secretaria: nada expira sozinho por data.
+         *     Fosse automático, o sistema excluiria vínculo no meio de uma pendência
+         *     (recurso em análise, GRU paga e matrícula não lançada) sem ninguém
+         *     para responder por isso.
+         *
+         *     O trabalho está em `services.close_isolated_cycle` — lote numa só
+         *     transação, com um único AuditLog carregando a contagem (ADR-002).
+         */
+        post: operations["apps_academic_router_close_isolated_cycle_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/isolated/signup": {
         parameters: {
             query?: never;
@@ -1794,6 +1822,22 @@ export interface components {
         IsolatedEnrollIn: {
             /** Registration Number */
             registration_number: string;
+        };
+        /**
+         * IsolatedCycleCloseOut
+         * @description Recibo do encerramento do edital.
+         *
+         *     A contagem volta para a tela porque encerrar é irreversível pelo
+         *     caminho normal: a secretaria precisa ver quantos vínculos a ação
+         *     fechou, e é o mesmo número que ficou no AuditLog.
+         */
+        IsolatedCycleCloseOut: {
+            /** Cycle Id */
+            cycle_id: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Students Excluded */
+            students_excluded: number;
         };
         /**
          * IsolatedSignupOut
@@ -3030,6 +3074,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_close_isolated_cycle_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleCloseOut"];
                 };
             };
         };
