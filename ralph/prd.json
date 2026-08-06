@@ -183,7 +183,7 @@
         "Tests pass (docente recebe 403 no download; candidato baixa o próprio; upload com extensão inválida é recusado)"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

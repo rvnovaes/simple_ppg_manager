@@ -35,6 +35,9 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Instante do edital entra por parâmetro; instante da decisão sai de `timezone.now()`**: `submit(at=...)`/`appeal(at=...)` recebem o momento porque a janela é do calendário e o teste precisa escolhê-lo; `defer()`/`reject()`/`cancel()` carimbam `decided_at` com o agora do servidor.
 - **Validação que conta linhas relacionadas vai depois das que não tocam o banco**: `self.items.count()` levanta `ValueError` em instância sem pk, então o teste do caso de sucesso migra para módulo com banco. Dentro do método, ponha estado e janela antes da contagem — assim os erros baratos continuam testáveis em memória. Ver `IsolatedEnrollmentRequest.submit()` (`test_models.py` para os erros, `test_isolada_itens.py` para o sucesso).
 - **`UniqueConstraint` com `condition=Q(campo__isnull=False)`** é o padrão para "único quando preenchido": vários nulos convivem (estado normal antes de alguém preencher) e a constraint só morde depois. Ver `unique_classificacao_por_oferta`.
+- **Permissão ampla checada DEPOIS da posse** quando o dono do dado também acessa: no download do anexo, a 1ª linha é a permissão de piso (`view_isolatedenrollmentrequest`) e só quem não é dono cai no `require_perm` da permissão exclusiva (`download_requestdocument`). Checar a exclusiva primeiro obrigaria a dar permissão de Secretaria ao candidato.
+- **Arquivo: valide no model, apague no storage à mão.** `FileField.validators` não vê o upload (só rodam em `full_clean()`, sem tamanho), então a checagem é `classmethod` chamada pelo router; e `delete()` do model não remove o arquivo — substituir anexo exige `file.delete(save=False)` antes de apagar a linha.
+- **Multipart no Ninja**: `campo: Enum = Form(...)` + `file: UploadedFile = File(...)`, com `[tool.ruff.lint.flake8-bugbear] extend-immutable-calls` para a B008. Rota que devolve arquivo não declara `response=` — o Ninja repassa o `FileResponse`.
 - **Fixture de fluxo longo mora em `apps/<app>/tests/conftest.py`**, e helper reutilizável (`criar_requerimento`, `anexar_documentos_obrigatorios`) é função do mesmo módulo, importada explicitamente (`from apps.academic.tests.conftest import ...`). O arranjo do edital (período, ciclo, docente, oferta, requerimento) é grande demais para duplicar por módulo — duplicado, sai de sincronia.
 - **Upload em teste não pode cair no checkout**: `conftest.py` da raiz do backend tem `media_temporaria` autouse, que aponta `settings.MEDIA_ROOT` para `tmp_path`. Teste de `FileField` novo não precisa fazer nada.
 - **Método que consulta relacionados fica testável em memória com saída antecipada por `pk is None`** (ver `missing_documents()`): instância sem pk não tem linha relacionada nenhuma por definição, então devolver o conjunto completo é a resposta correta, e não um atalho. Alternativa ao padrão anterior de migrar o teste para módulo com banco — use quando a resposta para "sem pk" for bem definida.
@@ -252,4 +255,59 @@ Started: qua. 05 ago 2026 20:19:36 -03
     `missing_documents` lista o que falta anexar antes de o candidato levar o 400 de
     `missing_documents` no envio.
   - Sem verificação de browser: US-009 não toca UI. A tela é a US-016.
+---
+
+## 2026-08-05 - US-010 (Endpoints — upload e download de documentos)
+- Três rotas em `apps/academic/router.py`: `POST /isolated/requests/{id}/documents`
+  (multipart, 201, substitui a versão anterior do tipo), `GET .../documents` (listagem sem
+  caminho de arquivo) e `GET /isolated/documents/{id}/download` (FileResponse).
+- `apps/academic/models.py`: `RequestDocument.validate_upload(filename, size)`
+  (`EXTENSOES_DE_DOCUMENTO`, `TAMANHO_MAXIMO_DO_DOCUMENTO` = 10 MB, `code="invalid_document"`),
+  `RequestDocumentQuerySet.for_program()` (escopo atravessa `request__program`) e
+  `IsolatedEnrollmentRequest.ensure_document_upload_allowed(kind)` — DRAFT para a documentação
+  da inscrição, DEFERRED para o `PAYMENT_RECEIPT`.
+- `apps/academic/schemas.py`: `RequestDocumentOut` (id, kind, kind_label, filename, size,
+  uploaded_at) — sem `file`/`url`, e `size` devolve 0 se o arquivo sumiu do storage.
+- `backend/pyproject.toml`: `flake8-bugbear.extend-immutable-calls = ["ninja.File",
+  "ninja.Form"]`, senão a B008 recusa a declaração de campo multipart do Ninja.
+- Helpers `criar_candidato`/`logar`/`SENHA` migraram de `test_isolada_requerimento.py` para
+  `apps/academic/tests/conftest.py`; o módulo antigo passou a importá-los de lá.
+- Testes: `test_isolada_documentos_api.py` (novo, 17 casos) e 8 casos em memória no
+  `test_models.py`.
+- Arquivos alterados: `backend/apps/academic/{models,router,schemas}.py`,
+  `backend/apps/academic/tests/{conftest,test_models,test_isolada_requerimento}.py`,
+  `backend/apps/academic/tests/test_isolada_documentos_api.py` (novo),
+  `backend/pyproject.toml`, `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados),
+  `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (82 arquivos), svelte-check (185 arquivos,
+  0 erros), pytest 408 passed. `make gen-api` rodado.
+- **Sem migração e sem `make migrate`**: manager novo e constantes não mudam schema
+  (`makemigrations --check` diz "No changes detected"). A permissão
+  `download_requestdocument` já nasceu em `academic.0010`/`0011`.
+- **Learnings for future iterations:**
+  - **`require_perm` da rota é o piso; a permissão exclusiva vem depois da posse.** No
+    download, a primeira linha é `view_isolatedenrollmentrequest` (todo papel do fluxo tem) e
+    só quem NÃO é dono do documento cai no `require_perm(..., "academic.download_requestdocument")`.
+    Checar a permissão ampla antes obrigaria a dar permissão de Secretaria ao candidato.
+  - **`FileField.validators` não vê o upload**: eles só rodam em `full_clean()` e não conhecem
+    o tamanho do arquivo que chegou. Por isso a validação é `classmethod` do model chamada pelo
+    router antes de gravar.
+  - **`delete()` do model não apaga o arquivo do storage**: substituir anexo exige
+    `anterior.file.delete(save=False)` antes do `anterior.delete()`, senão cada reenvio deixa
+    órfão no MEDIA_ROOT. Não é transacional — vem antes de qualquer escrita que possa falhar.
+  - **Substituir apagando a linha, e não editando o `file`**: `uploaded_at` é `auto_now_add` e
+    ficaria com a data do envio errado se o registro fosse reaproveitado.
+  - **Rota multipart no Ninja**: `kind: RequestDocumentKind = Form(...)`,
+    `file: UploadedFile = File(...)`, e a ruff `B008` só cala com `extend-immutable-calls`.
+    Tipo fora do enum vira 422 na borda, de graça.
+  - **Rota que devolve arquivo não declara `response=`**: o Ninja repassa o `FileResponse` como
+    está. Declarar um schema ali faria ele tentar serializar a resposta.
+  - **Auditar leitura é exceção no projeto** e aqui é obrigatório (documento de identidade de
+    outra pessoa). O alvo do AuditLog é o REQUERIMENTO, não o anexo: `RequestDocument` não tem
+    FK `program` e o AuditLog perderia a chave de tenant.
+  - **Nada no `RequestDocumentOut` leva ao arquivo**: MEDIA é servido pelo Nginx sem passar
+    pelo Django, então publicar `file.url` entregaria a identidade sem auditoria. A US-018/019
+    (telas) tem de baixar pela rota de download, nunca por link direto.
+  - Sem verificação de browser: US-010 não toca UI. As telas que consomem isto são a US-016
+    (candidato anexa) e a US-019 (secretaria baixa).
 ---
