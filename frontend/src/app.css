@@ -127,6 +127,39 @@
 		cursor: not-allowed;
 	}
 
+	/* Botão só de ícone das listagens. Alvo de 30px: menor que isso erra o
+	   clique no toque, maior desequilibra a linha do registro. */
+	.botao-icone {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.875rem;
+		height: 1.875rem;
+		border: 1px solid transparent;
+		background-color: transparent;
+		color: var(--color-cinza);
+		transition:
+			border-color 120ms ease,
+			color 120ms ease;
+	}
+	.botao-icone:hover:not(:disabled),
+	.botao-icone:focus-visible {
+		border-color: var(--color-borda);
+		color: var(--color-tinta);
+	}
+	.botao-icone:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+	/* A ação destrutiva se anuncia só na intenção: vermelha o tempo todo,
+	   ela vira o elemento mais chamativo de uma lista onde arquivar é a
+	   exceção. */
+	.botao-icone-perigo:hover:not(:disabled),
+	.botao-icone-perigo:focus-visible {
+		border-color: var(--color-carimbo);
+		color: var(--color-carimbo);
+	}
+
 	/* Item de submenu do cabeçalho. Bloco inteiro clicável, sem borda: a
 	   caixa do submenu já é a moldura, e uma borda por item viraria grade. */
 	.item-submenu {

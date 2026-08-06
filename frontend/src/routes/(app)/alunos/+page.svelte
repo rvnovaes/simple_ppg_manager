@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
+	import Icone from '$lib/Icone.svelte';
 	import { api, mensagemDeErro } from '$lib/api/client';
 	import type { components } from '$lib/api/schema';
 	import { sessao } from '$lib/sessao.svelte';
@@ -50,6 +52,7 @@
 	let carregando = $state(true);
 	let erro = $state('');
 	let aviso = $state('');
+	let excluindo = $state<number | null>(null);
 
 	// Filtros da lista. O backend também os aceita como query string, mas
 	// filtrar em memória evita uma ida ao servidor a cada clique.
@@ -195,6 +198,20 @@
 		periodoId = null;
 		prazoEditado = false;
 		formAberto = true;
+	}
+
+	async function excluir(aluno: Aluno) {
+		erro = '';
+		excluindo = aluno.id;
+		const { data, error } = await api.POST('/academic/students/{student_id}/exclude', {
+			params: { path: { student_id: aluno.id } }
+		});
+		excluindo = null;
+		if (error || !data) {
+			erro = mensagemDeErro(error, 'Não foi possível excluir o aluno.');
+			return;
+		}
+		alunos = alunos.map((a) => (a.id === data.id ? data : a));
 	}
 
 	function editar(aluno: Aluno) {
@@ -666,11 +683,38 @@
 									Definir senha inicial
 								</button>
 							{/if}
-							{#if podeEditar}
-								<button class="botao-discreto" type="button" onclick={() => editar(aluno)}>
-									Editar
-								</button>
-							{/if}
+							<div class="flex items-center gap-1">
+								<a
+									class="botao-icone"
+									href={resolve('/(app)/alunos/[id]', { id: String(aluno.id) })}
+									title="Detalhes de {aluno.person.full_name}"
+								>
+									<Icone nome="olho" rotulo="Detalhes" />
+								</a>
+								{#if podeEditar}
+									<button
+										class="botao-icone"
+										type="button"
+										title="Editar {aluno.person.full_name}"
+										onclick={() => editar(aluno)}
+									>
+										<Icone nome="lapis" rotulo="Editar" />
+									</button>
+									<!-- Excluir aqui é encerrar o vínculo, não apagar: o histórico
+									sustenta acerto de matrícula já decidido. -->
+									<button
+										class="botao-icone botao-icone-perigo"
+										type="button"
+										disabled={aluno.status === 'excluded' || excluindo === aluno.id}
+										title={aluno.status === 'excluded'
+											? 'Já excluído'
+											: `Excluir ${aluno.person.full_name}`}
+										onclick={() => excluir(aluno)}
+									>
+										<Icone nome="arquivo" rotulo="Excluir" />
+									</button>
+								{/if}
+							</div>
 						</div>
 					</div>
 

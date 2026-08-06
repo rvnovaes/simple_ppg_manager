@@ -888,6 +888,44 @@
         ]
       }
     },
+    "/people/{person_id}/": {
+      "get": {
+        "operationId": "apps_people_router_get_person",
+        "summary": "Get Person",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Uma pessoa pelo id, para a tela de detalhes.\n\nO escopo entra na busca: pessoa de outro programa simplesmente não\nexiste para esta requisição (404, nunca 403 — 403 revelaria que o id\nexiste).",
+        "tags": [
+          "people"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/people/{person_id}/archive": {
       "post": {
         "operationId": "apps_people_router_archive_person",
@@ -1026,6 +1064,42 @@
       }
     },
     "/academic/teachers/{teacher_id}/": {
+      "get": {
+        "operationId": "apps_academic_router_get_teacher",
+        "summary": "Get Teacher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teacher_id",
+            "schema": {
+              "title": "Teacher Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Um professor pelo id, para a tela de detalhes.\n\nO escopo entra na busca: professor de outro programa simplesmente não\nexiste para esta requisição (404, nunca 403 — 403 revelaria que o id\nexiste).",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
       "patch": {
         "operationId": "apps_academic_router_update_teacher",
         "summary": "Update Teacher",
@@ -1060,6 +1134,54 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/TeacherPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/teachers/{teacher_id}/deaccredit": {
+      "post": {
+        "operationId": "apps_academic_router_deaccredit_teacher",
+        "summary": "Deaccredit Teacher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teacher_id",
+            "schema": {
+              "title": "Teacher Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Descredencia o professor — o \"excluir\" da tela.\n\nNão apaga: o professor descredenciado continua sendo quem orientou os\nalunos dele. A permissão é `change_teacher`, e não `delete_teacher`,\nporque é exatamente o que a operação é — uma alteração de estado.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeacherDeaccreditIn"
               }
             }
           },
@@ -1235,6 +1357,42 @@
       }
     },
     "/academic/students/{student_id}/": {
+      "get": {
+        "operationId": "apps_academic_router_get_student",
+        "summary": "Get Student",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "student_id",
+            "schema": {
+              "title": "Student Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Um aluno pelo id, para a tela de detalhes. Escopo na busca, como\nem `get_teacher`.",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
       "patch": {
         "operationId": "apps_academic_router_update_student",
         "summary": "Update Student",
@@ -1274,6 +1432,44 @@
           },
           "required": true
         },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/students/{student_id}/exclude": {
+      "post": {
+        "operationId": "apps_academic_router_exclude_student",
+        "summary": "Exclude Student",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "student_id",
+            "schema": {
+              "title": "Student Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Encerra o vínculo do aluno — o \"excluir\" da tela.\n\nNão apaga: o histórico é o que sustenta acerto de matrícula já\ndecidido. Permissão `change_student` pelo mesmo motivo do professor —\né alteração de situação, não remoção.",
+        "tags": [
+          "academic"
+        ],
         "security": [
           {
             "SessionAuth": []
@@ -3794,6 +3990,25 @@
         "title": "TeacherPatch",
         "type": "object"
       },
+      "TeacherDeaccreditIn": {
+        "description": "Data do descredenciamento. Vazia significa hoje.\n\nExiste como corpo, e não como parâmetro na URL, porque descredenciar\ncom data retroativa é rotina: a portaria sai depois do fato.",
+        "properties": {
+          "on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On"
+          }
+        },
+        "title": "TeacherDeaccreditIn",
+        "type": "object"
+      },
       "Level": {
         "enum": [
           "masters",
@@ -3953,6 +4168,39 @@
             ],
             "title": "Term Id"
           },
+          "advisor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisor Name"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "term_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Label"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -3973,6 +4221,9 @@
           "deadline",
           "defense_date",
           "term_id",
+          "advisor_name",
+          "project_name",
+          "term_label",
           "created_at"
         ],
         "title": "StudentOut",

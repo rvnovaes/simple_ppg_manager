@@ -71,6 +71,7 @@ from .schemas import (
     StudentIn,
     StudentOut,
     StudentPatch,
+    TeacherDeaccreditIn,
     TeacherIn,
     TeacherOut,
     TeacherPatch,
@@ -158,6 +159,53 @@ def create_teacher_endpoint(request: HttpRequest, payload: TeacherIn):
         request=request,
     )
     return Status(201, teacher)
+
+
+@router.get("/teachers/{int:teacher_id}/", response=TeacherOut)
+def get_teacher(request: HttpRequest, teacher_id: int):
+    """Um professor pelo id, para a tela de detalhes.
+
+    O escopo entra na busca: professor de outro programa simplesmente não
+    existe para esta requisição (404, nunca 403 — 403 revelaria que o id
+    existe).
+    """
+    require_perm(request, "academic.view_teacher")
+    return get_object_or_404(
+        Teacher.objects.for_program(current_program(request)).select_related(
+            "person", "person__user"
+        ),
+        pk=teacher_id,
+    )
+
+
+@router.post("/teachers/{int:teacher_id}/deaccredit", response=TeacherOut)
+def deaccredit_teacher(
+    request: HttpRequest, teacher_id: int, payload: TeacherDeaccreditIn
+):
+    """Descredencia o professor — o "excluir" da tela.
+
+    Não apaga: o professor descredenciado continua sendo quem orientou os
+    alunos dele. A permissão é `change_teacher`, e não `delete_teacher`,
+    porque é exatamente o que a operação é — uma alteração de estado.
+    """
+    require_perm(request, "academic.change_teacher")
+    teacher = get_object_or_404(
+        Teacher.objects.for_program(current_program(request)).select_related(
+            "person", "person__user"
+        ),
+        pk=teacher_id,
+    )
+    with transaction.atomic():
+        # A regra mora no model; aqui só persistimos e auditamos.
+        teacher.deaccredit(on=payload.on or timezone.localdate())
+        teacher.save(update_fields=["accredited_until", "updated_at"])
+        audit.record(
+            "academic.teacher.deaccredit",
+            request=request,
+            target=teacher,
+            accredited_until=str(teacher.accredited_until),
+        )
+    return teacher
 
 
 @router.patch("/teachers/{int:teacher_id}/", response=TeacherOut)
@@ -290,6 +338,49 @@ def create_student_endpoint(request: HttpRequest, payload: StudentIn):
         request=request,
     )
     return Status(201, student)
+
+
+@router.get("/students/{int:student_id}/", response=StudentOut)
+def get_student(request: HttpRequest, student_id: int):
+    """Um aluno pelo id, para a tela de detalhes. Escopo na busca, como
+    em `get_teacher`."""
+    require_perm(request, "academic.view_student")
+    return get_object_or_404(
+        Student.objects.for_program(current_program(request)).select_related(
+            "person", "person__user", "project", "advisor__person", "term"
+        ),
+        pk=student_id,
+    )
+
+
+@router.post("/students/{int:student_id}/exclude", response=StudentOut)
+def exclude_student(request: HttpRequest, student_id: int):
+    """Encerra o vínculo do aluno — o "excluir" da tela.
+
+    Não apaga: o histórico é o que sustenta acerto de matrícula já
+    decidido. Permissão `change_student` pelo mesmo motivo do professor —
+    é alteração de situação, não remoção.
+    """
+    require_perm(request, "academic.change_student")
+    student = get_object_or_404(
+        Student.objects.for_program(current_program(request)).select_related(
+            "person", "person__user", "project", "advisor__person", "term"
+        ),
+        pk=student_id,
+    )
+    status_anterior = student.status
+    with transaction.atomic():
+        # A regra mora no model; aqui só persistimos e auditamos.
+        student.exclude_from_program()
+        student.save(update_fields=["status", "updated_at"])
+        audit.record(
+            "academic.student.exclude",
+            request=request,
+            target=student,
+            status_anterior=status_anterior,
+            status_novo=student.status,
+        )
+    return student
 
 
 @router.patch("/students/{int:student_id}/", response=StudentOut)

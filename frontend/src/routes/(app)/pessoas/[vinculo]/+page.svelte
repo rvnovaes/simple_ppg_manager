@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
+	import Icone from '$lib/Icone.svelte';
 	import { api, mensagemDeErro } from '$lib/api/client';
 	import type { components } from '$lib/api/schema';
 	import { sessao } from '$lib/sessao.svelte';
@@ -136,16 +137,35 @@
 							<span class="etiqueta">
 								{pessoa.status === 'archived' ? 'Arquivada' : 'Ativa'}
 							</span>
-							{#if podeArquivar && pessoa.status !== 'archived'}
-								<button
-									class="botao-discreto"
-									type="button"
-									disabled={arquivando === pessoa.id}
-									onclick={() => arquivar(pessoa)}
+							<div class="flex items-center gap-1">
+								<a
+									class="botao-icone"
+									href={resolve('/(app)/pessoas/[vinculo]/[id]', {
+										vinculo: slug,
+										id: String(pessoa.id)
+									})}
+									title="Detalhes de {pessoa.full_name}"
 								>
-									{arquivando === pessoa.id ? 'Arquivando…' : 'Arquivar'}
-								</button>
-							{/if}
+									<Icone nome="olho" rotulo="Detalhes" />
+								</a>
+								{#if podeArquivar}
+									<!-- Arquivar é o "excluir" desta tela: a pessoa continua sendo
+									quem assinou o que já assinou. Arquivada, o botão fica
+									desabilitado em vez de sumir — some daria a impressão de que a
+									ação não existe. -->
+									<button
+										class="botao-icone botao-icone-perigo"
+										type="button"
+										disabled={pessoa.status === 'archived' || arquivando === pessoa.id}
+										title={pessoa.status === 'archived'
+											? 'Já arquivada'
+											: `Arquivar ${pessoa.full_name}`}
+										onclick={() => arquivar(pessoa)}
+									>
+										<Icone nome="arquivo" rotulo="Arquivar" />
+									</button>
+								{/if}
+							</div>
 						</div>
 					</li>
 				{/each}

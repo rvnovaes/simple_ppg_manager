@@ -68,10 +68,28 @@ def create_person(request: HttpRequest, payload: PersonIn):
     return Status(201, person)
 
 
+@router.get("/{int:person_id}/", response=PersonOut)
+def get_person(request: HttpRequest, person_id: int):
+    """Uma pessoa pelo id, para a tela de detalhes.
+
+    O escopo entra na busca: pessoa de outro programa simplesmente não
+    existe para esta requisição (404, nunca 403 — 403 revelaria que o id
+    existe).
+    """
+    require_perm(request, "people.view_person")
+    return get_object_or_404(
+        Person.objects.for_program(current_program(request)), pk=person_id
+    )
+
+
 @router.post("/{int:person_id}/archive", response=PersonOut)
 def archive_person(request: HttpRequest, person_id: int):
     require_perm(request, "people.change_person")
-    person = get_object_or_404(Person, pk=person_id)
+    # O escopo entra na busca, como em toda rota por id: sem ele a
+    # secretaria de um programa arquiva pessoa de outro só sabendo o id.
+    person = get_object_or_404(
+        Person.objects.for_program(current_program(request)), pk=person_id
+    )
     with transaction.atomic():
         # A regra mora no model; aqui só persistimos e auditamos.
         person.archive()

@@ -137,6 +137,38 @@ class Teacher(models.Model):
                 code="program_mismatch",
             )
 
+    @property
+    def is_accredited(self) -> bool:
+        """Credenciamento vigente é `accredited_until` vazio.
+
+        Property, e não campo, porque a data JÁ diz isso: um booleano ao
+        lado dela seria uma segunda verdade a manter em sincronia.
+        """
+        return self.accredited_until is None
+
+    def deaccredit(self, *, on: date) -> None:
+        """Descredencia o professor na data informada.
+
+        É o que a tela chama de excluir, e não apaga nada: o professor
+        descredenciado continua sendo quem orientou os alunos dele, e as
+        FKs para cá são PROTECT justamente por isso. Recredenciar é
+        limpar a data pela edição normal.
+
+        Não salva, como toda transição do projeto — quem persiste é o
+        router, no mesmo `transaction.atomic()` do AuditLog.
+        """
+        if not self.is_accredited:
+            raise InvalidStateTransition(
+                "Este professor já está descredenciado.",
+                code="already_deaccredited",
+            )
+        if on < self.accredited_since:
+            raise DomainError(
+                "O descredenciamento não pode ser anterior ao credenciamento.",
+                code="invalid_deaccreditation_date",
+            )
+        self.accredited_until = on
+
 
 class StudentQuerySet(models.QuerySet):
     def for_program(self, program) -> "StudentQuerySet":
@@ -367,6 +399,27 @@ class Student(models.Model):
         # Por último: o erro de tenant é o mais grave e por isso fala
         # primeiro.
         self._conferir_modalidade()
+
+    def exclude_from_program(self) -> None:
+        """Encerra o vínculo do aluno: a situação vai para Excluído.
+
+        É o que a tela chama de excluir, e não apaga nada — o histórico do
+        aluno é o que sustenta acerto de matrícula já decidido e as FKs
+        para cá são PROTECT. O nome não é `exclude` porque colidiria com
+        `QuerySet.exclude` na cabeça de quem lê a chamada.
+
+        Vale para qualquer modalidade: o regular é desligado, a isolada e
+        a eletiva terminam assim ao fim do semestre (é o que
+        `services.close_isolated_cycle` faz em lote).
+
+        Não salva, como toda transição do projeto.
+        """
+        if self.status == self.Status.EXCLUDED:
+            raise InvalidStateTransition(
+                "Este aluno já está excluído.",
+                code="already_excluded",
+            )
+        self.status = self.Status.EXCLUDED
 
     def ensure_can_request_adjustment(self) -> None:
         """Invariante de quem pode abrir acerto de matrícula.

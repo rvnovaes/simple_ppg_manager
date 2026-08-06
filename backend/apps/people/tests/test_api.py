@@ -74,7 +74,17 @@ def test_criar_pessoa_sem_sessao_devolve_401(client, program):
     assert resposta.status_code == 401
 
 
-def test_arquivar_duas_vezes_devolve_409_com_code(client_secretaria, program):
+def test_arquivar_duas_vezes_devolve_409_com_code(
+    client_secretaria, secretaria, program
+):
+    # A rota resolve o tenant pela Person ativa da sessão: sem este vínculo
+    # ela devolve 403 antes de chegar ao arquivamento.
+    Person.objects.create(
+        program=program,
+        user=secretaria,
+        full_name="Sônia Barreto",
+        primary_email="sonia@exemplo.br",
+    )
     person = Person.objects.create(
         program=program, full_name="Ana Lima", primary_email="ana@exemplo.br"
     )

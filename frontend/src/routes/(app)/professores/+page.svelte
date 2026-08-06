@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
+	import Icone from '$lib/Icone.svelte';
 	import { api, mensagemDeErro } from '$lib/api/client';
 	import type { components } from '$lib/api/schema';
 	import { sessao } from '$lib/sessao.svelte';
@@ -37,6 +39,7 @@
 	let carregando = $state(true);
 	let erro = $state('');
 	let aviso = $state('');
+	let descredenciando = $state<number | null>(null);
 
 	// Filtro da lista. O backend também aceita `category`, mas filtrar em
 	// memória evita uma ida ao servidor a cada clique.
@@ -127,6 +130,23 @@
 		linhasSelecionadas = [];
 		projetosSelecionados = [];
 		formAberto = true;
+	}
+
+	async function descredenciar(professor: Professor) {
+		erro = '';
+		descredenciando = professor.id;
+		// Sem corpo: a data padrão é hoje, e o backend a resolve. Data
+		// retroativa é caso da edição, não do botão da lista.
+		const { data, error } = await api.POST('/academic/teachers/{teacher_id}/deaccredit', {
+			params: { path: { teacher_id: professor.id } },
+			body: {}
+		});
+		descredenciando = null;
+		if (error || !data) {
+			erro = mensagemDeErro(error, 'Não foi possível descredenciar o professor.');
+			return;
+		}
+		professores = professores.map((p) => (p.id === data.id ? data : p));
 	}
 
 	function editar(professor: Professor) {
@@ -502,11 +522,41 @@
 									Definir senha inicial
 								</button>
 							{/if}
-							{#if podeEditar}
-								<button class="botao-discreto" type="button" onclick={() => editar(professor)}>
-									Editar
-								</button>
-							{/if}
+							<div class="flex items-center gap-1">
+								<a
+									class="botao-icone"
+									href={resolve('/(app)/professores/[id]', { id: String(professor.id) })}
+									title="Detalhes de {professor.person.full_name}"
+								>
+									<Icone nome="olho" rotulo="Detalhes" />
+								</a>
+								{#if podeEditar}
+									<button
+										class="botao-icone"
+										type="button"
+										title="Editar {professor.person.full_name}"
+										onclick={() => editar(professor)}
+									>
+										<Icone nome="lapis" rotulo="Editar" />
+									</button>
+									<!-- Descredenciar, e não apagar: o professor descredenciado
+									continua sendo quem orientou os alunos dele. Já
+									descredenciado, o botão fica desabilitado em vez de sumir —
+									some daria a impressão de que a ação não existe. -->
+									<button
+										class="botao-icone botao-icone-perigo"
+										type="button"
+										disabled={professor.accredited_until !== null ||
+											descredenciando === professor.id}
+										title={professor.accredited_until !== null
+											? 'Já descredenciado'
+											: `Descredenciar ${professor.person.full_name}`}
+										onclick={() => descredenciar(professor)}
+									>
+										<Icone nome="arquivo" rotulo="Descredenciar" />
+									</button>
+								{/if}
+							</div>
 						</div>
 					</div>
 

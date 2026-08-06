@@ -264,6 +264,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/people/{person_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Person
+         * @description Uma pessoa pelo id, para a tela de detalhes.
+         *
+         *     O escopo entra na busca: pessoa de outro programa simplesmente não
+         *     existe para esta requisição (404, nunca 403 — 403 revelaria que o id
+         *     existe).
+         */
+        get: operations["apps_people_router_get_person"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/people/{person_id}/archive": {
         parameters: {
             query?: never;
@@ -306,7 +330,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Teacher
+         * @description Um professor pelo id, para a tela de detalhes.
+         *
+         *     O escopo entra na busca: professor de outro programa simplesmente não
+         *     existe para esta requisição (404, nunca 403 — 403 revelaria que o id
+         *     existe).
+         */
+        get: operations["apps_academic_router_get_teacher"];
         put?: never;
         post?: never;
         delete?: never;
@@ -314,6 +346,30 @@ export interface paths {
         head?: never;
         /** Update Teacher */
         patch: operations["apps_academic_router_update_teacher"];
+        trace?: never;
+    };
+    "/academic/teachers/{teacher_id}/deaccredit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deaccredit Teacher
+         * @description Descredencia o professor — o "excluir" da tela.
+         *
+         *     Não apaga: o professor descredenciado continua sendo quem orientou os
+         *     alunos dele. A permissão é `change_teacher`, e não `delete_teacher`,
+         *     porque é exatamente o que a operação é — uma alteração de estado.
+         */
+        post: operations["apps_academic_router_deaccredit_teacher"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/academic/students/": {
@@ -341,7 +397,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Student
+         * @description Um aluno pelo id, para a tela de detalhes. Escopo na busca, como
+         *     em `get_teacher`.
+         */
+        get: operations["apps_academic_router_get_student"];
         put?: never;
         post?: never;
         delete?: never;
@@ -349,6 +410,30 @@ export interface paths {
         head?: never;
         /** Update Student */
         patch: operations["apps_academic_router_update_student"];
+        trace?: never;
+    };
+    "/academic/students/{student_id}/exclude": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exclude Student
+         * @description Encerra o vínculo do aluno — o "excluir" da tela.
+         *
+         *     Não apaga: o histórico é o que sustenta acerto de matrícula já
+         *     decidido. Permissão `change_student` pelo mesmo motivo do professor —
+         *     é alteração de situação, não remoção.
+         */
+        post: operations["apps_academic_router_exclude_student"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/academic/students/me": {
@@ -1403,6 +1488,17 @@ export interface components {
             project_ids?: number[] | null;
         };
         /**
+         * TeacherDeaccreditIn
+         * @description Data do descredenciamento. Vazia significa hoje.
+         *
+         *     Existe como corpo, e não como parâmetro na URL, porque descredenciar
+         *     com data retroativa é rotina: a portaria sai depois do fato.
+         */
+        TeacherDeaccreditIn: {
+            /** On */
+            on?: string | null;
+        };
+        /**
          * Level
          * @enum {string}
          */
@@ -1451,6 +1547,12 @@ export interface components {
             defense_date: string | null;
             /** Term Id */
             term_id: number | null;
+            /** Advisor Name */
+            advisor_name: string | null;
+            /** Project Name */
+            project_name: string | null;
+            /** Term Label */
+            term_label: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2654,6 +2756,28 @@ export interface operations {
             };
         };
     };
+    apps_people_router_get_person: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonOut"];
+                };
+            };
+        };
+    };
     apps_people_router_archive_person: {
         parameters: {
             query?: never;
@@ -2724,6 +2848,28 @@ export interface operations {
             };
         };
     };
+    apps_academic_router_get_teacher: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teacher_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeacherOut"];
+                };
+            };
+        };
+    };
     apps_academic_router_update_teacher: {
         parameters: {
             query?: never;
@@ -2736,6 +2882,32 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TeacherPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeacherOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_deaccredit_teacher: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teacher_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeacherDeaccreditIn"];
             };
         };
         responses: {
@@ -2802,6 +2974,28 @@ export interface operations {
             };
         };
     };
+    apps_academic_router_get_student: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"];
+                };
+            };
+        };
+    };
     apps_academic_router_update_student: {
         parameters: {
             query?: never;
@@ -2816,6 +3010,28 @@ export interface operations {
                 "application/json": components["schemas"]["StudentPatch"];
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_exclude_student: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {

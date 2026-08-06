@@ -92,6 +92,16 @@ class TeacherIn(Schema):
         return self
 
 
+class TeacherDeaccreditIn(Schema):
+    """Data do descredenciamento. Vazia significa hoje.
+
+    Existe como corpo, e não como parâmetro na URL, porque descredenciar
+    com data retroativa é rotina: a portaria sai depois do fato.
+    """
+
+    on: datetime.date | None = None
+
+
 class TeacherPatch(Schema):
     """Atualização parcial: só os campos presentes no corpo são aplicados.
 
@@ -252,7 +262,29 @@ class StudentOut(Schema):
     deadline: datetime.date | None
     defense_date: datetime.date | None
     term_id: int | None
+    # Nomes resolvidos ao lado dos ids: sem eles toda tela que mostra um
+    # aluno teria de buscar professores, projetos e períodos só para
+    # traduzir três números.
+    advisor_name: str | None
+    project_name: str | None
+    term_label: str | None
     created_at: datetime.datetime
+
+    @staticmethod
+    def resolve_advisor_name(obj: Student) -> str | None:
+        # `advisor` é FK anulável: o mypy não deduz do `advisor_id` que ela
+        # está preenchida, então a checagem é no próprio objeto.
+        return obj.advisor.person.full_name if obj.advisor else None
+
+    @staticmethod
+    def resolve_project_name(obj: Student) -> str | None:
+        return obj.project.name if obj.project else None
+
+    @staticmethod
+    def resolve_term_label(obj: Student) -> str | None:
+        # str(AcademicTerm) é o rótulo canônico "2026/1" (ADR-007 dec. 4);
+        # ninguém remonta essa string por conta própria.
+        return str(obj.term) if obj.term else None
 
 
 class EnrollmentAdjustmentItemIn(Schema):
