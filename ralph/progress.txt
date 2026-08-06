@@ -57,6 +57,9 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Cache é estado que sobrevive ao rollback do banco**: fixture autouse `cache_limpo` em `backend/conftest.py` limpa o cache do Django entre testes. Sem ela, contador de rate limit vaza de um teste para o outro e a suíte falha conforme a ORDEM em que roda.
 - **Ordem cronológica é invariante de `clean()`, não CheckConstraint**: `DomainError(code="invalid_cycle_dates")` sai 400 (erro do formulário da secretaria). A convenção do calendário é `<` dentro de cada janela (janela de duração zero não aceita ninguém) e `<=` entre o fechamento de uma fase e a abertura da seguinte (encadear no mesmo instante é legítimo).
 
+- **Rota de leitura com parâmetro que afrouxa uma janela do edital é gated por permissão**: `?cycle_id=` em `GET /isolated/offerings/` escapa do `ciclo_com_inscricao_aberta` e por isso exige `academic.view_isolatedenrollmentcycle` (Secretaria e Coordenação). Sem a trava, quem está preso à janela a contorna passando o parâmetro.
+- **Sessão forjada para curl precisa de token CSRF com 64 caracteres** (o Django recusa valor curto com `CSRF check Failed`): mesmo valor no cookie `csrftoken` e no header `X-CSRFToken`.
+- **Download de anexo na tela é `<a href="/api/v1/...">`, nunca `fetch`**: o endpoint devolve `FileResponse` e o navegador cuida do resto. Caminho relativo e o par `eslint-disable/enable svelte/no-navigation-without-resolve` em volta.
 - **Ciclo aberto é resolvido pelo relógio, nunca pelo payload** (`ciclo_com_inscricao_aberta(program, at)` em `apps/academic/services.py`): mesma lógica de `current_program` para o tenant. Consequência: as rotas do candidato só funcionam dentro da janela de inscrição e devolvem `no_open_cycle` (400) fora dela — a tela precisa tratar esse código.
 - **Rota que edita coleção de filhos substitui, não faz diferença**: `items` ausente mantém, `items: []` apaga, lista preenchida troca (delete + `bulk_create`) dentro de um `transaction.atomic()`. Calcular a diferença custaria código sem ganho — a lista do corpo É a escolha final.
 - **`missing_documents`/`seats_available` viajam calculados no schema de saída**: a tela não soma deferidos nem confere anexos, senão a regra vaza para o front (Seção 12). Métodos assim não aproveitam `prefetch_related` (são `filter`/`values_list` sobre o acessor reverso) — o custo é um COUNT por linha e está documentado no router.
@@ -693,3 +696,56 @@ Started: qua. 05 ago 2026 20:19:36 -03
     trata `no_open_cycle` — o recorte é `cycle__is_active=True`.
   - O `prettier` reescreve `api.POST(...)` de várias linhas para uma só quando cabe; rodar
     `make ready` e commitar o resultado dele evita o segundo commit de formatação.
+
+## 2026-08-05 - US-019 (Tela Svelte — análise e deferimento pela secretaria)
+- Tela `frontend/src/routes/(app)/analise/+page.svelte` (nova): filtro de edital + situação (os
+  dois do servidor, a fila é paginada), lista os requerimentos com a posição do docente e as
+  vagas restantes de cada oferta, abre os anexos e decide (deferir com o link da GRU, indeferir
+  com motivo obrigatório, cancelar).
+- Aviso em destaque quando o edital ATIVO tem oferta sem classificação: sem a lista do docente
+  `defer()` recusa com `offering_not_ranked` e ninguém é matriculado. Depois do encerramento o
+  aviso some — a informação vira histórica e não pede ação.
+- Backend: duas leituras que faltavam. `GET /isolated/cycles/` (`IsolatedCycleOut`: calendário
+  completo, `term_label` e `submission_open` resolvido no servidor) e `?cycle_id=` em
+  `GET /isolated/offerings/`, que ignora a janela de inscrição de propósito. As duas exigem
+  `academic.view_isolatedenrollmentcycle` — sem essa trava o Candidato leria o edital de
+  qualquer semestre a qualquer hora, driblando a janela que a rota impõe a ele.
+- Testes novos em `backend/apps/academic/tests/test_isolada_edital_leitura.py` (7 casos): ciclos
+  escopados por programa, candidato 403, sem sessão 401, ofertas do ciclo escolhido fora da
+  janela com `seats_available`/`needs_ranking`, ciclo de outro programa 404, candidato com
+  `cycle_id` 403.
+- Menu de `(app)/+layout.svelte`: link "Análise" por `sessao.temPapel('Secretaria')` —
+  `change_isolatedenrollmentrequest` também é do Candidato, e Coordenação fica de fora porque a
+  tela só tem controles de decisão.
+- Arquivos alterados: `backend/apps/academic/router.py`, `backend/apps/academic/schemas.py`,
+  `backend/apps/academic/tests/test_isolada_edital_leitura.py` (novo),
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados), `frontend/src/routes/(app)/analise/+page.svelte`
+  (novo), `frontend/src/routes/(app)/+layout.svelte`, `ralph/prd.json`.
+- **Sem migração** — a US só acrescenta rotas de leitura. `make migrate` não foi rodado.
+- `make ready` verde: prettier/eslint, mypy (88 arquivos), svelte-check (196 arquivos, 0 erros),
+  pytest 520 passed.
+- **Verificação por :8080 com sessão forjada (curl), não por browser**: as três leituras da tela
+  (`/isolated/cycles/`, `/isolated/offerings/?cycle_id=1`, `/isolated/requests/?cycle_id=1&status=submitted`)
+  responderam 200 como Secretaria, `defer` recusou com `offering_not_ranked` e `reject` cobrou
+  `rejection_requires_note` antes de gravar. O ciclo, a oferta, a pessoa e o requerimento
+  semeados no banco compartilhado foram APAGADOS depois, junto com os AuditLog do teste e todas
+  as sessões (quem estivesse logado em :8080 caiu para o login — só isso). Consentimento do
+  Chrome para o CDP não veio; a inspeção visual continua pendente.
+- **Learnings for future iterations:**
+  - **Tela de papel que o backend ainda não serve pede rota de leitura, não gambiarra no front**:
+    a fila da secretaria precisava do edital como entidade (para rotular o filtro) e das ofertas
+    fora da janela de inscrição. Derivar o ciclo dos `cycle_id` dos requerimentos daria uma
+    lista de números sem nome, e calcular vagas na tela espalharia a regra (Seção 12).
+  - **Parâmetro que afrouxa uma trava de janela precisa de permissão que só o papel certo tem**:
+    `?cycle_id=` escapa do `ciclo_com_inscricao_aberta`, então é `require_perm` de
+    `view_isolatedenrollmentcycle` dentro do `if` — Candidato e Docente continuam presos ao
+    recorte deles.
+  - **CSRF forjado precisa de token com 64 caracteres**: valor arbitrário curto leva
+    `{"detail": "CSRF check Failed"}`. Gere com `random.choices(ascii_letters+digits, k=64)` e
+    mande o MESMO valor no cookie `csrftoken` e no header `X-CSRFToken`.
+  - **Link de download é `<a href>` para o caminho da API, não `fetch`**: o endpoint devolve
+    `FileResponse` e o navegador resolve o anexo sozinho. Caminho relativo (`/api/v1/...`,
+    ADR-004) e o par `eslint-disable/enable svelte/no-navigation-without-resolve` em volta, como
+    no link da GRU — `resolve()` é para rota da SPA.
+  - **`bind:value` de `<select>` com `value={numero}`** guarda number, e não string: o
+    `cycle_id: number | null` do filtro chega tipado no `params.query` sem conversão.

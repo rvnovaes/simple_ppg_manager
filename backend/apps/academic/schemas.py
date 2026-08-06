@@ -20,6 +20,7 @@ from .models import (
     DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
+    IsolatedEnrollmentCycle,
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
     RequestDocument,
@@ -581,6 +582,40 @@ class IsolatedEnrollIn(Schema):
     """
 
     registration_number: str
+
+
+class IsolatedCycleOut(Schema):
+    """O edital do semestre, como a secretaria e a coordenação o veem.
+
+    O calendário inteiro viaja porque a tela de análise (US-019) precisa
+    dizer em que fase o edital está — e `submission_open` vem resolvido do
+    servidor pela mesma razão de `IsolatedRequestOut`: comparar a data no
+    navegador deixaria a fase depender do relógio de quem acessa.
+    """
+
+    id: int
+    program_id: int
+    term_id: int
+    # Rótulo canônico '2026/1', igual ao de `AcademicTermOut`: nenhuma
+    # tela remonta a string do semestre por conta própria (ADR-007 dec. 4).
+    term_label: str
+    submission_opens_at: datetime.datetime
+    submission_closes_at: datetime.datetime
+    result_published_on: datetime.date
+    appeal_opens_at: datetime.datetime
+    appeal_closes_at: datetime.datetime
+    final_result_on: datetime.date
+    payment_closes_at: datetime.datetime
+    is_active: bool
+    submission_open: bool
+
+    @staticmethod
+    def resolve_term_label(obj: IsolatedEnrollmentCycle) -> str:
+        return str(obj.term)
+
+    @staticmethod
+    def resolve_submission_open(obj: IsolatedEnrollmentCycle) -> bool:
+        return obj.submission_open(timezone.now())
 
 
 class IsolatedCycleCloseOut(Schema):

@@ -432,6 +432,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/cycles/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Isolated Cycles
+         * @description Os editais do programa, do semestre mais recente para o mais antigo.
+         *
+         *     Sem paginação e sem filtro: é um edital por semestre, e a tela da
+         *     secretaria precisa da lista inteira para escolher qual analisar.
+         *
+         *     Só Secretaria e Coordenação chegam aqui (`academic.0011`). O candidato
+         *     não lê o edital como entidade — o que ele precisa saber do calendário
+         *     viaja dentro do requerimento dele.
+         */
+        get: operations["apps_academic_router_list_isolated_cycles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/isolated/offerings/": {
         parameters: {
             query?: never;
@@ -453,6 +480,13 @@ export interface paths {
          *     janela aqui deixaria a tela dele vazia justamente quando ela importa.
          *     O recorte então é o ciclo ativo, e `needs_ranking` diz onde falta
          *     resposta.
+         *
+         *     `?cycle_id=` é a lista da secretaria e também ignora a janela: ela
+         *     analisa depois que a inscrição fecha, e é justamente aí que precisa
+         *     das vagas restantes e de saber onde falta classificação. Escolher o
+         *     ciclo livremente exige `view_isolatedenrollmentcycle` — sem essa
+         *     trava, o candidato leria o edital de qualquer semestre a qualquer
+         *     hora, driblando a janela que a rota impõe a ele.
          */
         get: operations["apps_academic_router_list_isolated_offerings"];
         put?: never;
@@ -1537,6 +1571,64 @@ export interface components {
         EnrollmentAdjustmentRejectIn: {
             /** Note */
             note: string;
+        };
+        /**
+         * IsolatedCycleOut
+         * @description O edital do semestre, como a secretaria e a coordenação o veem.
+         *
+         *     O calendário inteiro viaja porque a tela de análise (US-019) precisa
+         *     dizer em que fase o edital está — e `submission_open` vem resolvido do
+         *     servidor pela mesma razão de `IsolatedRequestOut`: comparar a data no
+         *     navegador deixaria a fase depender do relógio de quem acessa.
+         */
+        IsolatedCycleOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Term Id */
+            term_id: number;
+            /** Term Label */
+            term_label: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /**
+             * Result Published On
+             * Format: date
+             */
+            result_published_on: string;
+            /**
+             * Appeal Opens At
+             * Format: date-time
+             */
+            appeal_opens_at: string;
+            /**
+             * Appeal Closes At
+             * Format: date-time
+             */
+            appeal_closes_at: string;
+            /**
+             * Final Result On
+             * Format: date
+             */
+            final_result_on: string;
+            /**
+             * Payment Closes At
+             * Format: date-time
+             */
+            payment_closes_at: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Submission Open */
+            submission_open: boolean;
         };
         /**
          * DisciplineOfferingOut
@@ -2678,10 +2770,31 @@ export interface operations {
             };
         };
     };
+    apps_academic_router_list_isolated_cycles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedCycleOut"][];
+                };
+            };
+        };
+    };
     apps_academic_router_list_isolated_offerings: {
         parameters: {
             query?: {
                 mine?: boolean;
+                cycle_id?: number | null;
             };
             header?: never;
             path?: never;

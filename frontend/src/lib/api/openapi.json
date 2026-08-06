@@ -1508,6 +1508,38 @@
         ]
       }
     },
+    "/academic/isolated/cycles/": {
+      "get": {
+        "operationId": "apps_academic_router_list_isolated_cycles",
+        "summary": "List Isolated Cycles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IsolatedCycleOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os editais do programa, do semestre mais recente para o mais antigo.\n\nSem paginação e sem filtro: é um edital por semestre, e a tela da\nsecretaria precisa da lista inteira para escolher qual analisar.\n\nSó Secretaria e Coordenação chegam aqui (`academic.0011`). O candidato\nnão lê o edital como entidade — o que ele precisa saber do calendário\nviaja dentro do requerimento dele.",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/academic/isolated/offerings/": {
       "get": {
         "operationId": "apps_academic_router_list_isolated_offerings",
@@ -1520,6 +1552,22 @@
               "default": false,
               "title": "Mine",
               "type": "boolean"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "cycle_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cycle Id"
             },
             "required": false
           }
@@ -1540,7 +1588,7 @@
             }
           }
         },
-        "description": "As disciplinas do edital aberto, com o saldo de vagas.\n\nSem paginação: um edital oferece dezenas de disciplinas, não milhares,\ne a tela do candidato precisa da lista inteira para ele escolher duas.\nFora da janela de inscrição a resposta é `no_open_cycle` (400) — a\nmesma que o auto-registro dá, e a mesma mensagem que a tela exibe.\n\n`?mine=true` é a lista do docente e NÃO passa pelo ciclo aberto de\npropósito: ele classifica depois que a inscrição fecha, e amarrar a\njanela aqui deixaria a tela dele vazia justamente quando ela importa.\nO recorte então é o ciclo ativo, e `needs_ranking` diz onde falta\nresposta.",
+        "description": "As disciplinas do edital aberto, com o saldo de vagas.\n\nSem paginação: um edital oferece dezenas de disciplinas, não milhares,\ne a tela do candidato precisa da lista inteira para ele escolher duas.\nFora da janela de inscrição a resposta é `no_open_cycle` (400) — a\nmesma que o auto-registro dá, e a mesma mensagem que a tela exibe.\n\n`?mine=true` é a lista do docente e NÃO passa pelo ciclo aberto de\npropósito: ele classifica depois que a inscrição fecha, e amarrar a\njanela aqui deixaria a tela dele vazia justamente quando ela importa.\nO recorte então é o ciclo ativo, e `needs_ranking` diz onde falta\nresposta.\n\n`?cycle_id=` é a lista da secretaria e também ignora a janela: ela\nanalisa depois que a inscrição fecha, e é justamente aí que precisa\ndas vagas restantes e de saber onde falta classificação. Escolher o\nciclo livremente exige `view_isolatedenrollmentcycle` — sem essa\ntrava, o candidato leria o edital de qualquer semestre a qualquer\nhora, driblando a janela que a rota impõe a ele.",
         "tags": [
           "academic"
         ],
@@ -4232,6 +4280,87 @@
           "note"
         ],
         "title": "EnrollmentAdjustmentRejectIn",
+        "type": "object"
+      },
+      "IsolatedCycleOut": {
+        "description": "O edital do semestre, como a secretaria e a coordenação o veem.\n\nO calendário inteiro viaja porque a tela de análise (US-019) precisa\ndizer em que fase o edital está — e `submission_open` vem resolvido do\nservidor pela mesma razão de `IsolatedRequestOut`: comparar a data no\nnavegador deixaria a fase depender do relógio de quem acessa.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "term_id": {
+            "title": "Term Id",
+            "type": "integer"
+          },
+          "term_label": {
+            "title": "Term Label",
+            "type": "string"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "result_published_on": {
+            "format": "date",
+            "title": "Result Published On",
+            "type": "string"
+          },
+          "appeal_opens_at": {
+            "format": "date-time",
+            "title": "Appeal Opens At",
+            "type": "string"
+          },
+          "appeal_closes_at": {
+            "format": "date-time",
+            "title": "Appeal Closes At",
+            "type": "string"
+          },
+          "final_result_on": {
+            "format": "date",
+            "title": "Final Result On",
+            "type": "string"
+          },
+          "payment_closes_at": {
+            "format": "date-time",
+            "title": "Payment Closes At",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "submission_open": {
+            "title": "Submission Open",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "term_id",
+          "term_label",
+          "submission_opens_at",
+          "submission_closes_at",
+          "result_published_on",
+          "appeal_opens_at",
+          "appeal_closes_at",
+          "final_result_on",
+          "payment_closes_at",
+          "is_active",
+          "submission_open"
+        ],
+        "title": "IsolatedCycleOut",
         "type": "object"
       },
       "DisciplineOfferingOut": {

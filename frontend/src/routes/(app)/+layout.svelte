@@ -78,6 +78,15 @@
 								Classificação
 							</a>
 						{/if}
+						<!-- Por papel: `change_isolatedenrollmentrequest` também é do
+						Candidato (é com ela que ele monta o próprio requerimento), e a
+						análise do edital é trabalho da secretaria. Coordenação fica de
+						fora porque esta tela só tem controles de decisão. -->
+						{#if sessao.temPapel('Secretaria')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/analise')}>
+								Análise
+							</a>
+						{/if}
 						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>
 								Orientandos

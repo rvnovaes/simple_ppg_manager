@@ -340,8 +340,8 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "A tela exigiu duas leituras que faltavam no backend: GET /isolated/cycles/ (o edital como entidade, para o filtro e para o aviso de classificação) e ?cycle_id= nas ofertas, que ignora a janela de inscrição porque a secretaria analisa depois que ela fecha. As duas exigem academic.view_isolatedenrollmentcycle."
     },
     {
       "id": "US-020",

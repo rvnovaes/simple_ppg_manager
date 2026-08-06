@@ -52,6 +52,7 @@ from .schemas import (
     IsolatedCancelIn,
     IsolatedCandidateOut,
     IsolatedCycleCloseOut,
+    IsolatedCycleOut,
     IsolatedDeferIn,
     IsolatedEnrollIn,
     IsolatedItemIn,
@@ -511,8 +512,26 @@ def reject_enrollment_request(
     return solicitacao
 
 
+@router.get("/isolated/cycles/", response=list[IsolatedCycleOut])
+def list_isolated_cycles(request: HttpRequest):
+    """Os editais do programa, do semestre mais recente para o mais antigo.
+
+    Sem paginação e sem filtro: é um edital por semestre, e a tela da
+    secretaria precisa da lista inteira para escolher qual analisar.
+
+    Só Secretaria e Coordenação chegam aqui (`academic.0011`). O candidato
+    não lê o edital como entidade — o que ele precisa saber do calendário
+    viaja dentro do requerimento dele.
+    """
+    require_perm(request, "academic.view_isolatedenrollmentcycle")
+    program: Program = current_program(request)
+    return IsolatedEnrollmentCycle.objects.for_program(program).select_related("term")
+
+
 @router.get("/isolated/offerings/", response=list[DisciplineOfferingOut])
-def list_isolated_offerings(request: HttpRequest, mine: bool = False):
+def list_isolated_offerings(
+    request: HttpRequest, mine: bool = False, cycle_id: int | None = None
+):
     """As disciplinas do edital aberto, com o saldo de vagas.
 
     Sem paginação: um edital oferece dezenas de disciplinas, não milhares,
@@ -525,6 +544,13 @@ def list_isolated_offerings(request: HttpRequest, mine: bool = False):
     janela aqui deixaria a tela dele vazia justamente quando ela importa.
     O recorte então é o ciclo ativo, e `needs_ranking` diz onde falta
     resposta.
+
+    `?cycle_id=` é a lista da secretaria e também ignora a janela: ela
+    analisa depois que a inscrição fecha, e é justamente aí que precisa
+    das vagas restantes e de saber onde falta classificação. Escolher o
+    ciclo livremente exige `view_isolatedenrollmentcycle` — sem essa
+    trava, o candidato leria o edital de qualquer semestre a qualquer
+    hora, driblando a janela que a rota impõe a ele.
     """
     require_perm(request, "academic.view_disciplineoffering")
     program: Program = current_program(request)
@@ -543,6 +569,14 @@ def list_isolated_offerings(request: HttpRequest, mine: bool = False):
         return ofertas.filter(
             teacher__person__in=pessoas, cycle__is_active=True
         ).order_by("cycle__term__year", "cycle__term__half", "discipline__code")
+    if cycle_id is not None:
+        require_perm(request, "academic.view_isolatedenrollmentcycle")
+        # O escopo entra na busca: ciclo de outro programa vira 404, nunca
+        # 403 — o padrão de tenant do projeto.
+        ciclo = get_object_or_404(
+            IsolatedEnrollmentCycle.objects.for_program(program), pk=cycle_id
+        )
+        return ofertas.for_cycle(ciclo).order_by("discipline__code")
     ciclo = ciclo_com_inscricao_aberta(program=program, at=timezone.now())
     return ofertas.for_cycle(ciclo)
 
