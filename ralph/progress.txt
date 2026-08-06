@@ -62,6 +62,12 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Listagem que serve a dois papéis se separa por query param, não por rota** (`GET /isolated/offerings/?mine=true`): o ramo do candidato resolve o ciclo pelo relógio (`ciclo_com_inscricao_aberta`), o ramo do docente NÃO — ele age depois que a inscrição fecha, e amarrar a janela deixaria a tela dele vazia justamente quando importa.
 - **Posse por papel é 403; escopo de tenant é 404.** `_minha_oferta()` levanta `NotAllowed` porque a oferta é do mesmo programa e o docente sabe que ela existe; `for_program()` no `get_object_or_404` continua sendo 404. Mesmo par em `_meu_requerimento()`.
 
+- **`resp.error` dentro do `if` vira `never` quando a rota não declara resposta de erro no OpenAPI**: o `svelte-check` reclama "Property 'error' does not exist on type 'never'" porque o objeto inteiro é estreitado. Tire a falha para uma const ANTES do `if` (`const falha = resp.error;`) e use a const. O `resp.a.error ?? resp.b.error` de `acertos/+page.svelte` escapa disso por acidente.
+- **Upload multipart pelo client tipado é `bodySerializer: comoFormData`** (`lib/api/client.ts`): o serializador padrão do openapi-fetch é `JSON.stringify`. O tipo gerado declara `file: string` (`format: binary`), então o corpo leva `arquivo as unknown as string`. Nunca definir `Content-Type` à mão — sem o boundary do navegador o Django não faz o parsing.
+- **`codigoDeErro(erro)` para decidir, `mensagemDeErro(erro)` para exibir** (`lib/api/client.ts`): comparar `detail` seria depender do texto. Use o `code` só quando o desfecho muda de verdade (`no_open_cycle` é calendário normal, não falha).
+- **Papel novo custa uma revisão do menu e da rota inicial**: destino do login e da raiz é `sessao.rotaInicial`, não `/pessoas` fixo, e TODO item do menu de `(app)/+layout.svelte` é condicional. Papel sem `people.view_person` (Candidato) entrava e via só links que dão 403.
+- **A tela nunca calcula o que o edital exige**: `missing_documents`/`seats_available` já viajam calculados, e o front cruza a resposta com uma constante de rótulo e ordem. Campo que muda a lista do servidor (`is_ufmg_staff`) salva no ato, para a lista voltar corrigida em vez de a tela recalcular.
+
 ---
 
 ## 2026-08-05 - US-001
@@ -571,4 +577,22 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - **Nada expira sozinho**: não há job, sinal nem checagem por data. Encerrar é sempre esta
     rota, clicada pela secretaria — a tela é a US-020.
   - Sem verificação de browser: US-015 não toca UI.
+---
+
+## 2026-08-05 - US-016
+- Tela pública de criação de conta em `frontend/src/routes/(auth)/cadastro/+page.svelte`: nome, e-mail, telefone opcional e senha com confirmação, `garantirCsrf()` antes do POST (a rota é `auth=None` e o cookie ainda não existe) e exibição do `detail` devolvido pelo backend — o mesmo texto para e-mail novo e já cadastrado. Link recíproco com a tela de login.
+- Tela de inscrição em `frontend/src/routes/(app)/inscricao/+page.svelte`: lista as ofertas do ciclo aberto com `seats_available`, deixa marcar no máximo duas (o botão da terceira nasce `disabled`, a UI não aceita e falha depois), checkbox "Sou servidor da UFMG" que salva na hora, área de upload por tipo de documento e botão de enviar com o impedimento escrito ao lado.
+- A lista de documentos exigidos é derivada de `missing_documents` (servidor) somada aos já anexados, na ordem do edital — a tela só rotula e ordena, não decide o que é obrigatório. Marcar servidor da UFMG faz o PATCH voltar com contracheque e autorização da chefia na lista.
+- `comoFormData` e `codigoDeErro` acrescentados a `lib/api/client.ts`; `sessao.rotaInicial` acrescentada a `lib/sessao.svelte.ts`.
+- Menu de `(app)/+layout.svelte`: todo item passou a ser condicional e ganhou o link "Inscrição" (`academic.add_isolatedenrollmentrequest`). Sem isso o Candidato entrava e via quatro links que só levam a 403.
+- Arquivos alterados: `frontend/src/routes/(auth)/cadastro/+page.svelte` (novo), `frontend/src/routes/(app)/inscricao/+page.svelte` (novo), `frontend/src/lib/api/client.ts`, `frontend/src/lib/sessao.svelte.ts`, `frontend/src/routes/(app)/+layout.svelte`, `frontend/src/routes/(auth)/login/+page.svelte`, `frontend/src/routes/+page.svelte`.
+- `make gen-api` rodado antes de tipar: `schema.d.ts` já estava em dia (nenhum diff), o que confirma que as US de backend anteriores geraram os tipos.
+- `make ready` verde: prettier/eslint, mypy (87 arquivos), svelte-check (189 arquivos, 0 erros), pytest 510 passed. Sem migração e sem `make migrate` — a US só toca o front.
+- **Verificação em browser pendente**: o `browser-use` parou em `permission-blocked` (popup "Allow remote debugging" do Chrome, que exige clique manual). O que deu para conferir sem browser: `/cadastro` e `/inscricao` respondem 200 pelo nginx de :8080 e o Vite de :5173 é o desta worktree (`/proc/<pid>/cwd`).
+- **Learnings for future iterations:**
+  - **Rota sem resposta de erro no OpenAPI vira `never` dentro do `if`**: `if (resp.error) { ... resp.error ... }` quebra o `svelte-check` com "Property 'error' does not exist on type 'never'", porque o objeto inteiro é estreitado. O padrão é tirar a falha para uma const ANTES do `if` (`const falha = resp.error;`) e usar a const. `resp.error ?? outro.error` (o jeito de `acertos/+page.svelte`) escapa disso por acidente.
+  - **Upload multipart pelo client tipado**: `bodySerializer: comoFormData` em `lib/api/client.ts`; o serializador padrão do openapi-fetch é `JSON.stringify` e não serve. O tipo gerado declara `file: string` (`format: binary`), então o corpo leva `arquivo as unknown as string` — o cast é obrigatório e está comentado no ponto de uso. Nunca definir `Content-Type` à mão: sem o boundary do navegador o Django não faz o parsing.
+  - **Papel novo custa uma revisão do menu e da rota inicial**: o Candidato não tem `people.view_person`, e `/pessoas` era destino fixo do login e da raiz. Papel novo que não seja de secretaria exige conferir `academic.0011_papeis_da_isolada` (ou a migração equivalente) antes de assumir que a tela inicial serve.
+  - **Regra de negócio no front se evita deixando o servidor responder o que falta**: `missing_documents` já viaja no `IsolatedRequestOut`, então a tela nunca calcula quais documentos o edital exige — ela cruza a resposta com uma constante de ROTULAGEM e ordem. Toggle de `is_ufmg_staff` salva imediatamente justamente para a lista voltar do servidor já corrigida.
+  - O rascunho tem de existir antes do upload (o endpoint é `/requests/{id}/documents`), daí o botão "Iniciar inscrição" que faz um POST com `items: []` — `IsolatedRequestIn` aceita lista vazia de propósito.
 ---
