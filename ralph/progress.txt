@@ -52,6 +52,11 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **`missing_documents`/`seats_available` viajam calculados no schema de saída**: a tela não soma deferidos nem confere anexos, senão a regra vaza para o front (Seção 12). Métodos assim não aproveitam `prefetch_related` (são `filter`/`values_list` sobre o acessor reverso) — o custo é um COUNT por linha e está documentado no router.
 - **Usuário de papel sem `Person` ativa no programa não passa de `current_program`**: fixture de papel (`secretaria`, `sem_permissao`) precisa de uma `Person` acompanhando, senão o teste leva 403 `no_program` em vez do que ele queria medir. Ver `secretaria_no_programa`.
 
+- **Ordem de classificação é substituição total, e a gravação zera antes de escrever**: `UniqueConstraint(offering, rank)` parcial barra a troca de posição entre dois candidatos se as escritas forem incrementais, e a ordem em que elas saem do laço decidiria se a operação passa. O padrão é `oferta.items.update(rank=None)` e depois `save(update_fields=["rank"])` item a item, tudo num `transaction.atomic()`.
+- **Posição não viaja no corpo: ela é o índice da lista** (`IsolatedRankIn.item_ids`). Mandar `rank` explícito abriria buraco (1, 2, 4) e empate. Repetição na lista é 422 na borda, por `model_validator`.
+- **Listagem que serve a dois papéis se separa por query param, não por rota** (`GET /isolated/offerings/?mine=true`): o ramo do candidato resolve o ciclo pelo relógio (`ciclo_com_inscricao_aberta`), o ramo do docente NÃO — ele age depois que a inscrição fecha, e amarrar a janela deixaria a tela dele vazia justamente quando importa.
+- **Posse por papel é 403; escopo de tenant é 404.** `_minha_oferta()` levanta `NotAllowed` porque a oferta é do mesmo programa e o docente sabe que ela existe; `for_program()` no `get_object_or_404` continua sendo 404. Mesmo par em `_meu_requerimento()`.
+
 ---
 
 ## 2026-08-05 - US-001
@@ -310,4 +315,49 @@ Started: qua. 05 ago 2026 20:19:36 -03
     (telas) tem de baixar pela rota de download, nunca por link direto.
   - Sem verificação de browser: US-010 não toca UI. As telas que consomem isto são a US-016
     (candidato anexa) e a US-019 (secretaria baixa).
+---
+
+## 2026-08-05 - US-011 (Endpoints — docente classifica os candidatos)
+- Duas rotas novas em `apps/academic/router.py`: `GET /isolated/offerings/{id}/candidates`
+  (fila da oferta, ordem da classificação) e `POST /isolated/offerings/{id}/rank` (grava
+  1..N). Ambas com `require_perm("academic.rank_disciplineoffering")` e posse pelo helper
+  `_minha_oferta()` — docente de outra oferta leva 403, oferta de outro programa leva 404.
+- `GET /isolated/offerings/` ganhou `?mine=true`: as ofertas do docente autenticado em ciclo
+  ativo, sem passar pelo `ciclo_com_inscricao_aberta` (ele classifica depois que a inscrição
+  fecha). O marcador é `needs_ranking` no `DisciplineOfferingOut`.
+- `apps/academic/models.py`: `DisciplineOffering.candidates()` (só SUBMITTED, `rank` asc com
+  `nulls_last`, desempate por nome), `needs_ranking()` e `rank_items(item_ids)` — este último
+  valida (`DomainError code="item_not_in_offering"`) e devolve os itens com `rank` em memória,
+  SEM salvar; quem persiste é o router.
+- `apps/academic/schemas.py`: `IsolatedCandidateOut` (item_id, request_id, person_id,
+  person_name, rank, submitted_at) e `IsolatedRankIn` (`item_ids`, repetição = 422).
+- AuditLog `academic.isolated.rank` com alvo na OFERTA (ela tem FK `program`), payload com
+  `cycle_id` e `item_ids`.
+- Testes: `apps/academic/tests/test_isolada_classificacao.py` (novo, 20 casos) e 3 casos em
+  memória no `test_models.py`.
+- Arquivos alterados: `backend/apps/academic/{models,router,schemas}.py`,
+  `backend/apps/academic/tests/{test_models.py,test_isolada_classificacao.py}`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (83 arquivos), svelte-check (185 arquivos,
+  0 erros), pytest 431 passed. `make gen-api` rodado.
+- **Sem migração e sem `make migrate`**: a US só acrescenta métodos, rotas e schemas. A
+  permissão `rank_disciplineoffering` já nasceu em `academic.0007` e foi concedida ao Docente
+  em `academic.0011`.
+- **Learnings for future iterations:**
+  - **Zerar antes de gravar não é zelo, é a única ordem que funciona**: com
+    `unique_classificacao_por_oferta` parcial, trocar 1º e 2º com escritas incrementais
+    esbarra na constraint dependendo da ordem do laço. O teste
+    `test_reclassificar_troca_posicoes_sem_violar_a_constraint` guarda isso.
+  - **Rascunho não é candidato**: `rank_items()` valida contra `candidates()` (só SUBMITTED),
+    então id de rascunho volta como `item_not_in_offering` — mesmo code, mensagem explica.
+    A US-012 (secretaria) precisa saber que classificar depois do deferimento não é possível
+    por esta rota, por desenho: mudaria o corte de vagas por baixo da decisão.
+  - **`?mine=true` NÃO exige ciclo aberto** — foi o ponto de desenho mais fácil de errar. A
+    tela do docente (US-018) roda entre o fechamento da inscrição e o resultado.
+  - **`needs_ranking` é falso para oferta sem inscrito**: não há o que ordenar. A tela não
+    deve mostrar pendência onde ninguém se inscreveu.
+  - `models.F("rank").asc(nulls_last=True)` é como a ordem sai estável: sem posição vai para o
+    fim, e o desempate por `request__person__full_name` impede a lista de variar entre duas
+    leituras.
+  - Sem verificação de browser: US-011 não toca UI. A tela é a US-018.
 ---

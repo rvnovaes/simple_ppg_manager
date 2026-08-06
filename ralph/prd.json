@@ -200,7 +200,7 @@
         "Tests pass (docente de outra oferta recebe 403; classificação grava ranks sequenciais; item de outra oferta é recusado)"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
