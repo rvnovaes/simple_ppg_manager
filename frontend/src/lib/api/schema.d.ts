@@ -628,6 +628,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/requests/{request_id}/defer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Defer Isolated Request
+         * @description Defere o requerimento e, com ele, reserva a vaga.
+         *
+         *     O link da GRU entra no mesmo ato: deferir sem dizer como pagar
+         *     deixaria o candidato parado até a secretaria lembrar de voltar aqui.
+         *     Servidor da UFMG nasce isento dentro de `defer()` e para ele o campo
+         *     fica vazio.
+         */
+        post: operations["apps_academic_router_defer_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Isolated Request
+         * @description Indefere com motivo obrigatório — é o texto do recurso (US-013).
+         */
+        post: operations["apps_academic_router_reject_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/requests/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Isolated Request
+         * @description Cancela e devolve a vaga à oferta.
+         *
+         *     Não existe expiração automática no projeto — nada roda sozinho —,
+         *     então a vaga do deferido que não pagou só volta para a fila quando a
+         *     secretaria cancela aqui. A devolução é consequência de
+         *     `seats_taken()` parar de contar o cancelado, e não uma escrita à
+         *     parte.
+         */
+        post: operations["apps_academic_router_cancel_isolated_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/isolated/signup": {
         parameters: {
             query?: never;
@@ -1384,6 +1455,17 @@ export interface components {
             /** Needs Ranking */
             needs_ranking: boolean;
         };
+        /**
+         * IsolatedRequestStatus
+         * @description Situação do requerimento de isolada, no vocabulário do edital.
+         *
+         *     Mora fora do model, com nome único, porque o gerador de OpenAPI batiza
+         *     o schema do enum com o `__name__` da classe: dois `Status` aninhados
+         *     colidem e o último registrado sobrescreve o outro, silenciosamente.
+         *     `IsolatedEnrollmentRequest.Status` continua valendo pelo alias.
+         * @enum {string}
+         */
+        IsolatedRequestStatus: "draft" | "submitted" | "deferred" | "rejected" | "cancelled" | "enrolled";
         /** IsolatedItemOut */
         IsolatedItemOut: {
             /** Id */
@@ -1569,6 +1651,49 @@ export interface components {
              * @default []
              */
             item_ids: number[];
+        };
+        /**
+         * IsolatedDeferIn
+         * @description Deferimento: a nota é opcional, o link da GRU é o que vem junto.
+         *
+         *     O sistema não emite a guia — ela vem do sistema de arrecadação da
+         *     UFMG e a secretaria cola o link aqui, no mesmo ato em que defere.
+         *     `HttpUrl` cobra a forma na borda (422); o servidor da UFMG é isento e
+         *     para ele o campo fica vazio.
+         */
+        IsolatedDeferIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Gru Url */
+            gru_url?: string | null;
+        };
+        /**
+         * IsolatedRejectIn
+         * @description Indeferimento: o motivo é o que o candidato contesta no recurso.
+         *
+         *     A obrigatoriedade real é do model (`reject` levanta
+         *     `rejection_requires_note`): aqui o campo é exigido na borda, mas
+         *     string em branco só é barrada lá, com `code` estável.
+         */
+        IsolatedRejectIn: {
+            /** Note */
+            note: string;
+        };
+        /**
+         * IsolatedCancelIn
+         * @description Cancelamento: a nota é opcional porque o cancelamento tem dois
+         *     motivos legítimos e só um deles é decisão da secretaria — o candidato
+         *     que desistiu e o deferido que não pagou a GRU no prazo.
+         */
+        IsolatedCancelIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /**
          * IsolatedSignupOut
@@ -2416,6 +2541,7 @@ export interface operations {
         parameters: {
             query?: {
                 cycle_id?: number | null;
+                status?: components["schemas"]["IsolatedRequestStatus"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -2636,6 +2762,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IsolatedCandidateOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_defer_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedDeferIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_reject_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedRejectIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_cancel_isolated_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedCancelIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
                 };
             };
         };

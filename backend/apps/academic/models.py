@@ -1224,6 +1224,31 @@ class IsolatedEnrollmentRequest(models.Model):
         anexados = set(self.documents.values_list("kind", flat=True))
         return [kind for kind in exigidos if kind not in anexados]
 
+    def ensure_deferrable(self) -> None:
+        """As duas travas do deferimento, que dependem das ofertas pedidas.
+
+        Ficam fora de `defer()` porque consultam linhas relacionadas, e
+        `defer()` é invariante de estado testável em memória — mesmo
+        motivo de `ensure_editable()` existir separado.
+
+        A classificação vem antes da vaga: sem a lista do docente ninguém
+        é matriculado, e recusar por falta de vaga uma oferta que sequer
+        foi ordenada diria à secretaria a coisa errada.
+        """
+        for item in self.items.select_related("offering__discipline"):
+            oferta = item.offering
+            if oferta.needs_ranking():
+                raise DomainError(
+                    f"O docente ainda não classificou os candidatos de "
+                    f"{oferta.discipline}.",
+                    code="offering_not_ranked",
+                )
+            if oferta.seats_available() <= 0:
+                raise DomainError(
+                    f"A oferta de {oferta.discipline} não tem vaga disponível.",
+                    code="no_seats_available",
+                )
+
     def defer(self, *, note: str = "") -> None:
         """Defere o requerimento.
 

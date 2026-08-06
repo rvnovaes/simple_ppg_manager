@@ -10,7 +10,7 @@ import datetime
 from pathlib import Path
 
 from ninja import Schema
-from pydantic import EmailStr, model_validator
+from pydantic import EmailStr, HttpUrl, model_validator
 
 from apps.people.models import Person
 
@@ -535,6 +535,39 @@ class IsolatedRequestPatch(Schema):
         if self.items is not None:
             _itens_validos(self.items)
         return self
+
+
+class IsolatedDeferIn(Schema):
+    """Deferimento: a nota é opcional, o link da GRU é o que vem junto.
+
+    O sistema não emite a guia — ela vem do sistema de arrecadação da
+    UFMG e a secretaria cola o link aqui, no mesmo ato em que defere.
+    `HttpUrl` cobra a forma na borda (422); o servidor da UFMG é isento e
+    para ele o campo fica vazio.
+    """
+
+    note: str = ""
+    gru_url: HttpUrl | None = None
+
+
+class IsolatedRejectIn(Schema):
+    """Indeferimento: o motivo é o que o candidato contesta no recurso.
+
+    A obrigatoriedade real é do model (`reject` levanta
+    `rejection_requires_note`): aqui o campo é exigido na borda, mas
+    string em branco só é barrada lá, com `code` estável.
+    """
+
+    note: str
+
+
+class IsolatedCancelIn(Schema):
+    """Cancelamento: a nota é opcional porque o cancelamento tem dois
+    motivos legítimos e só um deles é decisão da secretaria — o candidato
+    que desistiu e o deferido que não pagou a GRU no prazo.
+    """
+
+    note: str = ""
 
 
 class IsolatedRequestOut(Schema):

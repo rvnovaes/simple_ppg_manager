@@ -37,6 +37,7 @@ from .models import (
     IsolatedEnrollmentCycle,
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
+    IsolatedRequestStatus,
     RequestDocument,
     RequestDocumentKind,
     Student,
@@ -48,9 +49,12 @@ from .schemas import (
     EnrollmentAdjustmentRejectIn,
     EnrollmentAdjustmentRequestIn,
     EnrollmentAdjustmentRequestOut,
+    IsolatedCancelIn,
     IsolatedCandidateOut,
+    IsolatedDeferIn,
     IsolatedItemIn,
     IsolatedRankIn,
+    IsolatedRejectIn,
     IsolatedRequestIn,
     IsolatedRequestOut,
     IsolatedRequestPatch,
@@ -602,7 +606,11 @@ def _meu_requerimento(
 
 @router.get("/isolated/requests/", response=list[IsolatedRequestOut])
 @paginate
-def list_isolated_requests(request: HttpRequest, cycle_id: int | None = None):
+def list_isolated_requests(
+    request: HttpRequest,
+    cycle_id: int | None = None,
+    status: IsolatedRequestStatus | None = None,
+):
     require_perm(request, "academic.view_isolatedenrollmentrequest")
     program: Program = current_program(request)
     requerimentos = (
@@ -618,6 +626,11 @@ def list_isolated_requests(request: HttpRequest, cycle_id: int | None = None):
         # Filtro de conveniência da tela. Não é escopo de tenant — esse já
         # foi aplicado acima e não é opcional.
         requerimentos = requerimentos.filter(cycle_id=cycle_id)
+    if status is not None:
+        # A fila da secretaria é uma situação por vez: os inscritos para
+        # julgar, os deferidos para conferir pagamento. Valor fora do enum
+        # é 422 na borda, de graça.
+        requerimentos = requerimentos.filter(status=status)
     return requerimentos
 
 
@@ -891,6 +904,124 @@ def rank_offering_candidates(
             item_ids=[item.pk for item in ordenados],
         )
     return oferta.candidates()
+
+
+def _requerimento_para_decidir(
+    request: HttpRequest, program: Program, request_id: int
+) -> IsolatedEnrollmentRequest:
+    """O requerimento que esta sessão pode julgar — nunca o próprio.
+
+    `change_isolatedenrollmentrequest` tem duas faces no fluxo da isolada
+    (`academic.0011`): é a permissão de quem monta o requerimento e a de
+    quem o decide. O que separa os dois papéis é a posse, no espelho
+    exato de `_meu_requerimento`: quem julga é quem NÃO é o candidato.
+    Sem esta linha, o próprio candidato deferiria a inscrição dele.
+
+    Docente e Coordenação não chegam aqui: os dois só têm `view`.
+    """
+    requerimento = get_object_or_404(
+        IsolatedEnrollmentRequest.objects.for_program(program)
+        .select_related("person", "cycle")
+        .prefetch_related("items__offering__discipline"),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if pessoas.filter(pk=requerimento.person_id).exists():
+        raise NotAllowed("Ninguém decide o próprio requerimento.")
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/defer", response=IsolatedRequestOut)
+def defer_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedDeferIn
+):
+    """Defere o requerimento e, com ele, reserva a vaga.
+
+    O link da GRU entra no mesmo ato: deferir sem dizer como pagar
+    deixaria o candidato parado até a secretaria lembrar de voltar aqui.
+    Servidor da UFMG nasce isento dentro de `defer()` e para ele o campo
+    fica vazio.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    # As três cobranças são do model e voltam como 4xx do handler central:
+    # oferta sem classificação e sem vaga são 400 com code estável, estado
+    # errado é 409 (Seção 8).
+    requerimento.ensure_deferrable()
+    with transaction.atomic():
+        requerimento.defer(note=payload.note)
+        if payload.gru_url is not None:
+            requerimento.gru_url = str(payload.gru_url)
+        requerimento.save(
+            update_fields=[
+                "status",
+                "decision_note",
+                "decided_at",
+                "payment_status",
+                "gru_url",
+            ]
+        )
+        audit.record(
+            "academic.isolated.defer",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            payment_status=requerimento.payment_status,
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/reject", response=IsolatedRequestOut)
+def reject_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedRejectIn
+):
+    """Indefere com motivo obrigatório — é o texto do recurso (US-013)."""
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        requerimento.reject(note=payload.note)
+        requerimento.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.isolated.reject",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            note=requerimento.decision_note,
+        )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/cancel", response=IsolatedRequestOut)
+def cancel_isolated_request(
+    request: HttpRequest, request_id: int, payload: IsolatedCancelIn
+):
+    """Cancela e devolve a vaga à oferta.
+
+    Não existe expiração automática no projeto — nada roda sozinho —,
+    então a vaga do deferido que não pagou só volta para a fila quando a
+    secretaria cancela aqui. A devolução é consequência de
+    `seats_taken()` parar de contar o cancelado, e não uma escrita à
+    parte.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    with transaction.atomic():
+        requerimento.cancel(note=payload.note)
+        requerimento.save(update_fields=["status", "decision_note", "decided_at"])
+        audit.record(
+            "academic.isolated.cancel",
+            request=request,
+            target=requerimento,
+            person_id=requerimento.person_id,
+            cycle_id=requerimento.cycle_id,
+            note=requerimento.decision_note,
+        )
+    return requerimento
 
 
 @router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})

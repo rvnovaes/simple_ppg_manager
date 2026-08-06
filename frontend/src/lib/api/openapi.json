@@ -1574,6 +1574,21 @@
           },
           {
             "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IsolatedRequestStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
             "name": "limit",
             "schema": {
               "default": 100,
@@ -1963,6 +1978,150 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/IsolatedRankIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/requests/{request_id}/defer": {
+      "post": {
+        "operationId": "apps_academic_router_defer_isolated_request",
+        "summary": "Defer Isolated Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Defere o requerimento e, com ele, reserva a vaga.\n\nO link da GRU entra no mesmo ato: deferir sem dizer como pagar\ndeixaria o candidato parado até a secretaria lembrar de voltar aqui.\nServidor da UFMG nasce isento dentro de `defer()` e para ele o campo\nfica vazio.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedDeferIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/requests/{request_id}/reject": {
+      "post": {
+        "operationId": "apps_academic_router_reject_isolated_request",
+        "summary": "Reject Isolated Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Indefere com motivo obrigatório — é o texto do recurso (US-013).",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedRejectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/requests/{request_id}/cancel": {
+      "post": {
+        "operationId": "apps_academic_router_cancel_isolated_request",
+        "summary": "Cancel Isolated Request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Cancela e devolve a vaga à oferta.\n\nNão existe expiração automática no projeto — nada roda sozinho —,\nentão a vaga do deferido que não pagou só volta para a fila quando a\nsecretaria cancela aqui. A devolução é consequência de\n`seats_taken()` parar de contar o cancelado, e não uma escrita à\nparte.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedCancelIn"
               }
             }
           },
@@ -3914,6 +4073,19 @@
         "title": "DisciplineOfferingOut",
         "type": "object"
       },
+      "IsolatedRequestStatus": {
+        "description": "Situação do requerimento de isolada, no vocabulário do edital.\n\nMora fora do model, com nome único, porque o gerador de OpenAPI batiza\no schema do enum com o `__name__` da classe: dois `Status` aninhados\ncolidem e o último registrado sobrescreve o outro, silenciosamente.\n`IsolatedEnrollmentRequest.Status` continua valendo pelo alias.",
+        "enum": [
+          "draft",
+          "submitted",
+          "deferred",
+          "rejected",
+          "cancelled",
+          "enrolled"
+        ],
+        "title": "IsolatedRequestStatus",
+        "type": "string"
+      },
       "IsolatedItemOut": {
         "properties": {
           "id": {
@@ -4297,6 +4469,58 @@
           }
         },
         "title": "IsolatedRankIn",
+        "type": "object"
+      },
+      "IsolatedDeferIn": {
+        "description": "Deferimento: a nota é opcional, o link da GRU é o que vem junto.\n\nO sistema não emite a guia — ela vem do sistema de arrecadação da\nUFMG e a secretaria cola o link aqui, no mesmo ato em que defere.\n`HttpUrl` cobra a forma na borda (422); o servidor da UFMG é isento e\npara ele o campo fica vazio.",
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "gru_url": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gru Url"
+          }
+        },
+        "title": "IsolatedDeferIn",
+        "type": "object"
+      },
+      "IsolatedRejectIn": {
+        "description": "Indeferimento: o motivo é o que o candidato contesta no recurso.\n\nA obrigatoriedade real é do model (`reject` levanta\n`rejection_requires_note`): aqui o campo é exigido na borda, mas\nstring em branco só é barrada lá, com `code` estável.",
+        "properties": {
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "IsolatedRejectIn",
+        "type": "object"
+      },
+      "IsolatedCancelIn": {
+        "description": "Cancelamento: a nota é opcional porque o cancelamento tem dois\nmotivos legítimos e só um deles é decisão da secretaria — o candidato\nque desistiu e o deferido que não pagou a GRU no prazo.",
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "IsolatedCancelIn",
         "type": "object"
       },
       "IsolatedSignupOut": {
