@@ -9,6 +9,7 @@ reduzida ao que a tela precisa mostrar.
 import datetime
 from pathlib import Path
 
+from django.utils import timezone
 from ninja import Schema
 from pydantic import EmailStr, HttpUrl, model_validator
 
@@ -617,10 +618,40 @@ class IsolatedRequestOut(Schema):
     # O que ainda falta anexar, na ordem do edital: sem isto a tela do
     # candidato só descobriria a pendência no 400 do envio.
     missing_documents: list[str]
+    # As janelas do edital viajam com o requerimento porque o Candidato não
+    # tem permissão sobre o ciclo (`academic.0011`) e a tela de
+    # acompanhamento precisa mostrar o prazo antes de oferecer o controle.
+    appeal_opens_at: datetime.datetime
+    appeal_closes_at: datetime.datetime
+    payment_closes_at: datetime.datetime
+    # Aberto AGORA, decidido pelo relógio do servidor: comparar a data no
+    # navegador deixaria o prazo depender do relógio de quem acessa.
+    appeal_open: bool
+    payment_open: bool
 
     @staticmethod
     def resolve_person_name(obj: IsolatedEnrollmentRequest) -> str:
         return obj.person.full_name
+
+    @staticmethod
+    def resolve_appeal_opens_at(obj: IsolatedEnrollmentRequest) -> datetime.datetime:
+        return obj.cycle.appeal_opens_at
+
+    @staticmethod
+    def resolve_appeal_closes_at(obj: IsolatedEnrollmentRequest) -> datetime.datetime:
+        return obj.cycle.appeal_closes_at
+
+    @staticmethod
+    def resolve_payment_closes_at(obj: IsolatedEnrollmentRequest) -> datetime.datetime:
+        return obj.cycle.payment_closes_at
+
+    @staticmethod
+    def resolve_appeal_open(obj: IsolatedEnrollmentRequest) -> bool:
+        return obj.cycle.appeal_open(timezone.now())
+
+    @staticmethod
+    def resolve_payment_open(obj: IsolatedEnrollmentRequest) -> bool:
+        return obj.cycle.payment_open(timezone.now())
 
     @staticmethod
     def resolve_items(obj: IsolatedEnrollmentRequest) -> list[IsolatedEnrollmentItem]:

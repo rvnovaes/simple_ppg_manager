@@ -1633,6 +1633,25 @@ export interface components {
             items: components["schemas"]["IsolatedItemOut"][];
             /** Missing Documents */
             missing_documents: string[];
+            /**
+             * Appeal Opens At
+             * Format: date-time
+             */
+            appeal_opens_at: string;
+            /**
+             * Appeal Closes At
+             * Format: date-time
+             */
+            appeal_closes_at: string;
+            /**
+             * Payment Closes At
+             * Format: date-time
+             */
+            payment_closes_at: string;
+            /** Appeal Open */
+            appeal_open: boolean;
+            /** Payment Open */
+            payment_open: boolean;
         };
         /** PagedIsolatedRequestOut */
         PagedIsolatedRequestOut: {

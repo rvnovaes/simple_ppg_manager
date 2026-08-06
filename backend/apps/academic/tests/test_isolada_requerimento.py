@@ -8,10 +8,12 @@ a lista que não mostra o dos outros.
 
 import json
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 import pytest
 from django.contrib.auth.models import Group
 from django.test import Client
+from django.utils import timezone
 
 from apps.academic.models import (
     DisciplineOffering,
@@ -614,3 +616,61 @@ def test_listagem_nao_atravessa_o_programa(
 
 def test_listagem_sem_sessao_devolve_401(client, ciclo_aberto):
     assert client.get(URL_REQUERIMENTOS).status_code == 401
+
+
+# --- janelas do edital no requerimento -------------------------------------
+
+
+def test_requerimento_traz_as_janelas_do_edital(
+    client_candidata, candidata, program, ciclo_aberto
+):
+    """O Candidato não tem permissão sobre o ciclo (`academic.0011`), então
+    a tela de acompanhamento só sabe até quando recorrer e até quando pagar
+    porque as datas viajam no próprio requerimento.
+    """
+    _rascunho(program=program, cycle=ciclo_aberto, person=candidata)
+
+    resposta = client_candidata.get(URL_REQUERIMENTOS)
+
+    assert resposta.status_code == 200, resposta.content
+    corpo = resposta.json()["items"][0]
+    # Comparação por proximidade: o JSON carrega milissegundos e o banco
+    # guarda microssegundos, então a igualdade exata falharia por ruído.
+    for campo, esperado in (
+        ("appeal_opens_at", ciclo_aberto.appeal_opens_at),
+        ("appeal_closes_at", ciclo_aberto.appeal_closes_at),
+        ("payment_closes_at", ciclo_aberto.payment_closes_at),
+    ):
+        assert abs(datetime.fromisoformat(corpo[campo]) - esperado) < timedelta(
+            seconds=1
+        )
+    # `ciclo_aberto` está na janela de inscrição: recurso ainda não abriu e
+    # o prazo da GRU (que só tem fim) ainda corre.
+    assert corpo["appeal_open"] is False
+    assert corpo["payment_open"] is True
+
+
+def test_janela_de_recurso_aberta_sai_no_requerimento(
+    client_candidata, candidata, program, ciclo_aberto
+):
+    agora = timezone.now()
+    ciclo_aberto.appeal_opens_at = agora - timedelta(hours=1)
+    ciclo_aberto.appeal_closes_at = agora + timedelta(hours=1)
+    ciclo_aberto.save(update_fields=["appeal_opens_at", "appeal_closes_at"])
+    _rascunho(program=program, cycle=ciclo_aberto, person=candidata)
+
+    resposta = client_candidata.get(URL_REQUERIMENTOS)
+
+    assert resposta.json()["items"][0]["appeal_open"] is True
+
+
+def test_prazo_de_pagamento_vencido_sai_no_requerimento(
+    client_candidata, candidata, program, ciclo_aberto
+):
+    ciclo_aberto.payment_closes_at = timezone.now() - timedelta(hours=1)
+    ciclo_aberto.save(update_fields=["payment_closes_at"])
+    _rascunho(program=program, cycle=ciclo_aberto, person=candidata)
+
+    resposta = client_candidata.get(URL_REQUERIMENTOS)
+
+    assert resposta.json()["items"][0]["payment_open"] is False

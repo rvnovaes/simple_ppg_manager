@@ -61,6 +61,14 @@
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/inscricao')}>
 								Inscrição
 							</a>
+							<!-- Por papel, e não por permissão: os quatro papéis têm
+							`view_isolatedenrollmentrequest`, mas esta tela é a do próprio
+							candidato — a fila da secretaria é outra (US-019). -->
+							{#if sessao.temPapel('Candidato')}
+								<a class="text-grafite hover:text-tinta text-sm" href={resolve('/acompanhamento')}>
+									Acompanhamento
+								</a>
+							{/if}
 						{/if}
 						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>

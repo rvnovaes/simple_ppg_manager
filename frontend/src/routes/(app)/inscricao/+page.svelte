@@ -1,38 +1,22 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { api, codigoDeErro, comoFormData, mensagemDeErro } from '$lib/api/client';
 	import type { components } from '$lib/api/schema';
+	import {
+		ORDEM_DO_EDITAL,
+		ROTULO_DO_DOCUMENTO as TIPOS,
+		formatarTamanho as tamanho,
+		type TipoDeDocumento
+	} from '$lib/isolada';
 
 	type Oferta = components['schemas']['DisciplineOfferingOut'];
 	type Requerimento = components['schemas']['IsolatedRequestOut'];
 	type Documento = components['schemas']['RequestDocumentOut'];
-	type TipoDeDocumento = components['schemas']['RequestDocumentKind'];
 
 	// Máximo de disciplinas por requerimento. O backend cobra o mesmo em
 	// `submit()` e no schema de entrada; aqui a UI simplesmente não deixa
 	// marcar a terceira, em vez de aceitar e falhar no envio.
 	const MAXIMO_DE_DISCIPLINAS = 2;
-
-	// Rótulo de cada tipo de anexo. QUAIS tipos são exigidos continua sendo
-	// resposta do servidor (`missing_documents`) — a tela só sabe como
-	// escrever o nome deles e em que ordem exibi-los.
-	const TIPOS: Record<string, string> = {
-		identity: 'Identidade e CPF',
-		diploma: 'Diploma de graduação ou certidão de conclusão',
-		lattes: 'Currículo Lattes em PDF',
-		address: 'Comprovante de endereço',
-		payslip: 'Contracheque de servidor da UFMG',
-		supervisor_auth: 'Autorização da chefia',
-		payment_receipt: 'Comprovante de pagamento da GRU'
-	};
-
-	const ORDEM_DO_EDITAL: TipoDeDocumento[] = [
-		'identity',
-		'diploma',
-		'lattes',
-		'address',
-		'payslip',
-		'supervisor_auth'
-	];
 
 	let ofertas = $state<Oferta[]>([]);
 	let requerimentos = $state<Requerimento[]>([]);
@@ -221,10 +205,6 @@
 		requerimentos = requerimentos.map((r) => (r.id === data.id ? data : r));
 	}
 
-	function tamanho(bytes: number): string {
-		return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-	}
-
 	$effect(() => {
 		carregar();
 	});
@@ -249,8 +229,9 @@
 	<div class="border-borda bg-papel mt-6 border border-dashed p-5">
 		<p class="etiqueta">Inscrição enviada</p>
 		<p class="text-grafite mt-2 text-[0.9375rem]">
-			Sua inscrição já foi enviada e está em análise. Acompanhe o resultado por esta tela quando o
-			edital publicar as decisões.
+			Sua inscrição já foi enviada e está em análise. O resultado, a taxa e o recurso ficam na tela
+			de
+			<a class="text-tinta underline" href={resolve('/acompanhamento')}>acompanhamento</a>.
 		</p>
 		<ul class="mt-3 space-y-1">
 			{#each enviado.items as item (item.id)}

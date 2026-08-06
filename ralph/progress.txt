@@ -46,6 +46,11 @@ Started: qua. 05 ago 2026 20:19:36 -03
 - **Fixture de fluxo longo mora em `apps/<app>/tests/conftest.py`**, e helper reutilizável (`criar_requerimento`, `anexar_documentos_obrigatorios`) é função do mesmo módulo, importada explicitamente (`from apps.academic.tests.conftest import ...`). O arranjo do edital (período, ciclo, docente, oferta, requerimento) é grande demais para duplicar por módulo — duplicado, sai de sincronia.
 - **Upload em teste não pode cair no checkout**: `conftest.py` da raiz do backend tem `media_temporaria` autouse, que aponta `settings.MEDIA_ROOT` para `tmp_path`. Teste de `FileField` novo não precisa fazer nada.
 - **Método que consulta relacionados fica testável em memória com saída antecipada por `pk is None`** (ver `missing_documents()`): instância sem pk não tem linha relacionada nenhuma por definição, então devolver o conjunto completo é a resposta correta, e não um atalho. Alternativa ao padrão anterior de migrar o teste para módulo com banco — use quando a resposta para "sem pk" for bem definida.
+- **Dado que a tela precisa e o papel não pode ler viaja no schema de saída do recurso que ele já lê**: as janelas do edital (`appeal_open`, `payment_open`, `*_closes_at`) saem dentro de `IsolatedRequestOut` porque o Candidato não tem permissão sobre o ciclo. Booleano de janela é resolvido com `timezone.now()` no servidor — a data no navegador faria o prazo depender do relógio de quem acessa.
+- **Campo novo vindo de relacionado obriga a revisar o `select_related` de TODA listagem que usa aquele schema** — o mesmo `XOut` costuma servir a fila da secretaria.
+- **Datetime do JSON não é igual ao do banco**: o Ninja serializa em milissegundos e o Postgres guarda microssegundos. Em teste, compare por proximidade (`abs(a - b) < timedelta(seconds=1)`).
+- **`eslint-disable-next-line` não pega atributo de tag multilinha no Svelte** (a regra reporta a linha do atributo): use o par `<!-- eslint-disable regra -->` / `<!-- eslint-enable regra -->` em volta do elemento. É o caso do link externo sem `resolve()`.
+- **Vocabulário do edital de isolada mora em `frontend/src/lib/isolada.ts`**: rótulo de documento, de situação e de pagamento, ordem do edital, `formatarPrazo`, `formatarTamanho`. Tela nova importa de lá em vez de recopiar o mapa.
 - **Rota pública de escrita tem quatro travas, e todas explícitas**: `# público` com justificativa (Seção 5), `@decorate_view(csrf_protect)` porque `auth=None` desliga junto o CSRF do `SessionAuth`, `enforce_rate_limit()` de `apps/core/ratelimit.py` (contador por IP no cache; IP sai de `X-Real-IP`, confiável só porque o nosso Nginx o sobrescreve) e uma condição de negócio que limita a janela em que ela funciona. Ver `POST /api/v1/academic/isolated/signup`.
 - **Resposta que não distingue e-mail novo de e-mail existente**: o service devolve `bool`, o router ignora e responde sempre o mesmo corpo. Toda cobrança que possa denunciar o desvio (força da senha) roda ANTES da consulta. Conta que já existe com senha utilizável nunca tem a senha redefinida — seria tomada de conta pelo formulário público.
 - **Sem sessão não há `current_program()`**: o tenant da rota pública sai do dado de negócio (`programa_com_inscricao_aberta()` lê os ciclos com inscrição aberta agora), e `program_id` do payload só desempata entre os já abertos — nunca escolhe livremente, senão a rota cria conta em qualquer programa a qualquer hora.
@@ -595,4 +600,61 @@ Started: qua. 05 ago 2026 20:19:36 -03
   - **Papel novo custa uma revisão do menu e da rota inicial**: o Candidato não tem `people.view_person`, e `/pessoas` era destino fixo do login e da raiz. Papel novo que não seja de secretaria exige conferir `academic.0011_papeis_da_isolada` (ou a migração equivalente) antes de assumir que a tela inicial serve.
   - **Regra de negócio no front se evita deixando o servidor responder o que falta**: `missing_documents` já viaja no `IsolatedRequestOut`, então a tela nunca calcula quais documentos o edital exige — ela cruza a resposta com uma constante de ROTULAGEM e ordem. Toggle de `is_ufmg_staff` salva imediatamente justamente para a lista voltar do servidor já corrigida.
   - O rascunho tem de existir antes do upload (o endpoint é `/requests/{id}/documents`), daí o botão "Iniciar inscrição" que faz um POST com `items: []` — `IsolatedRequestIn` aceita lista vazia de propósito.
+---
+
+## 2026-08-05 - US-017 (Tela Svelte — acompanhamento do candidato)
+- Tela `frontend/src/routes/(app)/acompanhamento/+page.svelte` (nova): situação no vocabulário
+  do edital (Inscrito/Deferido/Indeferido/Matriculado/Cancelado), disciplinas com a
+  classificação do docente, bloco da taxa (link da GRU, prazo, envio e substituição do
+  comprovante), bloco do recurso (texto obrigatório + anexo opcional) e lista do que já foi
+  anexado. Isento não recebe controle de envio nenhum — só a frase de que não há taxa.
+- Cada controle tem um `impedimento*` derivado que diz por que ele não aparece (estado errado,
+  janela fechada com as datas, recurso já interposto). Nada de botão que falha depois do clique.
+- `frontend/src/lib/isolada.ts` (novo): rótulos de documento, de situação e de pagamento, ordem
+  do edital, `formatarPrazo` e `formatarTamanho`. `inscricao/+page.svelte` passou a importar de
+  lá em vez de manter cópia própria.
+- Backend: `IsolatedRequestOut` ganhou `appeal_opens_at`, `appeal_closes_at`,
+  `payment_closes_at`, `appeal_open` e `payment_open`. Sem isso a tela do candidato não teria
+  como saber o prazo — o papel Candidato não tem permissão sobre o ciclo (`academic.0011`).
+  `list_isolated_requests` ganhou `select_related("cycle")` junto.
+- Menu de `(app)/+layout.svelte`: link "Acompanhamento" por `sessao.temPapel('Candidato')`, e
+  não por permissão — os quatro papéis têm `view_isolatedenrollmentrequest`.
+- Arquivos alterados: `backend/apps/academic/{schemas,router}.py`,
+  `backend/apps/academic/tests/test_isolada_requerimento.py` (+3 casos),
+  `frontend/src/lib/isolada.ts` (novo),
+  `frontend/src/routes/(app)/acompanhamento/+page.svelte` (novo),
+  `frontend/src/routes/(app)/inscricao/+page.svelte`, `frontend/src/routes/(app)/+layout.svelte`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint, mypy (87 arquivos), svelte-check (192 arquivos, 0 erros),
+  pytest 513 passed. `make gen-api` rodado depois da mudança de schema.
+- **Sem migração e sem `make migrate`**: só schema de saída e front.
+- **Verificação em browser pendente**: não existe CLI `browser-use` nesta máquina e o
+  consentimento do Chrome não foi dado. `/acompanhamento` responde 200 pelo nginx de :8080 e o
+  Vite de :5173 é desta worktree. O banco de desenvolvimento está com zero ciclos e zero
+  requerimentos, então a tela não teria o que exibir sem semear a base compartilhada.
+- **Learnings for future iterations:**
+  - **Dado que a tela precisa e o papel não pode ler vai junto no schema de saída do recurso
+    que ele já lê.** O Candidato não tem `view_isolatedenrollmentcycle`, então as janelas do
+    edital viajam dentro do `IsolatedRequestOut`. Criar rota de ciclo para o candidato seria
+    dar-lhe leitura do edital inteiro; calcular a janela no navegador faria o prazo depender do
+    relógio de quem acessa. Por isso `appeal_open`/`payment_open` são booleanos resolvidos com
+    `timezone.now()` no servidor, e as datas viajam só para exibição.
+  - **Campo novo que sai de um relacionado exige revisar o `select_related` de toda listagem que
+    usa aquele schema** — `IsolatedRequestOut` é o mesmo da fila da secretaria, e sem
+    `select_related("cycle")` cada linha viraria uma consulta.
+  - **Comparar datetime do JSON com o do banco falha por microssegundo**: o Ninja serializa com
+    milissegundos e o Postgres guarda microssegundos. Compare por proximidade
+    (`abs(a - b) < timedelta(seconds=1)`), nunca por igualdade.
+  - **`eslint-disable-next-line` NÃO funciona em atributo de tag multilinha do Svelte**: a regra
+    reporta a linha do atributo, e não a da tag. Para link externo (a GRU vem do sistema de
+    arrecadação da UFMG e não passa por `resolve()`) use o par
+    `<!-- eslint-disable svelte/no-navigation-without-resolve -->` /`<!-- eslint-enable ... -->`
+    em volta do elemento.
+  - **Vocabulário do edital agora tem casa: `$lib/isolada.ts`.** Rótulo de documento, de
+    situação e de pagamento, mais os formatadores de prazo e tamanho. A tela da secretaria
+    (US-019) e a do docente (US-018) importam de lá em vez de recopiar — três cópias do mapa de
+    documentos sairiam de sincronia no primeiro documento novo do edital.
+  - **Link de menu para papel, e não para permissão, quando a permissão é compartilhada**: os
+    quatro papéis têm `view_isolatedenrollmentrequest`, mas /acompanhamento é a tela do próprio
+    candidato. O critério é `sessao.temPapel('Candidato')`.
 ---

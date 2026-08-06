@@ -4451,6 +4451,29 @@
             },
             "title": "Missing Documents",
             "type": "array"
+          },
+          "appeal_opens_at": {
+            "format": "date-time",
+            "title": "Appeal Opens At",
+            "type": "string"
+          },
+          "appeal_closes_at": {
+            "format": "date-time",
+            "title": "Appeal Closes At",
+            "type": "string"
+          },
+          "payment_closes_at": {
+            "format": "date-time",
+            "title": "Payment Closes At",
+            "type": "string"
+          },
+          "appeal_open": {
+            "title": "Appeal Open",
+            "type": "boolean"
+          },
+          "payment_open": {
+            "title": "Payment Open",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4470,7 +4493,12 @@
           "submitted_at",
           "created_at",
           "items",
-          "missing_documents"
+          "missing_documents",
+          "appeal_opens_at",
+          "appeal_closes_at",
+          "payment_closes_at",
+          "appeal_open",
+          "payment_open"
         ],
         "title": "IsolatedRequestOut",
         "type": "object"

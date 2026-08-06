@@ -623,7 +623,9 @@ def list_isolated_requests(
         # de secretaria/coordenação — ver o método no model.
         IsolatedEnrollmentRequest.objects.for_program(program)
         .visible_to(request.user, program)
-        .select_related("person")
+        # `cycle` entra porque `IsolatedRequestOut` publica as janelas do
+        # edital: sem ele a fila da secretaria faria uma consulta por linha.
+        .select_related("person", "cycle")
         .prefetch_related("items__offering__discipline")
     )
     if cycle_id is not None:
