@@ -254,7 +254,7 @@
         "Tests pass (efetivar sem pagamento é recusado; efetivar isento funciona; o Student criado passa nas CheckConstraint do ADR-007; a mesma Person pode ter dois Student de ciclos diferentes)"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "Depende de academic.Student com modality/status separados (ralph/prd.json US-005, ADR-007)."
     },
     {
