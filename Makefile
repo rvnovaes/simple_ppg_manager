@@ -12,7 +12,7 @@ UV := cd $(BACKEND) && uv run
 NPM := cd $(FRONTEND) && npm
 
 .PHONY: ajuda install install-web db up down run web migrations migrate \
-        superuser gen-api test lint typecheck ready
+        superuser seed gen-api test lint typecheck ready
 
 ajuda:  ## Lista os comandos disponíveis
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -54,6 +54,9 @@ migrate:  ## Aplica as migrações
 
 superuser:  ## Cria um superusuário
 	$(UV) python manage.py createsuperuser
+
+seed:  ## Popula o banco com dados de demonstração (idempotente, só com DEBUG=True)
+	$(UV) python manage.py seed_demo
 
 gen-api:  ## Regenera os tipos TS a partir do OpenAPI do backend
 	@echo "==> exportando o OpenAPI"
