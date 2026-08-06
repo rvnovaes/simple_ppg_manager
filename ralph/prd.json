@@ -219,7 +219,7 @@
         "Tests pass (deferir sem vaga é recusado; deferir oferta não classificada é recusado; cancelar libera a vaga e o próximo passa a caber; servidor da UFMG deferido nasce EXEMPT)"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "Depende do helper current_program(), entregue por ralph/prd.json US-008."
     },
     {

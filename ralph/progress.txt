@@ -361,3 +361,60 @@ Started: qua. 05 ago 2026 20:19:36 -03
     leituras.
   - Sem verificação de browser: US-011 não toca UI. A tela é a US-018.
 ---
+
+## 2026-08-05 - US-012 (Endpoints — secretaria defere, indefere e cancela)
+- Três rotas em `apps/academic/router.py`: `POST /isolated/requests/{id}/defer` (grava
+  `gru_url` no mesmo ato), `.../reject` (note obrigatório) e `.../cancel` (devolve a vaga).
+  Todas com `require_perm("academic.change_isolatedenrollmentrequest")`, `current_program`,
+  `transaction.atomic()` com `save(update_fields=[...])` e AuditLog
+  (`academic.isolated.defer` / `.reject` / `.cancel`).
+- Helper `_requerimento_para_decidir()`: espelho invertido de `_meu_requerimento` — quem julga
+  é quem NÃO é o candidato. Sem ele o próprio candidato deferiria a inscrição dele, porque o
+  papel Candidato TEM `change_isolatedenrollmentrequest` (`academic.0011`).
+- `apps/academic/models.py`: `IsolatedEnrollmentRequest.ensure_deferrable()` — percorre os
+  itens e recusa `offering_not_ranked` (400) antes de `no_seats_available` (400). Fica fora de
+  `defer()` porque consulta linhas relacionadas, e `defer()` é invariante testável em memória
+  (mesmo motivo de `ensure_editable()` existir separado).
+- `apps/academic/schemas.py`: `IsolatedDeferIn` (`note`, `gru_url: HttpUrl | None`),
+  `IsolatedRejectIn` (`note` obrigatório) e `IsolatedCancelIn` (`note` opcional).
+- `GET /isolated/requests/` ganhou `?status=` (`IsolatedRequestStatus`, valor fora do enum é
+  422 na borda). O escopo por papel já vinha de `visible_to`: Secretaria e Coordenação leem o
+  edital inteiro desde a US-009.
+- Testes: `apps/academic/tests/test_isolada_decisao.py` (novo, 24 casos).
+- Arquivos alterados: `backend/apps/academic/{models,router,schemas}.py`,
+  `backend/apps/academic/tests/test_isolada_decisao.py` (novo),
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (84 arquivos), svelte-check (185 arquivos,
+  0 erros), pytest 455 passed. `make gen-api` rodado.
+- **Sem migração e sem `make migrate`**: a US só acrescenta métodos, rotas e schemas
+  (`makemigrations --check` diz "No changes detected").
+- **Desvio da AC, registrado**: o critério pedia `?cycle=`, mas o parâmetro entregue na US-009
+  já se chama `cycle_id` e mudá-lo quebraria o contrato publicado. Só `status` foi acrescentado.
+- **Learnings for future iterations:**
+  - **Permissão com duas faces exige posse invertida.** `change_isolatedenrollmentrequest` é a
+    permissão de MONTAR (Candidato) e a de DECIDIR (Secretaria) — a mesma string. Quem separa
+    os papéis é o helper de posse, e o de decisão é a negação do de edição:
+    `if pessoas.filter(pk=requerimento.person_id).exists(): raise NotAllowed`. Docente e
+    Coordenação nem chegam lá, só têm `view`. Vale conferir isso em toda US que reaproveite um
+    verbo já concedido a outro papel.
+  - **Regra que consulta relacionados vira `ensure_*()` separado, não entra na transição.**
+    `defer()`/`cancel()` continuam testáveis em memória; `ensure_deferrable()` é chamado pelo
+    router ANTES do método, fora do `atomic()` (é leitura). Terceiro exemplo do padrão, depois
+    de `ensure_editable()` e `ensure_document_upload_allowed()`.
+  - **Ordem das recusas é decisão de produto**: classificação antes de vaga. Dizer "sem vaga"
+    numa oferta que o docente nem ordenou manda a secretaria cobrar a pessoa errada. Há teste
+    guardando a ordem (`test_deferir_recusa_a_falta_de_classificacao_antes_da_falta_de_vaga`).
+  - **`ensure_deferrable()` é inofensivo no estado errado**: `needs_ranking()` e
+    `seats_taken()` só olham requerimentos SUBMITTED/DEFERRED, então rascunho e indeferido
+    passam pela checagem e levam o 409 do `_exigir_status` — que é o erro certo. É por isso
+    que a chamada pode vir antes de `defer()` sem embaralhar as respostas.
+  - **`gru_url` vai por `HttpUrl` do pydantic**: `URLField` só valida em `full_clean()`, que o
+    router não chama. A borda recusa `gru.ufmg.br` com 422 e o campo é gravado com `str(...)`.
+  - **AuditLog não tem `object_id`**: o campo é `target_id` (mais `target_type`). O mypy pega
+    isso com `django-stubs` (`Cannot resolve keyword ... into field`), mas só depois de escrito
+    — copiar a linha de um teste existente sai mais barato.
+  - **Cancelar devolve a vaga sem escrita nenhuma na oferta**: `seats_taken()` para de contar o
+    cancelado e pronto. O teste que prova isso defere-e-recusa, cancela e defere de novo — é a
+    única forma de mostrar o efeito ponta a ponta.
+  - Sem verificação de browser: US-012 não toca UI. A tela é a US-019.
+---
