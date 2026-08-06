@@ -236,7 +236,7 @@
         "Tests pass (recurso fora da janela é recusado; comprovante em requerimento isento é recusado; comprovante fora do prazo é recusado)"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

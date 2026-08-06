@@ -418,3 +418,59 @@ Started: qua. 05 ago 2026 20:19:36 -03
     única forma de mostrar o efeito ponta a ponta.
   - Sem verificação de browser: US-012 não toca UI. A tela é a US-019.
 ---
+
+## 2026-08-05 - US-013 (Endpoints — recurso e comprovante da GRU)
+- Duas rotas multipart em `apps/academic/router.py`:
+  `POST /isolated/requests/{id}/appeal` (note obrigatório + anexo opcional) e
+  `POST /isolated/requests/{id}/payment-receipt` (só o arquivo). Ambas com
+  `require_perm("academic.change_isolatedenrollmentrequest")`, `current_program`, posse pelo
+  `_meu_requerimento` (é ato do candidato, não da secretaria) e AuditLog
+  (`academic.isolated.appeal` / `.payment_receipt`).
+- `apps/academic/models.py`: `IsolatedEnrollmentCycle.payment_open(at)` (só tem fim — a guia
+  nasce no deferimento), `IsolatedEnrollmentRequest.ensure_appeal_document_allowed(kind)`
+  (recusa PAYMENT_RECEIPT com `invalid_document_kind`) e `register_payment(at)` (409 fora de
+  DEFERRED, 400 `payment_not_required` para isento, 400 `payment_window_closed` fora do prazo,
+  senão PAID).
+- Helper `_substituir_documento()` no router, extraído do upload da US-010 e reusado pelas
+  duas rotas novas — apagar o arquivo do storage antes de apagar a linha é o único ponto onde
+  isso mora agora.
+- Testes: `apps/academic/tests/test_isolada_recurso.py` (novo, 18 casos) e 7 casos em memória
+  no `test_models.py`.
+- Arquivos alterados: `backend/apps/academic/{models,router}.py`,
+  `backend/apps/academic/tests/{test_models.py,test_isolada_recurso.py}`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados), `ralph/prd.json`.
+- `make ready` verde: prettier/eslint/ruff, mypy (85 arquivos), svelte-check (185 arquivos,
+  0 erros), pytest 479 passed. `make gen-api` rodado.
+- **Sem migração e sem `make migrate`**: só métodos e rotas novas.
+- **Desvio da AC, registrado**: reenviar o comprovante com `payment_status=PAID` é aceito
+  (substitui o anexo e continua PAGO), em vez de recusado. Quem mandou a página errada não
+  tem caminho de volta — não existe transição PAGO→PENDENTE — e a conferência da secretaria é
+  posterior e humana. As três recusas pedidas pela AC (isento, fora do prazo, estado errado)
+  continuam valendo.
+- **Learnings for future iterations:**
+  - **Não existe rota de "rejulgar".** O recurso não é entidade nem estado: ele grava
+    `appeal_note`/`appealed_at` e deixa o requerimento INDEFERIDO. A secretaria decide de novo
+    pelos mesmos `defer`/`reject` da US-012 — e por isso a classificação do docente e a GRU
+    continuam de pé. A tela da secretaria (US-019) filtra a fila de rejulgamento por
+    `appealed_at != null`, não por status.
+  - **Multipart com campo opcional no Ninja**: `kind: RequestDocumentKind | None = Form(None)`
+    e `file: UploadedFile | None = File(None)` funcionam, mas o par pode chegar pela metade —
+    a checagem `(kind is None) != (file is None)` (400 `incomplete_document`) é do router, não
+    do model: é forma de requisição, não invariante de domínio.
+  - **Anexo do recurso tem porta própria** (`ensure_appeal_document_allowed`) porque
+    `ensure_document_upload_allowed` exige rascunho. Reusar o segundo obrigaria a afrouxar a
+    regra da inscrição para todo mundo.
+  - **Rota de um tipo só não recebe `kind`**: a de comprovante fixa `PAYMENT_RECEIPT` no
+    código. Aceitá-lo do corpo deixaria o candidato marcar a taxa como paga anexando qualquer
+    papel — anexar e marcar pago são o mesmo ato aqui.
+  - **`payment_open()` só tem fim, sem abertura**: o deferimento já é a abertura de fato e um
+    `payment_opens_at` seria mais uma data para a secretaria errar no formulário do edital
+    (US-020).
+  - **`documento.file.name` é `str | None` para o mypy**: `assert "x" in documento.file.name`
+    quebra o `make ready`; use `(documento.file.name or "")`.
+  - **Fixture de ciclo relativo ao relógio precisa de `AcademicTerm` próprio**:
+    `unique_ciclo_isolada_por_programa_e_periodo` derruba dois ciclos no mesmo semestre, e o
+    módulo de teste que cria três janelas diferentes cria três períodos.
+  - Sem verificação de browser: US-013 não toca UI. As telas são a US-017 (candidato recorre e
+    paga) e a US-019 (secretaria rejulga).
+---
