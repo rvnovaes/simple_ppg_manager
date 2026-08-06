@@ -34,6 +34,18 @@ class Sessao {
 		return this.usuario?.groups.some((papel) => papeis.includes(papel)) ?? false;
 	}
 
+	/**
+	 * Para onde mandar a pessoa depois de entrar.
+	 *
+	 * O Candidato da isolada não tem `people.view_person` (ver
+	 * `academic.0011_papeis_da_isolada`): jogá-lo em /pessoas seria abrir a
+	 * sessão com um 403 na cara. A escolha é por permissão, e não por papel,
+	 * porque o que decide é o que a tela de destino exige.
+	 */
+	get rotaInicial(): '/pessoas' | '/inscricao' {
+		return this.pode('people.view_person') ? '/pessoas' : '/inscricao';
+	}
+
 	/** Pergunta ao backend quem é o usuário da sessão atual. */
 	async carregar(): Promise<void> {
 		this.carregando = true;

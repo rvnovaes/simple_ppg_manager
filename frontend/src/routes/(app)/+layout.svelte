@@ -30,20 +30,38 @@
 			<div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
 				<div class="flex items-center gap-6">
 					<a
-						href={resolve('/pessoas')}
+						href={resolve(sessao.rotaInicial)}
 						class="text-tinta text-[0.9375rem] font-semibold tracking-tight"
 					>
 						PPGD Manager
 					</a>
 					<nav class="flex items-center gap-4">
-						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/pessoas')}>Pessoas</a>
-						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/estrutura')}>
-							Estrutura
-						</a>
-						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/professores')}>
-							Professores
-						</a>
-						<a class="text-grafite hover:text-tinta text-sm" href={resolve('/alunos')}>Alunos</a>
+						<!-- Todo item é condicional: o Candidato da isolada não tem
+						permissão sobre pessoa, professor nem aluno, e link que só leva
+						a 403 é pior do que link ausente. -->
+						{#if sessao.pode('people.view_person')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/pessoas')}>
+								Pessoas
+							</a>
+						{/if}
+						{#if sessao.pode('programs.view_researchline')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/estrutura')}>
+								Estrutura
+							</a>
+						{/if}
+						{#if sessao.pode('academic.view_teacher')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/professores')}>
+								Professores
+							</a>
+						{/if}
+						{#if sessao.pode('academic.view_student')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/alunos')}>Alunos</a>
+						{/if}
+						{#if sessao.pode('academic.add_isolatedenrollmentrequest')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/inscricao')}>
+								Inscrição
+							</a>
+						{/if}
 						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>
 								Orientandos

@@ -7,7 +7,7 @@
 	// login se não há.
 	$effect(() => {
 		sessao.carregar().then(() => {
-			goto(resolve(sessao.autenticado ? '/pessoas' : '/login'), { replaceState: true });
+			goto(resolve(sessao.autenticado ? sessao.rotaInicial : '/login'), { replaceState: true });
 		});
 	});
 </script>
