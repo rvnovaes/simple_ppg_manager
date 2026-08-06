@@ -54,8 +54,10 @@ dist/
 db.sqlite3
 db.sqlite3-journal
 *.log
-backend/staticfiles/          # saída do collectstatic
-backend/media/                # uploads de usuário — NUNCA versionar
+# saída do collectstatic
+backend/staticfiles/
+# uploads de usuário — NUNCA versionar
+backend/media/
 backend/static_root/
 
 # Celery / worker (caso um módulo futuro precise)
@@ -84,7 +86,8 @@ htmlcov/
 # -----------------------------------------------------------------------------
 node_modules/
 .svelte-kit/
-frontend/build/               # saída do adapter-static (vai pro Nginx, não pro git)
+# saída do adapter-static (vai pro Nginx, não pro git)
+frontend/build/
 .vite/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
@@ -103,7 +106,8 @@ vite.config.ts.timestamp-*
 # -----------------------------------------------------------------------------
 # Docker e dados locais
 # -----------------------------------------------------------------------------
-docker-compose.override.yml   # ajustes da máquina de cada dev
+# ajustes da máquina de cada dev
+docker-compose.override.yml
 .docker-data/
 pgdata/
 postgres-data/
@@ -118,14 +122,16 @@ postgres-data/
 *.dump
 *.bak
 backups/
-!backend/**/fixtures/*.sql    # exceção: fixture de teste versionada de propósito
+# exceção: fixture de teste versionada de propósito
+!backend/**/fixtures/*.sql
 
 
 # -----------------------------------------------------------------------------
 # Editores e IDEs
 # -----------------------------------------------------------------------------
 .vscode/*
-!.vscode/settings.json        # config compartilhada do time pode ser versionada
+# config compartilhada do time pode ser versionada
+!.vscode/settings.json
 !.vscode/extensions.json
 .idea/
 *.iml
