@@ -758,6 +758,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/requests/{request_id}/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll Isolated Request Endpoint
+         * @description Efetiva a matrícula: o requerimento deferido e pago vira `Student`.
+         *
+         *     A matrícula chega digitada porque quem emite o número é o sistema da
+         *     UFMG: a secretaria lança a inscrição lá, recebe o número e o registra
+         *     aqui. Este é o único ato do fluxo que depende de um sistema de fora, e
+         *     por isso não há como o servidor gerá-lo sozinho.
+         *
+         *     O trabalho todo está em `services.enroll_isolated_request`: escreve em
+         *     quatro models na mesma transação e não cabe no router (ADR-002).
+         */
+        post: operations["apps_academic_router_enroll_isolated_request_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/isolated/signup": {
         parameters: {
             query?: never;
@@ -1753,6 +1781,19 @@ export interface components {
              * @default
              */
             note: string;
+        };
+        /**
+         * IsolatedEnrollIn
+         * @description Efetivação: só a matrícula, digitada pela secretaria.
+         *
+         *     O número vem do sistema da UFMG — este sistema não o emite, apenas o
+         *     guarda. Como em `IsolatedRejectIn`, o campo é exigido aqui e a string
+         *     em branco é barrada no service, com `code` estável; a unicidade é do
+         *     banco e sai pelo mesmo caminho.
+         */
+        IsolatedEnrollIn: {
+            /** Registration Number */
+            registration_number: string;
         };
         /**
          * IsolatedSignupOut
@@ -2953,6 +2994,32 @@ export interface operations {
                      */
                     file: string;
                 };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolatedRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_enroll_isolated_request_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IsolatedEnrollIn"];
             };
         };
         responses: {

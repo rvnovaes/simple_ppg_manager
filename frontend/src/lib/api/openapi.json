@@ -2273,6 +2273,54 @@
         ]
       }
     },
+    "/academic/isolated/requests/{request_id}/enroll": {
+      "post": {
+        "operationId": "apps_academic_router_enroll_isolated_request_endpoint",
+        "summary": "Enroll Isolated Request Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolatedRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Efetiva a matrícula: o requerimento deferido e pago vira `Student`.\n\nA matrícula chega digitada porque quem emite o número é o sistema da\nUFMG: a secretaria lança a inscrição lá, recebe o número e o registra\naqui. Este é o único ato do fluxo que depende de um sistema de fora, e\npor isso não há como o servidor gerá-lo sozinho.\n\nO trabalho todo está em `services.enroll_isolated_request`: escreve em\nquatro models na mesma transação e não cabe no router (ADR-002).",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolatedEnrollIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/academic/isolated/signup": {
       "post": {
         "operationId": "apps_academic_router_isolated_signup",
@@ -4660,6 +4708,20 @@
           }
         },
         "title": "IsolatedCancelIn",
+        "type": "object"
+      },
+      "IsolatedEnrollIn": {
+        "description": "Efetivação: só a matrícula, digitada pela secretaria.\n\nO número vem do sistema da UFMG — este sistema não o emite, apenas o\nguarda. Como em `IsolatedRejectIn`, o campo é exigido aqui e a string\nem branco é barrada no service, com `code` estável; a unicidade é do\nbanco e sai pelo mesmo caminho.",
+        "properties": {
+          "registration_number": {
+            "title": "Registration Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "registration_number"
+        ],
+        "title": "IsolatedEnrollIn",
         "type": "object"
       },
       "IsolatedSignupOut": {

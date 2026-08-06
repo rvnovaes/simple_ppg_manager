@@ -13,11 +13,12 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest
 
 from apps.accounts.models import User, validar_senha
-from apps.accounts.services import assign_role_group
+from apps.accounts.services import assign_role_group, revoke_role_group
 from apps.core import audit
 from apps.core.exceptions import DomainError
 from apps.people.models import Person
@@ -372,3 +373,81 @@ def signup_isolated_candidate(
         created=True,
     )
     return True
+
+
+@transaction.atomic
+def enroll_isolated_request(
+    *,
+    requerimento: IsolatedEnrollmentRequest,
+    registration_number: str,
+    request: HttpRequest | None = None,
+) -> Student:
+    """Transforma o requerimento deferido e pago em vínculo de aluno.
+
+    Está aqui, e não no router, porque escreve em quatro models
+    (IsolatedEnrollmentRequest, Student, Group do usuário e AuditLog) na
+    mesma transação (ADR-002). Requerimento marcado como matriculado sem
+    o `Student` correspondente seria um aluno que não existe em lugar
+    nenhum.
+
+    A matrícula vem digitada pela secretaria: quem emite o número é o
+    sistema da UFMG, não este. O `Student` nasce com os campos de grau
+    todos vazios e com o `term` do ciclo — é o que a CheckConstraint
+    `student_non_regular_requires_term` exige (ADR-007).
+    """
+    # Vínculo de aluno sem número não é matrícula: `registration_number`
+    # aceita NULL no banco porque a isolada só recebe número se virar
+    # vínculo, e é exatamente isto aqui.
+    registration_number = registration_number.strip()
+    if not registration_number:
+        raise DomainError(
+            "Informe o número de matrícula emitido pela UFMG.",
+            code="registration_number_required",
+        )
+
+    # A regra mora no model: estado errado é 409, taxa em aberto é 400
+    # com code estável (`payment_required`).
+    requerimento.enroll()
+    requerimento.save(update_fields=["status"])
+
+    aluno = Student(
+        program=requerimento.program,
+        person=requerimento.person,
+        registration_number=registration_number,
+        modality=Student.Modality.ISOLATED,
+        status=Student.Status.ACTIVE,
+        term=requerimento.cycle.term,
+    )
+    # `full_clean()` e não só `clean()`: a matrícula é única no banco e o
+    # `max_length` é do campo — sem a validação de campo, número repetido
+    # sairia como IntegrityError 500. O Django não roda nada disso em
+    # `.save()`/`.create()`.
+    #
+    # O try/except não é regra de negócio no lugar errado: é a tradução da
+    # ValidationError do Django para a `DomainError` do projeto, que o
+    # handler central do Ninja sabe virar 400 com `code` estável.
+    try:
+        aluno.full_clean()
+    except ValidationError as erro:
+        raise DomainError("; ".join(erro.messages), code="invalid_student") from erro
+    aluno.save()
+
+    # Pessoa sem conta (registro histórico) não troca de papel: não há
+    # usuário para receber nem para perder o acesso.
+    user = requerimento.person.user
+    if user is not None:
+        assign_role_group(user, group_name="Discente", request=request)
+        # Sai de Candidato: quem já é aluno não continua na fila do
+        # edital, e o papel abre telas que não são mais dele.
+        revoke_role_group(user, group_name="Candidato", request=request)
+
+    audit.record(
+        "academic.isolated.enroll",
+        request=request,
+        target=requerimento,
+        person_id=requerimento.person_id,
+        cycle_id=requerimento.cycle_id,
+        student_id=aluno.pk,
+        registration_number=registration_number,
+    )
+    return aluno

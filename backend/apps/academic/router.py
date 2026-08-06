@@ -52,6 +52,7 @@ from .schemas import (
     IsolatedCancelIn,
     IsolatedCandidateOut,
     IsolatedDeferIn,
+    IsolatedEnrollIn,
     IsolatedItemIn,
     IsolatedRankIn,
     IsolatedRejectIn,
@@ -77,6 +78,7 @@ from .services import (
     create_isolated_request,
     create_student,
     create_teacher,
+    enroll_isolated_request,
     programa_com_inscricao_aberta,
     signup_isolated_candidate,
 )
@@ -1137,6 +1139,31 @@ def upload_isolated_payment_receipt(
             filename=file.name,
             replaced=substituiu,
         )
+    return requerimento
+
+
+@router.post("/isolated/requests/{int:request_id}/enroll", response=IsolatedRequestOut)
+def enroll_isolated_request_endpoint(
+    request: HttpRequest, request_id: int, payload: IsolatedEnrollIn
+):
+    """Efetiva a matrícula: o requerimento deferido e pago vira `Student`.
+
+    A matrícula chega digitada porque quem emite o número é o sistema da
+    UFMG: a secretaria lança a inscrição lá, recebe o número e o registra
+    aqui. Este é o único ato do fluxo que depende de um sistema de fora, e
+    por isso não há como o servidor gerá-lo sozinho.
+
+    O trabalho todo está em `services.enroll_isolated_request`: escreve em
+    quatro models na mesma transação e não cabe no router (ADR-002).
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _requerimento_para_decidir(request, program, request_id)
+    enroll_isolated_request(
+        requerimento=requerimento,
+        registration_number=payload.registration_number,
+        request=request,
+    )
     return requerimento
 
 

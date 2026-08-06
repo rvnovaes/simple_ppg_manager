@@ -570,6 +570,18 @@ class IsolatedCancelIn(Schema):
     note: str = ""
 
 
+class IsolatedEnrollIn(Schema):
+    """Efetivação: só a matrícula, digitada pela secretaria.
+
+    O número vem do sistema da UFMG — este sistema não o emite, apenas o
+    guarda. Como em `IsolatedRejectIn`, o campo é exigido aqui e a string
+    em branco é barrada no service, com `code` estável; a unicidade é do
+    banco e sai pelo mesmo caminho.
+    """
+
+    registration_number: str
+
+
 class IsolatedRequestOut(Schema):
     id: int
     program_id: int
