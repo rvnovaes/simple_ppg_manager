@@ -42,8 +42,8 @@ class Sessao {
 	 * sessão com um 403 na cara. A escolha é por permissão, e não por papel,
 	 * porque o que decide é o que a tela de destino exige.
 	 */
-	get rotaInicial(): '/pessoas' | '/inscricao' {
-		return this.pode('people.view_person') ? '/pessoas' : '/inscricao';
+	get rotaInicial(): '/pessoas/administrativo' | '/inscricao' {
+		return this.pode('people.view_person') ? '/pessoas/administrativo' : '/inscricao';
 	}
 
 	/** Pergunta ao backend quem é o usuário da sessão atual. */

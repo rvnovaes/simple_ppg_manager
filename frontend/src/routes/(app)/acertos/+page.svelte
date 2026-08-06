@@ -143,13 +143,13 @@
 </script>
 
 <svelte:head>
-	<title>Acerto de matrícula · PPGD Manager</title>
+	<title>Meus acertos · PPGD Manager</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">
 	<div>
 		<p class="etiqueta">Matrícula</p>
-		<h1 class="text-grafite mt-1 text-2xl font-semibold tracking-tight">Acerto de matrícula</h1>
+		<h1 class="text-grafite mt-1 text-2xl font-semibold tracking-tight">Meus acertos</h1>
 	</div>
 	{#if !formAberto && impedimento === '' && !carregando}
 		<button class="botao-discreto" type="button" onclick={abrirForm}>Nova solicitação</button>

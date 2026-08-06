@@ -149,23 +149,42 @@
 								</div>
 							</details>
 						{/if}
-						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>
-								Orientandos
-							</a>
-						{/if}
-						{#if sessao.pode('academic.add_enrollmentadjustmentrequest')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/acertos')}>
-								Acertos
-							</a>
-						{/if}
-						{#if sessao.temPapel('Secretaria', 'Coordenação')}
-							<a
-								class="text-grafite hover:text-tinta text-sm"
-								href={resolve('/acertos-do-programa')}
-							>
-								Acerto de matrícula
-							</a>
+						<!-- As três telas do mesmo fluxo, uma por papel: o aluno pede, o
+						orientador decide, a secretaria acompanha. Cada item continua
+						condicional, então cada papel vê só a sua — o submenu junta as
+						telas, não as permissões. -->
+						{#if sessao.pode('academic.add_enrollmentadjustmentrequest') || sessao.pode('academic.change_enrollmentadjustmentrequest') || sessao.temPapel('Secretaria', 'Coordenação')}
+							<details class="group relative">
+								<summary
+									class="text-grafite hover:text-tinta cursor-pointer list-none text-sm marker:content-['']"
+								>
+									Acerto de matrícula
+									<span aria-hidden="true" class="text-cinza ml-0.5 text-[0.625rem]">▾</span>
+								</summary>
+								<div
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-44 flex-col border py-1 shadow-sm"
+								>
+									{#if sessao.pode('academic.add_enrollmentadjustmentrequest')}
+										<a class="item-submenu" href={resolve('/acertos')} onclick={fecharSubmenu}>
+											Meus acertos
+										</a>
+									{/if}
+									{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
+										<a class="item-submenu" href={resolve('/orientandos')} onclick={fecharSubmenu}>
+											Orientandos
+										</a>
+									{/if}
+									{#if sessao.temPapel('Secretaria', 'Coordenação')}
+										<a
+											class="item-submenu"
+											href={resolve('/acertos-do-programa')}
+											onclick={fecharSubmenu}
+										>
+											Do programa
+										</a>
+									{/if}
+								</div>
+							</details>
 						{/if}
 						{#if sessao.pode('programs.view_discipline')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/disciplinas')}>
