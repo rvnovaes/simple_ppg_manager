@@ -1206,6 +1206,16 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /**
+         * PersonBond
+         * @description Recorte da listagem de pessoas, por vínculo com o programa.
+         *
+         *     Enum, e não string livre, para o valor aceito aparecer no OpenAPI e
+         *     chegar tipado ao front — a tela monta o menu a partir destes quatro.
+         *     Não são exclusivos: quem coordena e dá aula aparece em dois.
+         * @enum {string}
+         */
+        PersonBond: "teacher" | "student" | "candidate" | "staff";
         /** PagedPersonOut */
         PagedPersonOut: {
             /** Items */
@@ -2599,6 +2609,7 @@ export interface operations {
         parameters: {
             query?: {
                 email?: string | null;
+                bond?: components["schemas"]["PersonBond"] | null;
                 limit?: number;
                 offset?: number;
             };

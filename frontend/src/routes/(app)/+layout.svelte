@@ -5,6 +5,14 @@
 
 	let { children } = $props();
 
+	// Navegar dentro da SPA não recarrega a página, então o <details> ficaria
+	// aberto por cima do conteúdo novo depois do clique.
+	let submenuPessoas = $state<HTMLDetailsElement | null>(null);
+
+	function fecharSubmenu() {
+		if (submenuPessoas) submenuPessoas.open = false;
+	}
+
 	// Guarda das telas internas: sem sessão, volta para o login.
 	$effect(() => {
 		if (sessao.usuario === null && !sessao.carregando) {
@@ -39,23 +47,54 @@
 						<!-- Todo item é condicional: o Candidato da isolada não tem
 						permissão sobre pessoa, professor nem aluno, e link que só leva
 						a 403 é pior do que link ausente. -->
+
+						<!-- Pessoas agrupa os quatro recortes do mesmo cadastro. Eles NÃO
+						são exclusivos: quem coordena e dá aula aparece em Professores e
+						em Administrativo, porque é uma pessoa só com dois vínculos. -->
 						{#if sessao.pode('people.view_person')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/pessoas')}>
-								Pessoas
-							</a>
+							<!-- <details> em vez de estado próprio: fecha no Esc, abre no
+							teclado e não precisa de listener de clique fora. -->
+							<details class="group relative" bind:this={submenuPessoas}>
+								<summary
+									class="text-grafite hover:text-tinta cursor-pointer list-none text-sm marker:content-['']"
+								>
+									Pessoas
+									<span aria-hidden="true" class="text-cinza ml-0.5 text-[0.625rem]">▾</span>
+								</summary>
+								<div
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-44 flex-col border py-1 shadow-sm"
+								>
+									{#if sessao.pode('academic.view_teacher')}
+										<a class="item-submenu" href={resolve('/professores')} onclick={fecharSubmenu}>
+											Professores
+										</a>
+									{/if}
+									{#if sessao.pode('academic.view_student')}
+										<a class="item-submenu" href={resolve('/alunos')} onclick={fecharSubmenu}>
+											Alunos
+										</a>
+									{/if}
+									<a
+										class="item-submenu"
+										href={resolve('/pessoas/candidatos')}
+										onclick={fecharSubmenu}
+									>
+										Candidatos
+									</a>
+									<a
+										class="item-submenu"
+										href={resolve('/pessoas/administrativo')}
+										onclick={fecharSubmenu}
+									>
+										Administrativo
+									</a>
+								</div>
+							</details>
 						{/if}
 						{#if sessao.pode('programs.view_researchline')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/estrutura')}>
 								Estrutura
 							</a>
-						{/if}
-						{#if sessao.pode('academic.view_teacher')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/professores')}>
-								Professores
-							</a>
-						{/if}
-						{#if sessao.pode('academic.view_student')}
-							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/alunos')}>Alunos</a>
 						{/if}
 						{#if sessao.pode('academic.add_isolatedenrollmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/inscricao')}>

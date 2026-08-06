@@ -16,7 +16,7 @@ from apps.core.tenancy import current_program
 from apps.programs.models import Program
 
 from .models import Person
-from .schemas import PersonIn, PersonOut
+from .schemas import PersonBond, PersonIn, PersonOut
 from .services import create_person_with_user
 
 router = Router(tags=["people"])
@@ -24,12 +24,28 @@ router = Router(tags=["people"])
 
 @router.get("/", response=list[PersonOut])
 @paginate
-def list_people(request: HttpRequest, email: str | None = None):
+def list_people(
+    request: HttpRequest,
+    email: str | None = None,
+    bond: PersonBond | None = None,
+):
     require_perm(request, "people.view_person")
     # O escopo é o programa da requisição, nunca um filtro que o chamador
     # escolhe: program_id como filtro livre deixava vazar pessoa de outro
     # tenant para quem simplesmente omitisse o parâmetro.
     pessoas = Person.objects.for_program(current_program(request))
+    if bond is not None:
+        # Cada recorte é um método do queryset (Seção 8: query fora de
+        # models.py precisa de justificativa) e é encadeado DEPOIS do
+        # escopo de programa, nunca no lugar dele. Sem `bond` a lista vem
+        # inteira, que é o que a busca por e-mail usa.
+        recortes = {
+            PersonBond.TEACHER: "teachers",
+            PersonBond.STUDENT: "students",
+            PersonBond.CANDIDATE: "candidates",
+            PersonBond.STAFF: "staff",
+        }
+        pessoas = getattr(pessoas, recortes[bond])()
     if email is not None:
         # A tela procura por aqui antes de tentar criar uma pessoa nova:
         # sem isso ela bate na UniqueConstraint (program, primary_email) e

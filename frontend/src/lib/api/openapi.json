@@ -795,6 +795,21 @@
           },
           {
             "in": "query",
+            "name": "bond",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PersonBond"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
             "name": "limit",
             "schema": {
               "default": 100,
@@ -3292,6 +3307,17 @@
         },
         "title": "AcademicTermPatch",
         "type": "object"
+      },
+      "PersonBond": {
+        "description": "Recorte da listagem de pessoas, por vínculo com o programa.\n\nEnum, e não string livre, para o valor aceito aparecer no OpenAPI e\nchegar tipado ao front — a tela monta o menu a partir destes quatro.\nNão são exclusivos: quem coordena e dá aula aparece em dois.",
+        "enum": [
+          "teacher",
+          "student",
+          "candidate",
+          "staff"
+        ],
+        "title": "PersonBond",
+        "type": "string"
       },
       "PagedPersonOut": {
         "properties": {

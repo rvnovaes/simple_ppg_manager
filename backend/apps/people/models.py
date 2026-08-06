@@ -10,6 +10,11 @@ from django.db import models
 
 from apps.core.exceptions import InvalidStateTransition
 
+# Papéis que respondem pela operação do programa. É a definição de
+# "administrativo" na listagem de pessoas: quem trabalha na secretaria ou
+# na coordenação e não é, necessariamente, professor nem aluno.
+PAPEIS_ADMINISTRATIVOS = ("Secretaria", "Coordenação")
+
 
 class PersonQuerySet(models.QuerySet):
     def active(self) -> "PersonQuerySet":
@@ -17,6 +22,46 @@ class PersonQuerySet(models.QuerySet):
 
     def for_program(self, program) -> "PersonQuerySet":
         return self.filter(program=program)
+
+    # Os quatro recortes abaixo NÃO são exclusivos entre si, e é o ponto:
+    # o coordenador que também dá aula é pessoa uma só e aparece tanto em
+    # `teachers()` quanto em `staff()`. Quem tem um recorte por vínculo
+    # cai na tentação de transformar "tipo de pessoa" num campo — e aí a
+    # primeira pessoa que acumula papéis não cabe em lugar nenhum.
+
+    def teachers(self) -> "PersonQuerySet":
+        """Quem tem vínculo docente. `teacher_profile` é OneToOne, então
+        não há duplicata a remover.
+        """
+        return self.filter(teacher_profile__isnull=False)
+
+    def students(self) -> "PersonQuerySet":
+        """Quem tem (ou teve) vínculo de aluno, em qualquer modalidade.
+
+        `distinct` porque `student_records` é um-para-muitos: quem cursou
+        duas isoladas e depois entrou como regular tem três vínculos e
+        apareceria três vezes.
+        """
+        return self.filter(student_records__isnull=False).distinct()
+
+    def candidates(self) -> "PersonQuerySet":
+        """Quem se inscreveu em disciplina isolada, em qualquer estado.
+
+        Inclui quem já virou aluno: o requerimento não deixa de existir
+        quando a matrícula sai, e sumir da lista de candidatos apagaria o
+        histórico do edital para a secretaria.
+        """
+        return self.filter(isolated_requests__isnull=False).distinct()
+
+    def staff(self) -> "PersonQuerySet":
+        """Quem responde pela operação do programa.
+
+        Sai do Group do usuário (ADR-003), e não de um campo em Person:
+        papel é permissão, e duplicá-lo aqui criaria duas verdades que
+        divergem na primeira troca de função. Pessoa sem conta não é
+        administrativo — o vínculo administrativo É o acesso.
+        """
+        return self.filter(user__groups__name__in=PAPEIS_ADMINISTRATIVOS).distinct()
 
 
 class Person(models.Model):
