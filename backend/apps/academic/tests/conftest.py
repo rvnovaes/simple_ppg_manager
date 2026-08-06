@@ -9,7 +9,9 @@ sincronia. Testes em memória (`test_models.py`) não usam nada daqui.
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client
 from django.utils import timezone
 
 from apps.academic.models import (
@@ -19,10 +21,12 @@ from apps.academic.models import (
     RequestDocument,
     Teacher,
 )
+from apps.accounts.models import User
 from apps.people.models import Person
 from apps.programs.models import AcademicTerm, Discipline, Program
 
 DENTRO_DA_INSCRICAO = datetime(2026, 2, 5, tzinfo=UTC)
+SENHA = "senha-de-teste-123"
 
 
 @pytest.fixture
@@ -71,6 +75,32 @@ def oferta(
     return DisciplineOffering.objects.create(
         program=program, cycle=ciclo, discipline=disciplina, teacher=docente, seats=2
     )
+
+
+def criar_candidato(*, program: Program, username: str, nome: str) -> Person:
+    """Candidato completo: conta no papel Candidato e Person ativa.
+
+    A Person ativa não é detalhe de fixture — é dela que `current_program`
+    tira o tenant da requisição.
+    """
+    user = User.objects.create_user(username=username, password=SENHA)
+    user.groups.add(Group.objects.get(name="Candidato"))
+    return Person.objects.create(
+        program=program,
+        user=user,
+        full_name=nome,
+        primary_email=f"{username}@exemplo.br",
+    )
+
+
+def logar(client: Client, pessoa: Person) -> Client:
+    """`Person.user` é opcional no model (pessoa sem conta é registro
+    histórico); quem se loga aqui sempre tem uma.
+    """
+    user = pessoa.user
+    assert user is not None
+    client.force_login(user)
+    return client
 
 
 def criar_requerimento(

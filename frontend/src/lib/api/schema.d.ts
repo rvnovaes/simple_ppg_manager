@@ -509,6 +509,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/academic/isolated/requests/{request_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Isolated Documents
+         * @description O que já foi anexado — nome, tipo, tamanho e data, sem o arquivo.
+         *
+         *     Escopo por papel igual ao da fila (`visible_to`): o candidato vê os
+         *     próprios anexos, o docente vê os de quem se inscreveu na oferta dele,
+         *     secretaria e coordenação veem todos. Quem enxerga a lista não
+         *     necessariamente baixa o conteúdo — isso é a rota de download.
+         */
+        get: operations["apps_academic_router_list_isolated_documents"];
+        put?: never;
+        /**
+         * Upload Isolated Document
+         * @description Anexa (ou substitui) o documento de um tipo.
+         *
+         *     A permissão é a de montar o requerimento — anexar é parte de montar —,
+         *     e `_meu_requerimento` garante que é o próprio: nem a Secretaria anexa
+         *     documento no lugar do candidato, pelo mesmo motivo de US-009.
+         *
+         *     Substituir, e não empilhar: um tipo tem uma versão
+         *     (`unique_documento_por_requerimento_e_tipo`), e o reenvio é a correção
+         *     de quem mandou a página errada.
+         */
+        post: operations["apps_academic_router_upload_isolated_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/isolated/documents/{document_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Isolated Document
+         * @description Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.
+         *
+         *     Duas portas, e só duas: a Secretaria pela permissão
+         *     `download_requestdocument`, e o próprio candidato por posse. Docente e
+         *     Coordenação enxergam o requerimento e mesmo assim levam 403 aqui —
+         *     identidade e contracheque não são insumo de classificação.
+         *
+         *     A permissão ampla é checada só depois da posse porque ela é a exceção,
+         *     e não a regra: o dono do documento não precisa de permissão de
+         *     secretaria para ler o que ele mesmo enviou.
+         */
+        get: operations["apps_academic_router_download_isolated_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/academic/isolated/signup": {
         parameters: {
             query?: never;
@@ -1373,6 +1439,43 @@ export interface components {
             /** Items */
             items?: components["schemas"]["IsolatedItemIn"][] | null;
         };
+        /**
+         * RequestDocumentOut
+         * @description Um anexo, sem o caminho do arquivo.
+         *
+         *     Nem `file` nem `file.url` entram aqui de propósito: MEDIA é servido
+         *     pelo Nginx sem passar pelo Django, então publicar a URL entregaria a
+         *     identidade do candidato a quem descobrisse o endereço — e sem
+         *     AuditLog. O único caminho para o conteúdo é o endpoint de download,
+         *     que checa posse ou permissão e registra o acesso.
+         */
+        RequestDocumentOut: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Kind Label */
+            kind_label: string;
+            /** Filename */
+            filename: string;
+            /** Size */
+            size: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
+         * RequestDocumentKind
+         * @description Os documentos que o edital cobra do candidato.
+         *
+         *     Classe de módulo com nome único: dois enums aninhados de mesmo nome
+         *     colidem no gerador de OpenAPI e o último registrado sobrescreve o
+         *     outro, sem erro no backend.
+         * @enum {string}
+         */
+        RequestDocumentKind: "identity" | "diploma" | "lattes" | "address" | "payslip" | "supervisor_auth" | "payment_receipt";
         /**
          * IsolatedSignupOut
          * @description Resposta única do auto-registro.
@@ -2306,6 +2409,90 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IsolatedRequestOut"];
                 };
+            };
+        };
+    };
+    apps_academic_router_list_isolated_documents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestDocumentOut"][];
+                };
+            };
+        };
+    };
+    apps_academic_router_upload_isolated_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * RequestDocumentKind
+                     * @description Os documentos que o edital cobra do candidato.
+                     *
+                     *     Classe de módulo com nome único: dois enums aninhados de mesmo nome
+                     *     colidem no gerador de OpenAPI e o último registrado sobrescreve o
+                     *     outro, sem erro no backend.
+                     * @enum {string}
+                     */
+                    kind: "identity" | "diploma" | "lattes" | "address" | "payslip" | "supervisor_auth" | "payment_receipt";
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestDocumentOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_download_isolated_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

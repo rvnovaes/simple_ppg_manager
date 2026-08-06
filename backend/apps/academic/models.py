@@ -1108,6 +1108,29 @@ class IsolatedEnrollmentRequest(models.Model):
             "Só um requerimento em rascunho pode ser alterado.",
         )
 
+    def ensure_document_upload_allowed(self, kind: str) -> None:
+        """Quando cada tipo de anexo ainda pode ser enviado.
+
+        A documentação da inscrição acompanha `ensure_editable()`: depois
+        de inscrito, trocar a identidade ou o diploma mudaria a peça que o
+        docente classifica e a secretaria julga.
+
+        O comprovante da GRU é o oposto e por isso tem regra própria: ele
+        não existe no rascunho — a guia só é emitida no deferimento —, e
+        exigi-lo no mesmo estado dos outros fecharia a porta do pagamento
+        (US-013).
+        """
+        if kind == RequestDocumentKind.PAYMENT_RECEIPT:
+            self._exigir_status(
+                self.Status.DEFERRED,
+                "O comprovante da GRU só é anexado depois do deferimento.",
+            )
+            return
+        self._exigir_status(
+            self.Status.DRAFT,
+            "A documentação só é anexada enquanto o requerimento é rascunho.",
+        )
+
     def required_document_kinds(self) -> list[str]:
         """Tipos de documento que este requerimento precisa ter anexados.
 
@@ -1345,6 +1368,25 @@ def caminho_do_documento(instance: "RequestDocument", filename: str) -> str:
     )
 
 
+# O que o edital aceita como anexo. PDF é o formato do diploma e do
+# Lattes; imagem entra porque comprovante de endereço e identidade quase
+# sempre chegam como foto de celular. Nada além disso: documento de
+# candidato é lido pela secretaria, não executado.
+EXTENSOES_DE_DOCUMENTO = (".pdf", ".jpg", ".jpeg", ".png")
+# 10 MB por arquivo — foto de celular cabe com folga e PDF digitalizado
+# também; acima disso é digitalização mal configurada, não documento.
+TAMANHO_MAXIMO_DO_DOCUMENTO = 10 * 1024 * 1024
+
+
+class RequestDocumentQuerySet(models.QuerySet):
+    def for_program(self, program) -> "RequestDocumentQuerySet":
+        """O anexo não tem FK `program` (ele mora no requerimento), então
+        o escopo de tenant atravessa a FK — mas continua obrigatório e
+        continua sendo o primeiro filtro de toda busca.
+        """
+        return self.filter(request__program=program)
+
+
 class RequestDocumentKind(models.TextChoices):
     """Os documentos que o edital cobra do candidato.
 
@@ -1387,6 +1429,8 @@ class RequestDocument(models.Model):
     file = models.FileField("arquivo", upload_to=caminho_do_documento)
     uploaded_at = models.DateTimeField("anexado em", auto_now_add=True)
 
+    objects = RequestDocumentQuerySet.as_manager()
+
     class Meta:
         verbose_name = "documento do requerimento"
         verbose_name_plural = "documentos do requerimento"
@@ -1406,3 +1450,30 @@ class RequestDocument(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_kind_display()} de {self.request}"
+
+    @classmethod
+    def validate_upload(cls, *, filename: str, size: int) -> None:
+        """Formato e tamanho do que chega — invariante, não detalhe da borda.
+
+        Fica no model, e não num validador de campo, porque o arquivo que
+        interessa validar é o que a requisição traz: `FileField.validators`
+        só roda em `full_clean()` e não vê o tamanho do upload. Método de
+        classe porque a checagem antecede a instância — recusar antes de
+        gravar é o ponto.
+
+        Um único `code="invalid_document"` para os dois casos: a tela
+        mostra a mensagem, e distinguir extensão de tamanho no `code` só
+        multiplicaria contrato.
+        """
+        if not filename or not filename.lower().endswith(EXTENSOES_DE_DOCUMENTO):
+            aceitas = ", ".join(EXTENSOES_DE_DOCUMENTO)
+            raise DomainError(
+                f"O documento precisa ser um arquivo {aceitas}.",
+                code="invalid_document",
+            )
+        if size > TAMANHO_MAXIMO_DO_DOCUMENTO:
+            limite = TAMANHO_MAXIMO_DO_DOCUMENTO // (1024 * 1024)
+            raise DomainError(
+                f"O documento tem no máximo {limite} MB.",
+                code="invalid_document",
+            )

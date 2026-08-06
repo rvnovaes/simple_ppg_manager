@@ -19,7 +19,12 @@ from apps.academic.models import (
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
 )
-from apps.academic.tests.conftest import anexar_documentos_obrigatorios
+from apps.academic.tests.conftest import (
+    SENHA,
+    anexar_documentos_obrigatorios,
+    criar_candidato,
+    logar,
+)
 from apps.accounts.models import User
 from apps.audit.models import AuditLog
 from apps.people.models import Person
@@ -29,43 +34,16 @@ pytestmark = pytest.mark.django_db
 
 URL_OFERTAS = "/api/v1/academic/isolated/offerings/"
 URL_REQUERIMENTOS = "/api/v1/academic/isolated/requests/"
-SENHA = "senha-de-teste-123"
-
-
-def _criar_candidato(*, program: Program, username: str, nome: str) -> Person:
-    """Candidato completo: conta no papel e Person ativa.
-
-    A Person ativa não é detalhe de fixture — é dela que `current_program`
-    tira o tenant da requisição.
-    """
-    user = User.objects.create_user(username=username, password=SENHA)
-    user.groups.add(Group.objects.get(name="Candidato"))
-    return Person.objects.create(
-        program=program,
-        user=user,
-        full_name=nome,
-        primary_email=f"{username}@exemplo.br",
-    )
-
-
-def _logar(client: Client, pessoa: Person) -> Client:
-    """`Person.user` é opcional no model (pessoa sem conta é registro
-    histórico); aqui o candidato sempre tem uma.
-    """
-    user = pessoa.user
-    assert user is not None
-    client.force_login(user)
-    return client
 
 
 @pytest.fixture
 def candidata(program: Program) -> Person:
-    return _criar_candidato(program=program, username="marina", nome="Marina Alves")
+    return criar_candidato(program=program, username="marina", nome="Marina Alves")
 
 
 @pytest.fixture
 def client_candidata(client: Client, candidata: Person) -> Client:
-    return _logar(client, candidata)
+    return logar(client, candidata)
 
 
 @pytest.fixture
@@ -106,7 +84,7 @@ def test_ofertas_do_edital_aberto_trazem_o_saldo_de_vagas(
     outro = IsolatedEnrollmentRequest.objects.create(
         program=program,
         cycle=ciclo_aberto,
-        person=_criar_candidato(program=program, username="joao", nome="João Dias"),
+        person=criar_candidato(program=program, username="joao", nome="João Dias"),
         status=IsolatedEnrollmentRequest.Status.DEFERRED,
     )
     IsolatedEnrollmentItem.objects.create(request=outro, offering=ofertas_abertas[0])
@@ -226,7 +204,7 @@ def test_criar_requerimento_ignora_programa_e_ciclo_do_payload(
 def test_criar_requerimento_em_nome_de_outra_pessoa_devolve_403(
     client_candidata, program, ciclo_aberto, ofertas_abertas
 ):
-    outra = _criar_candidato(program=program, username="joao", nome="João Dias")
+    outra = criar_candidato(program=program, username="joao", nome="João Dias")
 
     resposta = _post(
         client_candidata,
@@ -308,7 +286,7 @@ def test_criar_requerimento_sem_sessao_devolve_401(client, ciclo_aberto):
 def test_escrita_sem_token_csrf_e_recusada(candidata, ciclo_aberto, ofertas_abertas):
     """Guarda o ADR-003/004: sessão sem CSRF não escreve."""
     client = Client(enforce_csrf_checks=True)
-    _logar(client, candidata)
+    logar(client, candidata)
 
     resposta = _post(
         client, URL_REQUERIMENTOS, {"items": [{"offering_id": ofertas_abertas[0].id}]}
@@ -417,7 +395,7 @@ def test_patch_depois_de_submetido_devolve_409(
 def test_patch_no_requerimento_de_outro_candidato_devolve_403(
     client_candidata, program, ciclo_aberto, ofertas_abertas
 ):
-    outra = _criar_candidato(program=program, username="joao", nome="João Dias")
+    outra = criar_candidato(program=program, username="joao", nome="João Dias")
     requerimento = _rascunho(program=program, cycle=ciclo_aberto, person=outra)
 
     resposta = _patch(client_candidata, _url(requerimento), {"is_ufmg_staff": True})
@@ -530,7 +508,7 @@ def test_submit_fora_da_janela_devolve_400(
 def test_submit_do_requerimento_de_outro_candidato_devolve_403(
     client_candidata, program, ciclo_aberto, ofertas_abertas
 ):
-    outra = _criar_candidato(program=program, username="joao", nome="João Dias")
+    outra = criar_candidato(program=program, username="joao", nome="João Dias")
     requerimento = _rascunho(
         program=program, cycle=ciclo_aberto, person=outra, ofertas=[ofertas_abertas[0]]
     )
@@ -555,7 +533,7 @@ def test_candidato_lista_so_o_proprio_requerimento(
         person=candidata,
         ofertas=[ofertas_abertas[0]],
     )
-    outra = _criar_candidato(program=program, username="joao", nome="João Dias")
+    outra = criar_candidato(program=program, username="joao", nome="João Dias")
     _rascunho(program=program, cycle=ciclo_aberto, person=outra)
 
     resposta = client_candidata.get(URL_REQUERIMENTOS)
@@ -568,7 +546,7 @@ def test_secretaria_lista_o_edital_inteiro(
     client_secretaria, secretaria_no_programa, program, ciclo_aberto, ofertas_abertas
 ):
     for username, nome in (("marina", "Marina Alves"), ("joao", "João Dias")):
-        pessoa = _criar_candidato(program=program, username=username, nome=nome)
+        pessoa = criar_candidato(program=program, username=username, nome=nome)
         _rascunho(
             program=program,
             cycle=ciclo_aberto,
@@ -594,7 +572,7 @@ def test_docente_lista_so_quem_pediu_a_oferta_dele_sem_repetir(
     docente.person.save(update_fields=["user"])
     client.force_login(user)
 
-    pessoa = _criar_candidato(program=program, username="marina", nome="Marina Alves")
+    pessoa = criar_candidato(program=program, username="marina", nome="Marina Alves")
     _rascunho(
         program=program,
         cycle=ciclo_aberto,

@@ -9,11 +9,13 @@ from datetime import UTC, date, datetime
 import pytest
 
 from apps.academic.models import (
+    TAMANHO_MAXIMO_DO_DOCUMENTO,
     DisciplineOffering,
     EnrollmentAdjustmentRequest,
     IsolatedEnrollmentCycle,
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
+    RequestDocument,
     RequestDocumentKind,
     Student,
     Teacher,
@@ -419,6 +421,60 @@ def test_documentacao_do_candidato_comum_nao_pede_contracheque_nem_autorizacao()
 
     assert RequestDocumentKind.PAYSLIP not in faltando
     assert RequestDocumentKind.SUPERVISOR_AUTH not in faltando
+
+
+@pytest.mark.parametrize(
+    "nome", ["identidade.pdf", "endereco.JPG", "diploma.jpeg", "foto.png"]
+)
+def test_arquivo_no_formato_do_edital_passa(nome):
+    RequestDocument.validate_upload(filename=nome, size=1024)
+
+
+@pytest.mark.parametrize("nome", ["contrato.docx", "script.exe", "sem-extensao", ""])
+def test_arquivo_fora_do_formato_do_edital_e_recusado(nome):
+    with pytest.raises(DomainError) as exc:
+        RequestDocument.validate_upload(filename=nome, size=1024)
+
+    assert exc.value.code == "invalid_document"
+    assert exc.value.status_code == 400
+
+
+def test_arquivo_no_limite_exato_passa():
+    RequestDocument.validate_upload(
+        filename="identidade.pdf", size=TAMANHO_MAXIMO_DO_DOCUMENTO
+    )
+
+
+def test_arquivo_acima_do_limite_e_recusado():
+    with pytest.raises(DomainError) as exc:
+        RequestDocument.validate_upload(
+            filename="identidade.pdf", size=TAMANHO_MAXIMO_DO_DOCUMENTO + 1
+        )
+
+    assert exc.value.code == "invalid_document"
+
+
+def test_documentacao_da_inscricao_so_muda_no_rascunho():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.SUBMITTED)
+
+    with pytest.raises(InvalidStateTransition):
+        requerimento.ensure_document_upload_allowed(RequestDocumentKind.IDENTITY)
+
+
+def test_comprovante_da_gru_nao_entra_antes_do_deferimento():
+    """No rascunho a guia sequer foi emitida — ela nasce da decisão da
+    secretaria, não da inscrição.
+    """
+    with pytest.raises(InvalidStateTransition):
+        _requerimento().ensure_document_upload_allowed(
+            RequestDocumentKind.PAYMENT_RECEIPT
+        )
+
+
+def test_comprovante_da_gru_entra_no_requerimento_deferido():
+    requerimento = _requerimento(status=IsolatedEnrollmentRequest.Status.DEFERRED)
+
+    requerimento.ensure_document_upload_allowed(RequestDocumentKind.PAYMENT_RECEIPT)
 
 
 def test_inscrever_fora_da_janela_levanta():

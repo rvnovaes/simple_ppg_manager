@@ -7,6 +7,7 @@ reduzida ao que a tela precisa mostrar.
 """
 
 import datetime
+from pathlib import Path
 
 from ninja import Schema
 from pydantic import EmailStr, model_validator
@@ -20,6 +21,7 @@ from .models import (
     EnrollmentAdjustmentRequest,
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
+    RequestDocument,
     Student,
     Teacher,
 )
@@ -510,6 +512,46 @@ class IsolatedRequestOut(Schema):
     @staticmethod
     def resolve_missing_documents(obj: IsolatedEnrollmentRequest) -> list[str]:
         return obj.missing_documents()
+
+
+class RequestDocumentOut(Schema):
+    """Um anexo, sem o caminho do arquivo.
+
+    Nem `file` nem `file.url` entram aqui de propósito: MEDIA é servido
+    pelo Nginx sem passar pelo Django, então publicar a URL entregaria a
+    identidade do candidato a quem descobrisse o endereço — e sem
+    AuditLog. O único caminho para o conteúdo é o endpoint de download,
+    que checa posse ou permissão e registra o acesso.
+    """
+
+    id: int
+    kind: str
+    kind_label: str
+    filename: str
+    size: int
+    uploaded_at: datetime.datetime
+
+    @staticmethod
+    def resolve_kind_label(obj: RequestDocument) -> str:
+        return obj.get_kind_display()
+
+    @staticmethod
+    def resolve_filename(obj: RequestDocument) -> str:
+        """Só o nome, sem o caminho: o diretório é detalhe do storage e
+        expõe o id do ciclo e do requerimento sem necessidade.
+        """
+        return Path(obj.file.name or "").name
+
+    @staticmethod
+    def resolve_size(obj: RequestDocument) -> int:
+        """Arquivo sumido do storage vale 0, e não erro 500: a listagem da
+        secretaria precisa continuar mostrando que o anexo existe para ela
+        poder pedir o reenvio.
+        """
+        try:
+            return obj.file.size
+        except (FileNotFoundError, ValueError):
+            return 0
 
 
 class IsolatedSignupIn(Schema):

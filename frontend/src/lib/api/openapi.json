@@ -1725,6 +1725,151 @@
         ]
       }
     },
+    "/academic/isolated/requests/{request_id}/documents": {
+      "get": {
+        "operationId": "apps_academic_router_list_isolated_documents",
+        "summary": "List Isolated Documents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RequestDocumentOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "O que já foi anexado — nome, tipo, tamanho e data, sem o arquivo.\n\nEscopo por papel igual ao da fila (`visible_to`): o candidato vê os\npróprios anexos, o docente vê os de quem se inscreveu na oferta dele,\nsecretaria e coordenação veem todos. Quem enxerga a lista não\nnecessariamente baixa o conteúdo — isso é a rota de download.",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_academic_router_upload_isolated_document",
+        "summary": "Upload Isolated Document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDocumentOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Anexa (ou substitui) o documento de um tipo.\n\nA permissão é a de montar o requerimento — anexar é parte de montar —,\ne `_meu_requerimento` garante que é o próprio: nem a Secretaria anexa\ndocumento no lugar do candidato, pelo mesmo motivo de US-009.\n\nSubstituir, e não empilhar: um tipo tem uma versão\n(`unique_documento_por_requerimento_e_tipo`), e o reenvio é a correção\nde quem mandou a página errada.",
+        "tags": [
+          "academic"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "description": "Os documentos que o edital cobra do candidato.\n\nClasse de módulo com nome único: dois enums aninhados de mesmo nome\ncolidem no gerador de OpenAPI e o último registrado sobrescreve o\noutro, sem erro no backend.",
+                    "enum": [
+                      "identity",
+                      "diploma",
+                      "lattes",
+                      "address",
+                      "payslip",
+                      "supervisor_auth",
+                      "payment_receipt"
+                    ],
+                    "title": "RequestDocumentKind",
+                    "type": "string"
+                  },
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/academic/isolated/documents/{document_id}/download": {
+      "get": {
+        "operationId": "apps_academic_router_download_isolated_document",
+        "summary": "Download Isolated Document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.\n\nDuas portas, e só duas: a Secretaria pela permissão\n`download_requestdocument`, e o próprio candidato por posse. Docente e\nCoordenação enxergam o requerimento e mesmo assim levam 403 aqui —\nidentidade e contracheque não são insumo de classificação.\n\nA permissão ampla é checada só depois da posse porque ela é a exceção,\ne não a regra: o dono do documento não precisa de permissão de\nsecretaria para ler o que ele mesmo enviou.",
+        "tags": [
+          "academic"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/academic/isolated/signup": {
       "post": {
         "operationId": "apps_academic_router_isolated_signup",
@@ -3920,6 +4065,60 @@
         },
         "title": "IsolatedRequestPatch",
         "type": "object"
+      },
+      "RequestDocumentOut": {
+        "description": "Um anexo, sem o caminho do arquivo.\n\nNem `file` nem `file.url` entram aqui de propósito: MEDIA é servido\npelo Nginx sem passar pelo Django, então publicar a URL entregaria a\nidentidade do candidato a quem descobrisse o endereço — e sem\nAuditLog. O único caminho para o conteúdo é o endpoint de download,\nque checa posse ou permissão e registra o acesso.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "title": "Uploaded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "kind_label",
+          "filename",
+          "size",
+          "uploaded_at"
+        ],
+        "title": "RequestDocumentOut",
+        "type": "object"
+      },
+      "RequestDocumentKind": {
+        "description": "Os documentos que o edital cobra do candidato.\n\nClasse de módulo com nome único: dois enums aninhados de mesmo nome\ncolidem no gerador de OpenAPI e o último registrado sobrescreve o\noutro, sem erro no backend.",
+        "enum": [
+          "identity",
+          "diploma",
+          "lattes",
+          "address",
+          "payslip",
+          "supervisor_auth",
+          "payment_receipt"
+        ],
+        "title": "RequestDocumentKind",
+        "type": "string"
       },
       "IsolatedSignupOut": {
         "description": "Resposta única do auto-registro.\n\nCorpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem\nexatamente isto, senão a rota vira um oráculo de quem tem conta.",

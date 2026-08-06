@@ -5,12 +5,14 @@ depois, chamada ao model/service, schema de saída explícito. Zero regra de
 negócio aqui.
 """
 
+from pathlib import Path
+
 from django.db import transaction
-from django.http import HttpRequest
+from django.http import FileResponse, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
-from ninja import Router, Status
+from ninja import File, Form, Router, Status, UploadedFile
 from ninja.decorators import decorate_view
 from ninja.pagination import paginate
 
@@ -35,6 +37,8 @@ from .models import (
     IsolatedEnrollmentCycle,
     IsolatedEnrollmentItem,
     IsolatedEnrollmentRequest,
+    RequestDocument,
+    RequestDocumentKind,
     Student,
     Teacher,
 )
@@ -50,6 +54,7 @@ from .schemas import (
     IsolatedRequestPatch,
     IsolatedSignupIn,
     IsolatedSignupOut,
+    RequestDocumentOut,
     StudentIn,
     StudentOut,
     StudentPatch,
@@ -674,6 +679,123 @@ def submit_isolated_request(request: HttpRequest, request_id: int):
             cycle_id=requerimento.cycle_id,
         )
     return requerimento
+
+
+@router.get(
+    "/isolated/requests/{int:request_id}/documents",
+    response=list[RequestDocumentOut],
+)
+def list_isolated_documents(request: HttpRequest, request_id: int):
+    """O que já foi anexado — nome, tipo, tamanho e data, sem o arquivo.
+
+    Escopo por papel igual ao da fila (`visible_to`): o candidato vê os
+    próprios anexos, o docente vê os de quem se inscreveu na oferta dele,
+    secretaria e coordenação veem todos. Quem enxerga a lista não
+    necessariamente baixa o conteúdo — isso é a rota de download.
+    """
+    require_perm(request, "academic.view_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = get_object_or_404(
+        IsolatedEnrollmentRequest.objects.for_program(program).visible_to(
+            request.user, program
+        ),
+        pk=request_id,
+    )
+    return requerimento.documents.all()
+
+
+@router.post(
+    "/isolated/requests/{int:request_id}/documents",
+    response={201: RequestDocumentOut},
+)
+def upload_isolated_document(
+    request: HttpRequest,
+    request_id: int,
+    kind: RequestDocumentKind = Form(...),
+    file: UploadedFile = File(...),
+):
+    """Anexa (ou substitui) o documento de um tipo.
+
+    A permissão é a de montar o requerimento — anexar é parte de montar —,
+    e `_meu_requerimento` garante que é o próprio: nem a Secretaria anexa
+    documento no lugar do candidato, pelo mesmo motivo de US-009.
+
+    Substituir, e não empilhar: um tipo tem uma versão
+    (`unique_documento_por_requerimento_e_tipo`), e o reenvio é a correção
+    de quem mandou a página errada.
+    """
+    require_perm(request, "academic.change_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    requerimento = _meu_requerimento(request, program, request_id)
+    # As duas cobranças são do model e voltam como 4xx do handler central:
+    # estado errado é 409, arquivo recusado é 400 com code invalid_document.
+    requerimento.ensure_document_upload_allowed(kind)
+    RequestDocument.validate_upload(filename=file.name or "", size=file.size or 0)
+
+    with transaction.atomic():
+        anterior = RequestDocument.objects.filter(
+            request=requerimento, kind=kind
+        ).first()
+        if anterior is not None:
+            # `delete()` do model não apaga o arquivo do storage; sem esta
+            # linha cada reenvio deixaria um órfão no MEDIA_ROOT. Não é
+            # transacional (o storage não participa do rollback), e por
+            # isso vem antes de qualquer escrita que possa falhar.
+            anterior.file.delete(save=False)
+            anterior.delete()
+        documento = RequestDocument.objects.create(
+            request=requerimento, kind=kind, file=file
+        )
+        audit.record(
+            "academic.isolated.document_upload",
+            request=request,
+            target=requerimento,
+            document_id=documento.pk,
+            kind=str(kind),
+            filename=file.name,
+            replaced=anterior is not None,
+        )
+    return Status(201, documento)
+
+
+@router.get("/isolated/documents/{int:document_id}/download")
+def download_isolated_document(request: HttpRequest, document_id: int):
+    """Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.
+
+    Duas portas, e só duas: a Secretaria pela permissão
+    `download_requestdocument`, e o próprio candidato por posse. Docente e
+    Coordenação enxergam o requerimento e mesmo assim levam 403 aqui —
+    identidade e contracheque não são insumo de classificação.
+
+    A permissão ampla é checada só depois da posse porque ela é a exceção,
+    e não a regra: o dono do documento não precisa de permissão de
+    secretaria para ler o que ele mesmo enviou.
+    """
+    require_perm(request, "academic.view_isolatedenrollmentrequest")
+    program: Program = current_program(request)
+    documento = get_object_or_404(
+        RequestDocument.objects.for_program(program).select_related("request"),
+        pk=document_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if not pessoas.filter(pk=documento.request.person_id).exists():
+        require_perm(request, "academic.download_requestdocument")
+
+    with transaction.atomic():
+        # Auditar leitura é exceção no projeto e aqui é obrigatório: é o
+        # acesso ao documento de identidade de outra pessoa.
+        audit.record(
+            "academic.isolated.document_download",
+            request=request,
+            target=documento.request,
+            document_id=documento.pk,
+            kind=documento.kind,
+        )
+    return FileResponse(
+        documento.file.open("rb"),
+        as_attachment=True,
+        filename=Path(documento.file.name).name,
+    )
 
 
 @router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})
