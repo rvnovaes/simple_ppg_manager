@@ -70,6 +70,14 @@
 								</a>
 							{/if}
 						{/if}
+						<!-- Por permissão, e não por papel: `rank_disciplineoffering` é
+						exclusiva do Docente (academic.0011) e é exatamente o que esta
+						tela exige. -->
+						{#if sessao.pode('academic.rank_disciplineoffering')}
+							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/classificacao')}>
+								Classificação
+							</a>
+						{/if}
 						{#if sessao.pode('academic.change_enrollmentadjustmentrequest')}
 							<a class="text-grafite hover:text-tinta text-sm" href={resolve('/orientandos')}>
 								Orientandos

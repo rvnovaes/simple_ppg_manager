@@ -658,3 +658,38 @@ Started: qua. 05 ago 2026 20:19:36 -03
     quatro papéis têm `view_isolatedenrollmentrequest`, mas /acompanhamento é a tela do próprio
     candidato. O critério é `sessao.temPapel('Candidato')`.
 ---
+
+## 2026-08-05 - US-018 (Tela Svelte — classificação pelo docente)
+- Tela `frontend/src/routes/(app)/classificacao/+page.svelte` (nova): lista as ofertas do docente
+  por `GET /academic/isolated/offerings/?mine=true`, separada em "Falta classificar"
+  (`needs_ranking`) e "Já respondidas"; abrir uma carrega os inscritos por
+  `/offerings/{id}/candidates` e mostra a fila reordenável por ↑/↓, com o número de vagas visível
+  e uma régua "Limite de vagas" desenhada depois da posição `seats_available`.
+- Salvar faz `POST /offerings/{id}/rank` com `item_ids` na ordem da tela (posição é o índice; o
+  backend numera 1..N), substitui a lista pela resposta, confirma por `role="status"` e recarrega
+  as ofertas para o destaque de `needs_ranking` sair sem refresh.
+- Nenhum link de download: o docente não tem `download_requestdocument` (`academic.0011`). Só
+  nome, data de inscrição e posição — comentário no template registra o porquê.
+- Menu de `(app)/+layout.svelte`: link "Classificação" por `sessao.pode('academic.rank_disciplineoffering')`
+  — aqui a permissão é exclusiva do Docente, então é `pode()` e não `temPapel()`.
+- Arquivos alterados: `frontend/src/routes/(app)/classificacao/+page.svelte` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`, `ralph/prd.json`.
+- `make gen-api` rodado antes de tipar: `schema.d.ts` sem diff, as US de backend já o deixaram em dia.
+- `make ready` verde: prettier/eslint, mypy (87 arquivos), svelte-check (194 arquivos, 0 erros),
+  pytest 513 passed. **Sem migração e sem `make migrate`** — a US só toca o front.
+- **Verificação em browser pendente**: `/classificacao` responde 200 pelo nginx de :8080 e o Vite
+  de :5173 é desta worktree (`/proc/<pid>/cwd`), mas o consentimento do Chrome para o CDP não foi
+  dado e o banco compartilhado não tem ciclo nem requerimento para a tela exibir.
+- **Learnings for future iterations:**
+  - **Reordenar é ↑/↓, não drag-and-drop**: arrastar exigiria biblioteca nova (Seção 2 — nada
+    entra sem ADR) e não é operável por teclado. Os botões levam `aria-label` com o nome da
+    pessoa, senão o leitor de tela anuncia só a seta.
+  - **A linha de corte é `seats_available`, e não `seats`**: quem a secretaria já deferiu ocupou
+    vaga e saiu de `candidates()` (a fila só tem `submitted`). Desenhar em `seats` prometeria
+    vaga que não existe. `seats_available == 0` troca a régua por uma frase — a ordem vira fila
+    de espera, e não erro.
+  - **`?mine=true` ignora a janela de inscrição de propósito** (comentário em
+    `list_isolated_offerings`): o docente classifica DEPOIS que ela fecha, então a tela dele não
+    trata `no_open_cycle` — o recorte é `cycle__is_active=True`.
+  - O `prettier` reescreve `api.POST(...)` de várias linhas para uma só quando cabe; rodar
+    `make ready` e commitar o resultado dele evita o segundo commit de formatação.
