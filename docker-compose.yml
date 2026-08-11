@@ -53,11 +53,37 @@ services:
         condition: service_healthy
     command: uv run python manage.py runserver 0.0.0.0:8000
 
+  # Servidor de desenvolvimento do front. Fica no Compose, e não no host, para
+  # que a porta do Vite deixe de ser um recurso disputado: aqui a 5173 é um
+  # endereço da rede interna DESTA stack, então N canteiros rodam N Vites sem
+  # combinar porta nenhuma. É também o que dispensa o `host.docker.internal`.
+  #
+  # Só existe em desenvolvimento. Em produção não há processo Node: o Nginx
+  # serve o build do adapter-static direto do disco (ADR-005).
+  frontend:
+    # `-slim` (Debian, glibc) e não `-alpine` (musl) de propósito: o
+    # node_modules é o MESMO do host, montado abaixo, e o `npm ci` de lá baixa
+    # os binários `linux-x64-gnu` do rollup e do @tailwindcss/oxide. Numa
+    # imagem musl eles não carregam, e o erro sai como "cannot find module"
+    # de um pacote que está lá.
+    image: node:25-slim
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    environment:
+      # A porta publicada do Nginx, que é por onde o NAVEGADOR fala. O cliente
+      # de HMR precisa dela para abrir o WebSocket na origem certa; sem isto
+      # ele tenta a porta em que o Vite escuta, que não é publicada.
+      NGINX_PORT: ${NGINX_PORT:-8080}
+    command: npm run dev
+    # Sem porta publicada: quem atende o navegador é o Nginx. Abrir o Vite
+    # direto quebra login e CSRF (ADR-004).
+
   nginx:
     image: nginx:alpine
     ports:
       # Porta cravada colide: duas stacks deste projeto no mesmo host disputam a 8080.
-      # NGINX_PORT é o nome que o chef-helena-dev escreve no .env da worktree; sem ele
+      # NGINX_PORT é o nome que a esteira escreve no .env da worktree; sem ele
       # o valor de sempre continua valendo.
       - "${NGINX_PORT:-8080}:80"
     volumes:
@@ -65,9 +91,7 @@ services:
       - ./nginx/proxy_headers.conf:/etc/nginx/proxy_headers.conf:ro
     depends_on:
       - backend
-    extra_hosts:
-      # Permite ao Nginx no container alcançar o Vite rodando no host (make web).
-      - "host.docker.internal:host-gateway"
+      - frontend
 
 volumes:
   pgdata:

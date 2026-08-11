@@ -280,9 +280,9 @@ não só no README).
 | Instalar deps backend | `make install` (`cd backend && uv sync`) |
 | Instalar deps front | `make install-web` |
 | Subir só o banco | `make db` (`docker compose up -d db`) |
-| Subir tudo (dev, com Nginx) | `make up` — abrir **http://localhost:8080** (abrir `:5173` direto quebra login/CSRF) |
+| Subir tudo (dev, com Nginx) | `make up` — sobe db, backend, frontend e nginx; abrir **http://localhost:8080** (a porta do Vite não é publicada) |
 | Backend nativo com reload | `make run` (`uv run python manage.py runserver`) |
-| Front nativo com reload | `make web` (`npm run dev`) — só junto do Nginx de dev |
+| Log do Vite | `make web` (`docker compose logs -f frontend`) — o Vite é serviço do Compose e sobe no `make up` |
 | Criar migrações | `make migrations` |
 | Aplicar migrações | `make migrate` |
 | Criar superusuário | `make superuser` |

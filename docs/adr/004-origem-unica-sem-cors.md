@@ -32,9 +32,11 @@ está no deploy, não no código.
 - Cookie de sessão funciona com `SameSite=Lax`, sem exceção nenhuma.
 - Não existe ambiente onde "funciona local mas quebra em produção" por
   origem: o desenho é o mesmo nos dois.
-- Abrir o Vite direto em `:5173` **quebra login e CSRF** — em dev, sempre
-  `:8080`. Isso está no Makefile e no CLAUDE.md porque é a pegadinha que
-  mais vai custar tempo ao time.
+- Abrir o Vite direto **quebra login e CSRF** — em dev, sempre `:8080`.
+  Isso está no Makefile e no CLAUDE.md porque é a pegadinha que mais vai
+  custar tempo ao time. Desde que o Vite virou serviço do Compose a
+  pegadinha ficou difícil de cair: a 5173 é interna à rede da stack e não é
+  publicada, então não há o que abrir por engano.
 - O Nginx passa a ser peça obrigatória também em dev, o que adiciona um
   container. É uma peça que a infra já domina.
 - `Host`, `X-Forwarded-Proto` e `X-Forwarded-For` precisam ser repassados

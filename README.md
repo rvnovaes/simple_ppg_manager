@@ -826,18 +826,18 @@ Dois atalhos internos que aparecem em todo alvo:
 | Comando     | O que faz                                                                                                                                          |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `make db`   | Sobe **só o Postgres** (`docker compose up -d db`). Use com `make run` quando quiser o Django nativo, com reload mais rápido e depurador acoplado. |
-| `make up`   | Sobe `db` + `backend` + `nginx`, com `--build`. É o modo normal de trabalho. Termina lembrando de rodar `make web` em outro terminal.              |
+| `make up`   | Sobe `db` + `backend` + `frontend` + `nginx`, com `--build`. É o modo normal de trabalho: a stack inteira, num comando só.                         |
 | `make down` | `docker compose down`. Derruba os containers e **preserva o volume** — o banco continua lá.                                                        |
 
-Note que `make up` **não sobe o frontend**: ele não é um serviço do
-Compose. Ver a [seção 7](#7-o-vite-em-desenvolvimento-e-em-produção).
+O `make up` sobe **o frontend também** — o Vite é um serviço do Compose.
+Ver a [seção 7](#7-o-vite-em-desenvolvimento-e-em-produção).
 
 ### Rodar em modo desenvolvimento
 
 | Comando    | O que faz                                                                                                                                                                        |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `make run` | `runserver` do Django **nativo**, fora do container, na 8000. Precisa de `make db` antes. Alternativa ao `backend` do Compose quando você quer depurar com breakpoint no editor. |
-| `make web` | `npm run dev` — o servidor do Vite na 5173, com hot reload. **Precisa ficar rodando** enquanto você trabalha no front. Acesse pela 8080, nunca pela 5173.                        |
+| `make web` | Acompanha o log do Vite (`docker compose logs -f frontend`). O servidor sobe junto com o `make up`, no serviço `frontend` — não é mais preciso deixá-lo rodando à parte. Acesse sempre pela 8080. |
 
 ### Banco de dados
 
@@ -896,12 +896,12 @@ compilação) → **Node** (quem executa o Vite).
 
 ### O Vite faz duas coisas bem diferentes
 
-**1. Servidor de desenvolvimento** — `npm run dev`, ou seja, `make web`.
+**1. Servidor de desenvolvimento** — `npm run dev`, no serviço `frontend`.
 
-Fica no ar em `:5173` e serve o código-fonte ao navegador quase sem
-transformação, usando módulos ES nativos. Quando você salva um `.svelte`,
-ele empurra só aquele módulo para a página já aberta — é o _hot reload_.
-Este é o processo Node que precisa ficar vivo enquanto você trabalha.
+Serve o código-fonte ao navegador quase sem transformação, usando módulos ES
+nativos. Quando você salva um `.svelte`, ele empurra só aquele módulo para a
+página já aberta — é o _hot reload_. Este é o processo Node que precisa ficar
+vivo enquanto você trabalha; ele sobe junto com o `make up`.
 
 **2. Empacotador** — `npm run build`.
 
@@ -911,10 +911,10 @@ processo morre.
 
 ### Em desenvolvimento
 
-O Nginx do Compose faz proxy para o Vite que roda **fora** do Docker:
+O Nginx do Compose faz proxy para o Vite, que é um serviço da mesma stack:
 
 ```nginx
-upstream vite { server host.docker.internal:5173; }
+upstream vite { server frontend:5173; }
 
 location / {
     proxy_pass http://vite;
@@ -922,19 +922,33 @@ location / {
 }
 ```
 
-`host.docker.internal` é como o container alcança a máquina hospedeira — é
-para isso que existe o `extra_hosts: host.docker.internal:host-gateway` no
-serviço `nginx`.
+Aquela `5173` é a porta **interna** da rede do Compose. Ela não é publicada e
+não precisa ser: quem atende o navegador é o Nginx, na 8080.
 
-Daí os dois terminais: um com `make up` (containers), outro com `make web`
-(Vite nativo). Sem `make web`, o `location /` bate num upstream morto e a
-SPA não carrega — mas `/api/` e `/admin/` continuam funcionando, porque
-vão para o `backend`, que é container.
+Um só terminal, portanto — `make up` sobe os quatro serviços e o front já
+está no ar. O `make web` continua existindo, mas agora só acompanha o log do
+Vite.
 
-Por que o Vite não é um serviço do Compose: hot reload dentro de container
-com bind mount é lento e o _file watching_ costuma falhar em silêncio.
-Rodar nativo dá reload instantâneo. O custo é o passo manual, e é por isso
-que o próprio `make up` termina imprimindo o lembrete.
+**Por que o Vite é serviço do Compose.** Ele já foi nativo, alcançado por
+`host.docker.internal:5173`, e a razão era hot reload mais rápido. O que
+derrubou esse arranjo foi a esteira de obra: com N worktrees rodando ao mesmo
+tempo, os N Nginx apontavam todos para o mesmo Vite do host — que serve o
+código de UMA worktree. Todo canteiro exibia o front de outro, sem erro
+nenhum na tela. Uma porta interna por stack resolve isso sem parametrizar
+nada, porque cada canteiro tem a sua rede.
+
+Duas consequências que valem saber:
+
+- A imagem é `node:25-slim`, não `node:alpine`. O `node_modules` montado é o
+  mesmo do host (é ele que o `make lint` e o `make typecheck` usam), e o
+  `npm ci` de lá baixa os binários `linux-x64-gnu` do rollup e do
+  `@tailwindcss/oxide`. Numa imagem musl eles não carregam, e o erro aparece
+  como "cannot find module" de um pacote que está lá.
+- O `hmr.clientPort` do `vite.config.ts` vem de `NGINX_PORT`. O WebSocket de
+  hot reload é aberto pelo navegador, então precisa da porta publicada — a
+  5173 não existe fora do Compose. Estava cravado em `8080`, o que fazia
+  qualquer stack em outra porta perder o hot reload em silêncio: a página
+  carrega, só não atualiza.
 
 ### Em produção
 
@@ -1009,8 +1023,14 @@ funcionar.
 Você abriu `:5173`. Use `:8080`.
 
 **A tela não carrega e a 8080 devolve erro de gateway.**
-O `make web` não está rodando, ou caiu. O Nginx está fazendo proxy para um
-Vite que não existe.
+O serviço `frontend` caiu. Veja o log com `make web`; erro de dependência
+nativa (`cannot find module` de algo que está no `node_modules`) costuma
+significar `npm ci` rodado noutra plataforma — refaça no host.
+
+**A página abre mas não atualiza sozinha ao salvar um `.svelte`.**
+O hot reload perdeu o WebSocket. O `hmr.clientPort` do `vite.config.ts` sai
+de `NGINX_PORT`: se a stack está publicada numa porta e o `.env` diz outra,
+o navegador pede o reload no endereço errado — e nada na tela acusa isso.
 
 **`/admin` devolve a SPA ou uma página estranha.**
 Falta a barra final: `/admin/`.
