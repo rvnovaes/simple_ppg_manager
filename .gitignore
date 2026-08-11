@@ -14,6 +14,10 @@
 .env.*
 !.env.example
 !.env.*.example
+# Template da esteira, não um .env real: não tem valor nenhum resolvido, só os
+# tokens {{...}} que o montar-canteiro.sh substitui ao gerar o .env da worktree.
+# Sem esta exceção o `.env.*` acima o engole e todo canteiro nasce sem overlay.
+!.env.worktree
 *.env.local
 
 # Chaves, certificados, credenciais
@@ -191,9 +195,17 @@ temp/
 #   .env.example .......... o modelo das variáveis, sem valores reais.
 #                           Toda variável nova entra aqui no mesmo commit.
 # =============================================================================
-# Estado local do loop do ralph — não versionar
-ralph/.last-branch
-ralph/archive/
+# Estado local do loop — não versionar.
+#
+# prd.json e progress.txt ficam DE FORA desta lista de propósito: são
+# versionados, e é lendo o progress.txt da base que o montar-canteiro.sh mostra
+# o log da empreitada anterior.
+
+# Os caminhos têm barra no meio, então são ancorados na raiz e só casam com
+# `scripts/helton/`. A instalação antiga ficava em `ralph/`, na raiz, e tinha as
+# duas regras equivalentes; saíram junto com ela.
+scripts/helton/.last-branch
+scripts/helton/archive/
 
 # Credenciais da carga de demonstração — geradas por make seed, não versionar
 CONTAS-DEMO.txt

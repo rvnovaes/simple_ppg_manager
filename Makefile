@@ -30,10 +30,10 @@ db:  ## Sobe apenas o Postgres
 	@echo "==> subindo o banco (porta 5433 no host)"
 	docker compose up -d db
 
-up:  ## Sobe db + backend + nginx; abra http://localhost:8080
-	@echo "==> subindo db, backend e nginx"
+up:  ## Sobe a stack inteira (db, backend, frontend, nginx); abra http://localhost:8080
+	@echo "==> subindo db, backend, frontend e nginx"
 	docker compose up -d --build
-	@echo "==> pronto: http://localhost:8080 (rode 'make web' em outro terminal)"
+	@echo "==> pronto: http://localhost:8080 — o front já está no ar, sem 'make web'"
 
 down:  ## Derruba os containers do projeto
 	docker compose down
@@ -42,9 +42,9 @@ run:  ## Roda o Django nativo com reload (precisa de 'make db')
 	@echo "==> runserver em :8000"
 	$(UV) python manage.py runserver
 
-web:  ## Roda o Vite com reload; acesse pelo Nginx em :8080
-	@echo "==> vite em :5173 — NÃO abra essa porta direto, use :8080"
-	$(NPM) run dev
+web:  ## Acompanha o log do Vite (que sobe junto com 'make up')
+	@echo "==> o Vite roda no serviço 'frontend'; a aplicação abre em :8080"
+	docker compose logs -f frontend
 
 migrations:  ## Gera migrações (leia o arquivo gerado antes de commitar)
 	$(UV) python manage.py makemigrations

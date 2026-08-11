@@ -280,9 +280,9 @@ não só no README).
 | Instalar deps backend | `make install` (`cd backend && uv sync`) |
 | Instalar deps front | `make install-web` |
 | Subir só o banco | `make db` (`docker compose up -d db`) |
-| Subir tudo (dev, com Nginx) | `make up` — abrir **http://localhost:8080** (abrir `:5173` direto quebra login/CSRF) |
+| Subir tudo (dev, com Nginx) | `make up` — sobe db, backend, frontend e nginx; abrir **http://localhost:8080** (a porta do Vite não é publicada) |
 | Backend nativo com reload | `make run` (`uv run python manage.py runserver`) |
-| Front nativo com reload | `make web` (`npm run dev`) — só junto do Nginx de dev |
+| Log do Vite | `make web` (`docker compose logs -f frontend`) — o Vite é serviço do Compose e sobe no `make up` |
 | Criar migrações | `make migrations` |
 | Aplicar migrações | `make migrate` |
 | Criar superusuário | `make superuser` |
@@ -396,3 +396,69 @@ consequências. Já valem como decididos:
   existe. Se falta tela, o trabalho é escrever a tela.
 - Dar `is_staff` ou `is_superuser` a papel de domínio.
 - Escrita no Admin sem `AuditLog`.
+
+---
+
+## Human gates
+
+O que um loop autônomo **não** decide sozinho neste repositório. A regra geral é
+reversibilidade: se der errado e só for notado uma semana depois, dá para voltar
+ao estado anterior usando apenas o git? "Não" → gate.
+
+O que se enquadra aqui, observado no codebase:
+
+1. **Decisão sobre a vida acadêmica de alguém** — `apps/academic/services.py`,
+   nas funções que encerram ou deferem: `close_isolated_cycle`,
+   `enroll_isolated_request`, `create_enrollment_adjustment`. Fechar ciclo,
+   classificar candidato e deferir matrícula produzem efeito sobre terceiro que
+   já foi comunicado; desfazer no git não desfaz o e-mail que a secretaria
+   mandou nem a expectativa de quem leu o resultado. Somam-se os anexos de
+   `backend/media/` — `FileField` de `RequestDocument`, upload de usuário, fora
+   do versionamento e sem volta.
+2. **Migrations** — qualquer arquivo em `backend/apps/*/migrations/`, e os alvos
+   `make migrations` / `make migrate`. Migration destrutiva ou backfill toca
+   dado real. Vale também o `image: postgres:17.5-alpine` do compose: trocar a
+   major invalida o data dir do volume, e o caminho é `pg_dump` antes — nunca só
+   trocar a tag.
+3. **Regra de classificação e contagem de vaga** — a pontuação e a ordenação de
+   candidatos de isolada (`apps/academic/services.py`, `schemas.py`, e os
+   modelos de edital/ciclo em `apps/academic/models.py`). Número de vaga,
+   critério de desempate e arredondamento de nota: teste verde não prova
+   critério certo, e o resultado errado só aparece quando alguém reclama.
+4. **Permissões, tenant e autenticação** — `apps/core/permissions.py`
+   (`require_perm`), `apps/core/tenancy.py` (`current_program`), `apps/accounts/`
+   e qualquer query que mude escopo de `Program`. A tenancy aqui é por programa;
+   vazamento entre programas não aparece em lint, e com um só programa semeado
+   nem em teste — é por isso que o `seed_demo` semeia dois.
+5. **Contrato de API publicado** — `backend/api.py`, os `router.py`/`schemas.py`
+   de cada app, e os gerados `frontend/src/lib/api/openapi.json` e
+   `schema.d.ts`. O frontend inteiro tipa em cima deles: mudança de contrato
+   quebra o `npm run check` de quem só mexeu no backend.
+6. **Infra e segredos** — `docker-compose.yml`, `backend/Dockerfile`, `nginx/`,
+   `.env*`, `backend/config/settings/prod.py`, `docs/adr/`. Estado externo ao
+   repositório, ou decisão que já foi tomada e registrada em ADR.
+7. **Enfraquecer a maquinaria de verificação** — remover ou afrouxar asserção em
+   `backend/apps/*/tests/`, tirar passo de `make ready` (`lint`, `typecheck`,
+   `test`), afrouxar `ruff`/`mypy`/`svelte-check` no `pyproject.toml` ou no
+   `package.json`, mexer em `.claude/skills/` ou em `scripts/helton/`. Tarefa
+   cujo caminho mais curto é apagar asserção é sempre gate. **Estender** a
+   verificação — teste novo, alvo novo no `Makefile`, check a mais — não é gate:
+   é o resultado desejado.
+
+Fora dessa lista, o padrão é `human_gate: false`. Na dúvida, `true`.
+
+---
+
+## Além dos gates
+
+Vale registrar no mesmo `CLAUDE.md`, porque o loop relê a cada iteração e não tem
+memória entre elas:
+
+- **Os comandos de verificação** — o alvo único que roda lint, tipos e testes.
+  O loop chama o que estiver escrito aqui.
+- **As armadilhas que quebram em silêncio.** É o que mais economiza iteração:
+  build que não reflete mudança sem rebuild, arquivo gerado que não é versionado,
+  regra de `.gitignore` herdada de template que engole peça do projeto. Cada uma
+  dessas custa uma iteração inteira quando o agente descobre sozinho — e às vezes
+  ele não descobre, e conclui que o código está errado.
+- **O glossário do domínio**, se a conversa é num idioma e o código em outro.
