@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aula 1 do PPGD Manager</title>
+<style>
+  :root {
+    --paper: #f6f8f7;
+    --surface: #eaf0ee;
+    --surface-2: #dfe8e5;
+    --ink: #1b2523;
+    --ink-soft: #45524e;
+    --ink-faint: #6b7a75;
+    --accent: #0f6b77;
+    --accent-soft: #d8e8ea;
+    --warn: #b0742a;
+    --warn-soft: #f3e7d3;
+    --line: #c9d4d0;
+    --code-bg: #10201f;
+    --code-ink: #cfe3df;
+    --code-accent: #7fd0c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #101716;
+      --surface: #182220;
+      --surface-2: #1f2c29;
+      --ink: #dde6e3;
+      --ink-soft: #a6b5b0;
+      --ink-faint: #7c8b86;
+      --accent: #56b7c0;
+      --accent-soft: #123a3f;
+      --warn: #d9a45c;
+      --warn-soft: #33291a;
+      --line: #2b3835;
+      --code-bg: #0b1413;
+      --code-ink: #c4d8d4;
+      --code-accent: #6fc4bc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #101716;
+    --surface: #182220;
+    --surface-2: #1f2c29;
+    --ink: #dde6e3;
+    --ink-soft: #a6b5b0;
+    --ink-faint: #7c8b86;
+    --accent: #56b7c0;
+    --accent-soft: #123a3f;
+    --warn: #d9a45c;
+    --warn-soft: #33291a;
+    --line: #2b3835;
+    --code-bg: #0b1413;
+    --code-ink: #c4d8d4;
+    --code-accent: #6fc4bc;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.65;
+    margin: 0;
+    font-size: 1rem;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+  .serif, h1, h2, h3 { font-family: Charter, Georgia, "Times New Roman", serif; }
+  h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.5rem 0 0; text-wrap: balance; font-weight: 700; }
+  h2 { font-size: 1.55rem; margin: 0 0 1rem; text-wrap: balance; }
+  h3 { font-size: 1.15rem; margin: 2rem 0 0.6rem; }
+  p { margin: 0.9rem 0; }
+  a { color: var(--accent); }
+
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.78rem;
+    color: var(--accent); font-weight: 600;
+  }
+  header.hero { border-bottom: 3px double var(--line); padding-bottom: 1.8rem; margin-bottom: 1rem; }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 40rem; }
+
+  .agenda { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.35rem; }
+  .agenda li { display: flex; gap: 0.8rem; align-items: baseline; }
+  .agenda .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1.4rem; text-align: right; }
+  .agenda .t { color: var(--ink-soft); }
+  .agenda a { color: inherit; text-decoration: none; }
+  .agenda a:hover { color: var(--accent); }
+
+  section.bloco { margin-top: 3.5rem; }
+  .bloco-head { display: flex; align-items: baseline; gap: 0.9rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+  .bloco-num {
+    font-family: Charter, Georgia, serif; font-size: 2.2rem; color: var(--accent);
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .tempo { margin-left: auto; font-size: 0.8rem; color: var(--ink-faint); white-space: nowrap; letter-spacing: 0.05em; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto;
+    font-size: 0.88rem; line-height: 1.55;
+  }
+  pre, code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--code-accent); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+  th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); font-weight: 600; padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 2px solid var(--line); }
+  td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono { white-space: nowrap; }
+
+  .card {
+    background: var(--surface); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1.3rem 0;
+  }
+  .card.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 0 8px 8px 0; }
+  .card.warn strong:first-child { color: var(--warn); }
+  .card.accent { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+  .card p:first-child { margin-top: 0; }
+  .card p:last-child { margin-bottom: 0; }
+
+  .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); font-weight: 600; }
+
+  figure { margin: 1.6rem 0; }
+  figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.6rem; text-align: center; }
+  .diagram-wrap { overflow-x: auto; background: var(--surface); border-radius: 8px; padding: 1rem; }
+  .diagram-wrap svg { display: block; margin: 0 auto; min-width: 560px; }
+  svg text { font-family: system-ui, sans-serif; }
+  svg .box { fill: var(--paper); stroke: var(--line); stroke-width: 1.5; rx: 6; }
+  svg .box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  svg .t-title { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  svg .t-sub { fill: var(--ink-faint); font-size: 11px; }
+  svg .t-edge { fill: var(--ink-soft); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+  svg .edge { stroke: var(--ink-soft); stroke-width: 1.5; fill: none; }
+  svg .net { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 5 4; rx: 10; }
+  svg .t-net { fill: var(--accent); font-size: 11px; letter-spacing: 0.08em; font-weight: 600; }
+
+  ul { padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--line); padding-top: 1.2rem; font-size: 0.85rem; color: var(--ink-faint); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Integração de novos membros · aula 1 · infra · ~90 min</div>
+  <h1>Aula 1 do PPGD Manager</h1>
+  <p class="lede">Sistema de gestão para programas de pós-graduação — Django + SvelteKit + PostgreSQL atrás de um único Nginx. Esta primeira aula parte do que o time já domina (containers, redes, volumes) e termina com a stack rodando no seu notebook. O código vem nas aulas 2 (backend) e 3 (front).</p>
+  <ol class="agenda">
+    <li><span class="n">1</span><a href="#b1"><span class="t">O que estamos construindo</span></a></li>
+    <li><span class="n">2</span><a href="#b2"><span class="t">As decisões que não se reabrem</span></a></li>
+    <li><span class="n">3</span><a href="#b3"><span class="t">Anatomia do docker-compose</span></a></li>
+    <li><span class="n">4</span><a href="#b4"><span class="t">Origem única: o Nginx é o produto</span></a></li>
+    <li><span class="n">5</span><a href="#b5"><span class="t">Mão na massa: subir a stack</span></a></li>
+    <li><span class="n">6</span><a href="#b6"><span class="t">Armadilhas já pagas</span></a></li>
+    <li><span class="n">7</span><a href="#b7"><span class="t">Leitura de casa</span></a></li>
+  </ol>
+</header>
+
+<section class="bloco" id="b1">
+  <div class="bloco-head"><span class="bloco-num">1</span><h2>O que estamos construindo</h2><span class="tempo">10 min</span></div>
+  <p>O PPGD Manager gerencia um programa de pós-graduação: pessoas, usuários, papéis, permissões e auditoria formam o primeiro módulo; a vida acadêmica (matrículas, disciplinas isoladas, editais) já cresce em cima dessa fundação. Foi criado para uma instituição, mas nasceu <strong>multi-tenant</strong>: quase toda tabela de negócio carrega uma chave para o <em>programa</em>, porque o sistema será usado por outros cursos.</p>
+  <p>Duas consequências práticas dessa decisão, que você vai encontrar no código desde o primeiro dia:</p>
+  <ul>
+    <li>Toda consulta de dado de negócio é escopada por <code>current_program(request)</code> — nunca por um <code>program_id</code> que o chamador escolhe. Um filtro opcional vazaria o tenant inteiro para quem omitir o parâmetro.</li>
+    <li>A carga de demonstração (<code>make seed</code>) semeia <strong>dois</strong> programas de propósito: com um só, um vazamento entre tenants não aparece em teste nenhum.</li>
+  </ul>
+  <div class="card accent">
+    <p><strong>Contexto do time.</strong> Somos fortes em infraestrutura e iniciantes em desenvolvimento. Por isso toda decisão do projeto favorece <em>menos peças móveis</em> e <em>menos decisões em aberto</em> — mesmo quando existe alternativa mais sofisticada. Essa frase explica quase tudo que vem a seguir.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b2">
+  <div class="bloco-head"><span class="bloco-num">2</span><h2>As decisões que não se reabrem</h2><span class="tempo">20 min</span></div>
+  <p>A stack está decidida e registrada em ADRs (<code>docs/adr/</code>). Reabrir qualquer uma exige um ADR novo com justificativa concreta — não uma preferência.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Camada</th><th>Escolha</th><th>O que não usamos (e por quê)</th></tr>
+    <tr><td>Backend</td><td>Django 5.x LTS, <strong>síncrono</strong>, Python 3.12+</td><td>Sem async: a carga não justifica, e <code>await</code> esquecido é veneno para quem está aprendendo (ADR-001)</td></tr>
+    <tr><td>API</td><td>Django Ninja em <code>/api/v1/</code>, schemas Pydantic</td><td>Sem DRF, sem GraphQL; resposta nunca serializa model direto</td></tr>
+    <tr><td>Auth</td><td>Sessão do Django (cookie httpOnly) + CSRF</td><td>Sem JWT, sem OAuth caseiro (ADR-003)</td></tr>
+    <tr><td>Frontend</td><td>SvelteKit (Svelte 5, runas) + <code>adapter-static</code></td><td>Sem SSR, sem Node em produção (ADR-005)</td></tr>
+    <tr><td>Banco</td><td>PostgreSQL 16+ (17.5 no dev)</td><td>SQLite só existe em teste local de model</td></tr>
+    <tr><td>Proxy</td><td><strong>Nginx, origem única</strong></td><td>CORS é proibido — se você sentiu falta dele, o deploy está errado (ADR-004)</td></tr>
+    <tr><td>Ferramentas</td><td><code>uv</code>, <code>npm</code>, <code>ruff</code>, <code>mypy</code>, <code>pytest</code></td><td>Sem pip/poetry, sem yarn/pnpm</td></tr>
+  </table></div>
+
+  <h3>Entendendo os "nãos"</h3>
+  <p>A coluna da direita da tabela lista tecnologias populares — você vai vê-las em todo tutorial. Cada "não" daqui tem um mal concreto por trás, registrado em ADR. Vale a pena entender o que cada coisa <em>é</em> antes de entender por que a recusamos.</p>
+
+  <h3 class="mono" style="font-size:1rem">async</h3>
+  <p><strong>O que é:</strong> o modelo de concorrência cooperativa do Python (<code>async def</code> / <code>await</code>), em que uma única thread intercala muitas requisições — cada função "devolve o controle" enquanto espera I/O (banco, rede). É o modelo do FastAPI e o motivo da sua fama de rápido.</p>
+  <p><strong>O mal de usar aqui:</strong> async cria uma classe inteira de bug que não existe no código síncrono — e são bugs traiçoeiros para quem está aprendendo. Um <code>await</code> esquecido não dá erro: devolve silenciosamente uma <em>corrotina</em> em vez do resultado. Uma consulta ao ORM feita no lugar errado explode com "objeto fora do event loop". Uma biblioteca síncrona no meio do caminho trava o loop inteiro — e nada disso quebra na hora: <strong>quebra sob carga</strong>, o pior formato possível de defeito. E o ganho seria zero: nosso pico são dezenas de usuários simultâneos, não milhares. O custo dominante do projeto é erro humano, não CPU (ADR-001). Se um dia houver gargalo real de I/O, mede-se primeiro; a saída provável é um worker em background, não reescrever tudo em async.</p>
+
+  <h3 class="mono" style="font-size:1rem">DRF e GraphQL</h3>
+  <p><strong>O que são:</strong> o Django REST Framework é a camada de API mais tradicional do mundo Django; GraphQL é um protocolo em que o <em>cliente</em> compõe a consulta que quiser, em vez de chamar endpoints fixos.</p>
+  <p><strong>O mal de usar aqui:</strong> o DRF traz um vocabulário próprio inteiro — serializers, viewsets, routers, permission classes — que seria mais uma coisa a aprender <em>além</em> do Django. O Django Ninja usa o que o time já precisa saber para escrever Python moderno: type hints e classes Pydantic. E dá algo de graça que o DRF não dá: o schema OpenAPI, do qual o <code>make gen-api</code> gera os tipos TypeScript do front — o contrato entre back e front vira código verificável, não combinado verbal. GraphQL resolveria um problema que não temos (muitos clientes com necessidades de dados diferentes) ao preço de problemas novos: cache, autorização por campo, consultas N+1 montadas pelo cliente.</p>
+
+  <h3 class="mono" style="font-size:1rem">JWT</h3>
+  <p><strong>O que é:</strong> JSON Web Token — um "crachá" assinado que o servidor entrega no login e o cliente reapresenta em cada requisição, normalmente num header. O servidor não guarda nada: confia na assinatura. É o padrão quando API e front vivem em domínios diferentes, ou quando vários serviços consomem a mesma API.</p>
+  <p><strong>O mal de usar aqui:</strong> não é o nosso caso — temos <em>um</em> front, na <em>mesma</em> origem que a API. Nesse cenário, JWT é um rebaixamento de segurança operacional em três frentes (ADR-003):</p>
+  <ul>
+    <li><strong>Onde guardar o token?</strong> O lugar usual é o <code>localStorage</code> — que qualquer JavaScript da página lê. Um único XSS (script injetado) rouba o token e vira roubo de conta. O cookie de sessão do Django é <code>HttpOnly</code>: o JavaScript simplesmente não o alcança.</li>
+    <li><strong>Não dá para revogar.</strong> A graça do JWT é o servidor não guardar estado — mas então "deslogar" um usuário ou banir uma conta comprometida exige inventar uma <em>denylist</em> de tokens... que é reinventar a tabela de sessões, mal. Com sessão do Django, logout revoga no servidor, com efeito imediato.</li>
+    <li><strong>Renovação é um segundo sistema.</strong> Token expira; para o usuário não ser deslogado a cada hora, escreve-se o fluxo de <em>refresh token</em> — mais código de segurança para nós mantermos. Tudo isso já vem pronto e testado no Django há vinte anos.</li>
+  </ul>
+  <p>O preço que pagamos em troca: toda escrita precisa do header <code>X-CSRFToken</code>. Esse preço foi pago <strong>uma única vez</strong>, dentro de <code>lib/api/client.ts</code> — nenhuma tela lida com CSRF. Se um dia houver app móvel ou integração de terceiro, é ADR novo (provavelmente token de serviço com escopo, não JWT de usuário).</p>
+
+  <h3 class="mono" style="font-size:1rem">CORS</h3>
+  <p><strong>O que é:</strong> por padrão, o navegador impõe a <em>same-origin policy</em>: a página de uma origem (esquema + host + porta) não pode ler respostas de outra. CORS (Cross-Origin Resource Sharing) é o mecanismo de cabeçalhos HTTP que <em>relaxa</em> essa proteção — o servidor declara "aceito ser chamado pela origem X". É o que todo tutorial de SPA manda configurar quando o front roda na :5173 e a API na :8000.</p>
+  <p><strong>O mal de usar aqui:</strong> CORS não é um recurso, é a <em>desativação seletiva de uma proteção do navegador</em> — e mal configurado é uma das fontes mais frequentes de brecha e de tempo perdido (ADR-004). Com cookie de sessão, piora: origem cruzada exige a tríade <code>SameSite=None</code> + <code>Secure</code> + <code>credentials</code>, e qualquer erro em uma das três quebra o login com mensagens enigmáticas do navegador. Nossa solução dissolve o problema em vez de gerenciá-lo: front e API atrás do <strong>mesmo Nginx, na mesma origem</strong> — não há "cross-origin", logo não há o que configurar. E isso é literalmente uma configuração de Nginx, o problema que este time já sabe resolver melhor que ninguém. Daí a regra de review: <em>se você sentiu necessidade de CORS, o erro está no deploy, não no código.</em> O bloco 4 mostra como o Nginx faz isso na prática.</p>
+
+  <h3 class="mono" style="font-size:1rem">SSR e Node em produção</h3>
+  <p><strong>O que é:</strong> Server-Side Rendering — em vez de o navegador montar a página com JavaScript, um processo Node monta o HTML no servidor a cada requisição. No SvelteKit, é o modo do <code>adapter-node</code>.</p>
+  <p><strong>O mal de usar aqui:</strong> SSR entrega SEO e primeiro carregamento mais rápido — dois benefícios que valem <strong>zero</strong> num sistema atrás de login, não indexável, usado por público interno em rede boa. O custo, porém, seria permanente e cai em cima da infra: um segundo runtime (Node além do Python) para instalar, supervisionar, monitorar, atualizar e incluir no plano de recuperação (ADR-005). Com <code>adapter-static</code>, o deploy do front é <em>copiar arquivos</em>, e o rollback é copiar os arquivos anteriores — não há processo para reiniciar nem porta para vigiar. Produção inteira são três peças que já operamos: Nginx, gunicorn, Postgres.</p>
+
+  <h3 class="mono" style="font-size:1rem">SQLite fora de teste local</h3>
+  <p><strong>O que é:</strong> um banco embutido num arquivo, sem servidor — ótimo para protótipo.</p>
+  <p><strong>O mal de usar aqui:</strong> paridade. SQLite e Postgres divergem em tipos, constraints e comportamento de transação; um teste que passa no SQLite pode quebrar no Postgres de produção — e você só descobre em produção. Por isso a suíte de testes roda contra Postgres de verdade (o do <code>make db</code>).</p>
+
+  <h3 class="mono" style="font-size:1rem">pip/poetry, yarn/pnpm</h3>
+  <p><strong>O mal aqui é mais brando, mas real:</strong> cada gerenciador extra é um lockfile com formato próprio e um comando a mais para errar. Uma ferramenta por ecossistema — <code>uv</code> no Python, <code>npm</code> no Node — e instalação sempre reprodutível (<code>uv sync --locked</code>, <code>npm ci</code>). Duas pessoas com lockfiles diferentes é o "funciona na minha máquina" nascendo.</p>
+
+  <div class="card accent">
+    <p><strong>O padrão que une todos os nãos:</strong> nenhuma dessas tecnologias é ruim em si — JWT, CORS, async e SSR existem para problemas reais. Só que são problemas <em>que não temos</em>: múltiplas origens, múltiplos clientes, milhares de usuários, SEO. Adotá-las importaria os custos (bugs sob carga, tokens roubáveis, proteção de navegador desligada, um runtime a mais) sem importar benefício nenhum. Complexidade só entra aqui pagando com um caso de uso presente — é a regra da Seção 12 do <code>CLAUDE.md</code>.</p>
+  </div>
+
+  <p>E uma regra de acesso que confunde todo novato: <strong>o Django Admin é só para sysadmin</strong> (ADR-006). Usuário de negócio — secretaria, coordenação, docente — usa tela Svelte, sempre. O Admin serve para criar programas, ler auditoria e corrigir dado em modo quebra-vidro. Se falta uma tela, o trabalho é escrever a tela, nunca "manda usar o Admin".</p>
+</section>
+
+<section class="bloco" id="b3">
+  <div class="bloco-head"><span class="bloco-num">3</span><h2>Anatomia do docker-compose</h2><span class="tempo">25 min</span></div>
+  <p>Este é o coração da aula, porque é o território de vocês. O <code>docker-compose.yml</code> sobe <strong>quatro serviços</strong>, e cada linha incomum dele tem uma história — o próprio arquivo é comentado, leia-o inteiro depois.</p>
+
+  <figure>
+    <div class="diagram-wrap">
+    <svg viewBox="0 0 640 380" role="img" aria-label="Diagrama da stack de desenvolvimento: navegador fala com o Nginx na porta 8080, que roteia para o Vite e para o Django dentro da rede do Compose; o Django fala com o Postgres">
+      <rect class="net" x="120" y="70" width="500" height="290" rx="10"/>
+      <text class="t-net" x="138" y="94">REDE INTERNA DA STACK (COMPOSE)</text>
+
+      <rect class="box" x="20" y="150" width="120" height="56" rx="6"/>
+      <text class="t-title" x="80" y="174" text-anchor="middle">Navegador</text>
+      <text class="t-sub" x="80" y="192" text-anchor="middle">localhost:8080</text>
+
+      <rect class="box" x="20" y="296" width="120" height="60" rx="6"/>
+      <text class="t-title" x="80" y="318" text-anchor="middle">Ferramentas</text>
+      <text class="t-sub" x="80" y="334" text-anchor="middle">no host: psql,</text>
+      <text class="t-sub" x="80" y="348" text-anchor="middle">make run, pytest</text>
+
+      <rect class="box box-accent" x="230" y="140" width="130" height="76" rx="6"/>
+      <text class="t-title" x="295" y="168" text-anchor="middle">nginx</text>
+      <text class="t-sub" x="295" y="186" text-anchor="middle">origem única</text>
+      <text class="t-sub" x="295" y="202" text-anchor="middle">:80 → host :8080</text>
+
+      <rect class="box" x="460" y="110" width="130" height="62" rx="6"/>
+      <text class="t-title" x="525" y="134" text-anchor="middle">frontend</text>
+      <text class="t-sub" x="525" y="152" text-anchor="middle">Vite · node:25-slim</text>
+
+      <rect class="box" x="460" y="210" width="130" height="62" rx="6"/>
+      <text class="t-title" x="525" y="234" text-anchor="middle">backend</text>
+      <text class="t-sub" x="525" y="252" text-anchor="middle">Django · runserver</text>
+
+      <rect class="box" x="460" y="300" width="130" height="52" rx="6"/>
+      <text class="t-title" x="525" y="321" text-anchor="middle">db · Postgres 17.5</text>
+      <text class="t-sub" x="525" y="338" text-anchor="middle">volume pgdata</text>
+
+      <path class="edge" d="M140 178 L 226 178" marker-end="url(#arr)"/>
+      <text class="t-edge" x="183" y="168" text-anchor="middle">:8080</text>
+
+      <path class="edge" d="M360 158 L 456 141" marker-end="url(#arr)"/>
+      <text class="t-edge" x="404" y="136" text-anchor="middle">/  → :5173</text>
+
+      <path class="edge" d="M360 198 L 456 234" marker-end="url(#arr)"/>
+      <text class="t-edge" x="398" y="232" text-anchor="middle">/api/, /admin/</text>
+
+      <path class="edge" d="M525 272 L 525 296" marker-end="url(#arr)"/>
+      <text class="t-edge" x="540" y="289">db:5432</text>
+
+      <path class="edge" d="M140 326 L 456 326" marker-end="url(#arr)"/>
+      <text class="t-edge" x="298" y="317" text-anchor="middle">localhost:5433</text>
+
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-soft)"/>
+        </marker>
+      </defs>
+    </svg>
+    </div>
+    <figcaption>O navegador só conhece a 8080. A 5433 do Postgres é publicada apenas para ferramentas rodando no host (psql, <code>make run</code>, testes) — nunca para o navegador.</figcaption>
+  </figure>
+
+  <h3>Serviço a serviço</h3>
+  <div class="table-wrap"><table>
+    <tr><th>Serviço</th><th>Imagem</th><th>Porta no host</th><th>O que importa saber</th></tr>
+    <tr><td class="mono">db</td><td class="mono">postgres:17.5-alpine</td><td class="mono">5433</td><td>Volume nomeado <code>pgdata</code>; healthcheck com <code>pg_isready</code> segura o backend até o banco aceitar conexão</td></tr>
+    <tr><td class="mono">backend</td><td>build de <code>./backend</code></td><td>nenhuma</td><td><code>runserver</code> com o código montado como volume — editar no host recarrega no container</td></tr>
+    <tr><td class="mono">frontend</td><td class="mono">node:25-slim</td><td>nenhuma</td><td>Vite dev server, só existe em dev; em produção o Nginx serve o build estático</td></tr>
+    <tr><td class="mono">nginx</td><td class="mono">nginx:alpine</td><td class="mono">8080</td><td>A única porta de entrada; config montada de <code>nginx/</code></td></tr>
+  </table></div>
+
+  <h3>As cinco linhas que têm história</h3>
+  <p><strong><code>name: simple_ppg_manager</code> cravado.</strong> Sem isso o Compose deriva o nome do projeto do nome da <em>pasta</em> — e renomear o diretório criaria um projeto novo com volume vazio, "perdendo" o banco sem apagar nada.</p>
+  <p><strong>Postgres na 5433, não 5432.</strong> A 5432 desta máquina já pertence a outro projeto. E atenção de infra: trocar a <em>major</em> do Postgres (17 → 18) invalida o data dir do volume. O caminho é <code>pg_dump</code>, recriar o volume, restaurar — nunca só trocar a tag da imagem.</p>
+  <p><strong>O Vite roda dentro do Compose, não no host.</strong> Antes ele rodava no host e o Nginx o alcançava por <code>host.docker.internal</code>. Com worktrees paralelas isso quebrou de um jeito silencioso: N stacks apontavam todas para o <em>mesmo</em> Vite, e cada uma exibia o front de outra worktree, sem erro nenhum na tela. Agora a 5173 é um endereço <em>interno</em> da rede de cada stack — N stacks rodam N Vites sem combinar porta nenhuma.</p>
+  <p><strong><code>node:25-slim</code>, jamais <code>-alpine</code>.</strong> O <code>node_modules</code> montado no container é o mesmo do host, e o <code>npm ci</code> baixa binários <code>linux-x64-gnu</code> (glibc) do rollup e do Tailwind. Numa imagem musl eles não carregam — e o erro aparece como <code>cannot find module</code> de um pacote que está visivelmente lá.</p>
+  <p><strong>Portas parametrizadas (<code>NGINX_PORT</code>, <code>DB_PORT</code>).</strong> Porta cravada colide quando duas stacks do projeto rodam no mesmo host — é o que permite os "canteiros" (worktrees com stack própria) da esteira autônoma. No dia a dia os defaults 8080/5433 valem.</p>
+</section>
+
+<section class="bloco" id="b4">
+  <div class="bloco-head"><span class="bloco-num">4</span><h2>Origem única: o Nginx é o produto</h2><span class="tempo">10 min</span></div>
+  <p>Front e API atendem no <strong>mesmo host e porta</strong>. Não é conveniência — é o que faz autenticação funcionar: o cookie de sessão e o CSRF do Django só se comportam quando o navegador enxerga uma origem só. Por isso o projeto nunca configura CORS; sentir necessidade de CORS significa que o deploy está errado, não o código (ADR-004).</p>
+  <div class="table-wrap"><table>
+    <tr><th>Rota</th><th>Vai para</th><th>Conteúdo</th></tr>
+    <tr><td class="mono">/api/</td><td>Django</td><td>API Ninja (<code>/api</code> sozinho redireciona para <code>/api/v1/docs</code>)</td></tr>
+    <tr><td class="mono">/admin/</td><td>Django</td><td>Admin, restrito a superusuário</td></tr>
+    <tr><td class="mono">/static/ /media/</td><td>Django</td><td>CSS do Admin e uploads</td></tr>
+    <tr><td class="mono">/</td><td>Vite (dev)</td><td>A SPA, com hot reload via WebSocket. Em produção, este bloco vira <code>root</code> + <code>try_files</code> servindo o build estático</td></tr>
+  </table></div>
+  <div class="card warn">
+    <p><strong>Regra de ouro: sempre :8080.</strong> Abrir a porta do Vite direto quebra login e CSRF. Hoje isso é difícil de fazer por acidente — a 5173 nem é publicada no host — mas a regra vale para qualquer arranjo futuro.</p>
+  </div>
+  <p>Produção é o mesmo desenho sem o Vite: um Nginx com TLS, um gunicorn, um Postgres. Nenhum processo Node, em nenhuma hipótese.</p>
+</section>
+
+<section class="bloco" id="b5">
+  <div class="bloco-head"><span class="bloco-num">5</span><h2>Mão na massa: subir a stack</h2><span class="tempo">15 min</span></div>
+  <p>Cada um faz agora no próprio notebook. Pré-requisitos: Docker, <code>uv</code> e Node instalados.</p>
+  <pre><code>git clone https://github.com/rvnovaes/simple_ppg_manager.git
+cd simple_ppg_manager
+cp .env.example .env              <span class="c"># ajuste se precisar</span>
+cd frontend && npm ci && cd ..    <span class="c"># ci, não install: preserva o lockfile</span>
+cd backend  && uv sync --locked && cd ..
+make up                           <span class="c"># sobe os quatro serviços</span>
+make migrate && make seed         <span class="c"># migra e carrega dados de demonstração</span></code></pre>
+  <div class="card">
+    <p class="label">Por que <code>npm ci</code> e <code>uv sync --locked</code>, e não <code>npm install</code> / <code>uv sync</code></p>
+    <p>Os dois instalam <strong>exatamente</strong> as versões gravadas nos lockfiles (<code>package-lock.json</code> e <code>uv.lock</code>) — todo mundo, e a produção, com byte a byte as mesmas dependências. As variantes sem trava fazem outra coisa: <em>resolvem</em> versões de novo e <strong>reescrevem o lockfile</strong>, o que muda a árvore do git sem você ter pedido nada e abre a porta do "funciona na minha máquina". Um detalhe a mais neste projeto: o <code>node_modules</code> que esse <code>npm ci</code> cria no host é o mesmo que o Compose monta dentro do serviço <code>frontend</code> — outro motivo da imagem <code>node:25-slim</code> (glibc) do bloco 3.</p>
+    <p>Regra prática: instalar é sempre <code>npm ci</code> / <code>uv sync --locked</code>. <code>npm install &lt;pacote&gt;</code> e <code>uv add &lt;pacote&gt;</code> só quando se está <em>deliberadamente</em> adicionando ou atualizando uma dependência — aí a mudança do lockfile é intencional e vai revisada no commit.</p>
+  </div>
+  <p>Abra <a href="http://localhost:8080">http://localhost:8080</a>. As contas de teste estão em <code>CONTAS-DEMO.txt</code> na raiz — o login é o e-mail <em>completo</em>, e a senha é a mesma para todas. O seed é idempotente e cria dois programas (lembra do bloco 1?).</p>
+  <h3>Comandos do dia a dia</h3>
+  <p>Tudo passa pelo <code>Makefile</code> — <code>make</code> sem argumento lista os alvos. Os que você vai usar toda hora:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Comando</th><th>O que faz</th></tr>
+    <tr><td class="mono">make up / make down</td><td>Sobe e derruba a stack (o <code>down</code> preserva o volume do banco)</td></tr>
+    <tr><td class="mono">make web</td><td>Acompanha o log do Vite (que já sobe com o <code>make up</code>)</td></tr>
+    <tr><td class="mono">make migrations / migrate</td><td>Gera e aplica migrações — rodam no host, via <code>uv</code>, contra a 5433</td></tr>
+    <tr><td class="mono">make gen-api</td><td>Regenera os tipos TS do front a partir do OpenAPI — <strong>sempre</strong> que mexer em schema ou rota</td></tr>
+    <tr><td class="mono">make ready</td><td>lint + typecheck + testes. Verde é pré-condição de commit</td></tr>
+  </table></div>
+</section>
+
+
+
+<section class="bloco" id="b6">
+  <div class="bloco-head"><span class="bloco-num">6</span><h2>Armadilhas já pagas</h2><span class="tempo">5 min</span></div>
+  <p>Cada uma destas custou horas de alguém. Estão documentadas no <code>manual_dev.md</code>; aqui vão as que pegam um novato na primeira semana:</p>
+  <div class="card warn"><p><strong>O front carrega mas não atualiza ao salvar.</strong> O <code>hmr.clientPort</code> do Vite precisa da porta <em>publicada</em> do Nginx (ele lê <code>NGINX_PORT</code>). Se divergirem, o hot reload morre em silêncio — nada na tela acusa.</p></div>
+  <div class="card warn"><p><strong><code>cannot find module</code> de um pacote que está no <code>node_modules</code>.</strong> Alguém trocou a imagem para musl (<code>-alpine</code>). Os binários são glibc; a imagem é <code>-slim</code> de propósito.</p></div>
+  <div class="card warn"><p><strong>Login devolve 403 sem explicação.</strong> <code>CSRF_TRUSTED_ORIGINS</code> não bate com a porta do Nginx. A mensagem de erro não menciona porta nenhuma.</p></div>
+  <div class="card warn"><p><strong><code>npm install</code> ou <code>uv sync</code> sem <code>--locked</code>.</strong> Reescrevem o lockfile e sujam a árvore. Instalação é sempre <code>npm ci</code> e <code>uv sync --locked</code>.</p></div>
+</section>
+
+<section class="bloco" id="b7">
+  <div class="bloco-head"><span class="bloco-num">7</span><h2>Leitura de casa</h2><span class="tempo">restante</span></div>
+  <p>A aula termina com a stack de pé no seu notebook — é o critério de sucesso de hoje. Na <strong>aula 2</strong> entramos no código do backend: onde mora cada coisa, e os conceitos de Django lidos no app <code>people</code>. Até lá, nesta ordem:</p>
+  <ul>
+    <li><strong><code>CLAUDE.md</code></strong> — o guia normativo inteiro. Meia hora bem investida.</li>
+    <li><strong><code>docs/adr/</code></strong> — sete decisões curtas; cada uma explica um "por que não" que você vai querer perguntar.</li>
+    <li><strong><code>docker-compose.yml</code> e <code>nginx/nginx.conf</code></strong> — leia os comentários; são o diário de bordo da infra.</li>
+    <li><strong><code>manual_dev.md</code></strong> — o mapa da máquina e da esteira autônoma (worktrees, "canteiros", o loop Helton). A esteira merece uma aula própria; por ora basta saber que ela existe e que os <em>human gates</em> do <code>CLAUDE.md</code> listam o que nenhum processo automático decide sozinho.</li>
+  </ul>
+</section>
+
+<footer>
+  PPGD Manager · material de integração · aula 1 · gerado a partir de CLAUDE.md, docker-compose.yml, nginx.conf, Makefile e manual_dev.md em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
+</footer>
+</main>

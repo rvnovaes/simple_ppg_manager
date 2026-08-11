@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aula 2 do PPGD Manager</title>
+<style>
+  :root {
+    --paper: #f6f8f7;
+    --surface: #eaf0ee;
+    --surface-2: #dfe8e5;
+    --ink: #1b2523;
+    --ink-soft: #45524e;
+    --ink-faint: #6b7a75;
+    --accent: #0f6b77;
+    --accent-soft: #d8e8ea;
+    --warn: #b0742a;
+    --warn-soft: #f3e7d3;
+    --line: #c9d4d0;
+    --code-bg: #10201f;
+    --code-ink: #cfe3df;
+    --code-accent: #7fd0c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #101716;
+      --surface: #182220;
+      --surface-2: #1f2c29;
+      --ink: #dde6e3;
+      --ink-soft: #a6b5b0;
+      --ink-faint: #7c8b86;
+      --accent: #56b7c0;
+      --accent-soft: #123a3f;
+      --warn: #d9a45c;
+      --warn-soft: #33291a;
+      --line: #2b3835;
+      --code-bg: #0b1413;
+      --code-ink: #c4d8d4;
+      --code-accent: #6fc4bc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #101716;
+    --surface: #182220;
+    --surface-2: #1f2c29;
+    --ink: #dde6e3;
+    --ink-soft: #a6b5b0;
+    --ink-faint: #7c8b86;
+    --accent: #56b7c0;
+    --accent-soft: #123a3f;
+    --warn: #d9a45c;
+    --warn-soft: #33291a;
+    --line: #2b3835;
+    --code-bg: #0b1413;
+    --code-ink: #c4d8d4;
+    --code-accent: #6fc4bc;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.65;
+    margin: 0;
+    font-size: 1rem;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+  .serif, h1, h2, h3 { font-family: Charter, Georgia, "Times New Roman", serif; }
+  h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.5rem 0 0; text-wrap: balance; font-weight: 700; }
+  h2 { font-size: 1.55rem; margin: 0 0 1rem; text-wrap: balance; }
+  h3 { font-size: 1.15rem; margin: 2rem 0 0.6rem; }
+  p { margin: 0.9rem 0; }
+  a { color: var(--accent); }
+
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.78rem;
+    color: var(--accent); font-weight: 600;
+  }
+  header.hero { border-bottom: 3px double var(--line); padding-bottom: 1.8rem; margin-bottom: 1rem; }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 40rem; }
+
+  .agenda { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.35rem; }
+  .agenda li { display: flex; gap: 0.8rem; align-items: baseline; }
+  .agenda .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1.4rem; text-align: right; }
+  .agenda .t { color: var(--ink-soft); }
+  .agenda a { color: inherit; text-decoration: none; }
+  .agenda a:hover { color: var(--accent); }
+
+  section.bloco { margin-top: 3.5rem; }
+  .bloco-head { display: flex; align-items: baseline; gap: 0.9rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+  .bloco-num {
+    font-family: Charter, Georgia, serif; font-size: 2.2rem; color: var(--accent);
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .tempo { margin-left: auto; font-size: 0.8rem; color: var(--ink-faint); white-space: nowrap; letter-spacing: 0.05em; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto;
+    font-size: 0.88rem; line-height: 1.55;
+  }
+  pre, code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--code-accent); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+  th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); font-weight: 600; padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 2px solid var(--line); }
+  td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono { white-space: nowrap; }
+
+  .card {
+    background: var(--surface); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1.3rem 0;
+  }
+  .card.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 0 8px 8px 0; }
+  .card.warn strong:first-child { color: var(--warn); }
+  .card.accent { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+  .card p:first-child { margin-top: 0; }
+  .card p:last-child { margin-bottom: 0; }
+
+  .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); font-weight: 600; }
+
+  figure { margin: 1.6rem 0; }
+  figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.6rem; text-align: center; }
+  .diagram-wrap { overflow-x: auto; background: var(--surface); border-radius: 8px; padding: 1rem; }
+  .diagram-wrap svg { display: block; margin: 0 auto; min-width: 560px; }
+  svg text { font-family: system-ui, sans-serif; }
+  svg .box { fill: var(--paper); stroke: var(--line); stroke-width: 1.5; rx: 6; }
+  svg .box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  svg .t-title { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  svg .t-sub { fill: var(--ink-faint); font-size: 11px; }
+  svg .t-edge { fill: var(--ink-soft); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+  svg .edge { stroke: var(--ink-soft); stroke-width: 1.5; fill: none; }
+  svg .net { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 5 4; rx: 10; }
+  svg .t-net { fill: var(--accent); font-size: 11px; letter-spacing: 0.08em; font-weight: 600; }
+
+  ul { padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--line); padding-top: 1.2rem; font-size: 0.85rem; color: var(--ink-faint); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Integração de novos membros · aula 2 · backend · ~2 h</div>
+  <h1>Aula 2 do PPGD Manager</h1>
+  <p class="lede">Na aula 1 a stack ficou de pé. Hoje entramos no código do backend: onde mora cada coisa na arquitetura de duas camadas, e os conceitos fundamentais do Django — lidos direto no app <code>people</code>, para quem nunca viu Django.</p>
+  <ol class="agenda">
+    <li><span class="n">1</span><a href="#b1"><span class="t">Onde mora o código</span></a></li>
+    <li><span class="n">2</span><a href="#b2"><span class="t">Model: uma classe que é uma tabela</span></a></li>
+    <li><span class="n">3</span><a href="#b3"><span class="t">Relações, Meta e constraints</span></a></li>
+    <li><span class="n">4</span><a href="#b4"><span class="t">Migrações</span></a></li>
+    <li><span class="n">5</span><a href="#b5"><span class="t">QuerySet: consultas em Python</span></a></li>
+    <li><span class="n">6</span><a href="#b6"><span class="t">Regra de negócio e a rota de escrita</span></a></li>
+    <li><span class="n">7</span><a href="#b7"><span class="t">Auth e Admin: as baterias incluídas</span></a></li>
+    <li><span class="n">8</span><a href="#b8"><span class="t">O ritual de commit</span></a></li>
+    <li><span class="n">9</span><a href="#b9"><span class="t">Exercício e leitura de casa</span></a></li>
+  </ol>
+</header>
+
+<section class="bloco" id="b1">
+  <div class="bloco-head"><span class="bloco-num">1</span><h2>Onde mora o código</h2><span class="tempo">15 min</span></div>
+  <pre><code>backend/
+  api.py                 <span class="c"># NinjaAPI raiz: versão, auth, exception handlers</span>
+  config/                <span class="c"># settings (base/dev/prod), urls, wsgi</span>
+  apps/
+    core/                <span class="c"># require_perm, current_program, DomainError</span>
+    people/  accounts/   <span class="c"># pessoas, usuários e papéis</span>
+    programs/  academic/  audit/
+frontend/src/
+  routes/                <span class="c"># telas (SPA, ssr = false) — assunto da aula 3</span>
+  lib/api/client.ts      <span class="c"># openapi-fetch, baseUrl RELATIVA '/api/v1'</span>
+  lib/api/schema.d.ts    <span class="c"># GERADO pelo make gen-api — nunca editar à mão</span></code></pre>
+  <p>Cada app Django tem <code>models.py</code>, <code>router.py</code>, <code>schemas.py</code>, <code>admin.py</code> e, quando precisa, <code>services.py</code>. A arquitetura tem <strong>duas camadas e meia</strong>, e cada coisa tem um lugar só:</p>
+  <ul>
+    <li><strong>Model = entidade de domínio.</strong> Regra de negócio que protege invariante vive em método do próprio model (<code>person.archive()</code>). Testa-se instanciando em memória, sem banco.</li>
+    <li><strong>Router = borda.</strong> Valida o schema de entrada, checa permissão com <code>require_perm(...)</code>, escopa com <code>current_program(...)</code>, chama o model, devolve schema de saída. Nunca contém regra de negócio; nunca serializa model direto.</li>
+    <li><strong><code>services.py</code> só quando a operação escreve em mais de um model</strong> e precisa de <code>transaction.atomic()</code>. Não se cria service "por simetria".</li>
+    <li><strong>Nada além disso.</strong> Sem Repository, sem Mapper, sem Unit of Work. O ORM do Django já é essas coisas (ADR-002).</li>
+  </ul>
+  <p>E transversal a tudo: <strong>toda escrita relevante gera um <code>AuditLog</code></strong> — quem, quando, o quê, alvo — dentro da mesma transação.</p>
+  <div class="card">
+    <p class="label">A régua de sanidade</p>
+    <p>Um campo novo, da tela ao banco, custa <strong>~6 arquivos</strong>: model → migração → schemas → admin → <code>make gen-api</code> → tela Svelte. Se um campo simples está exigindo mais que isso, a arquitetura está sendo violada — pare e discuta.</p>
+  </div>
+  <p>O resto da aula é a leitura guiada do app <code>people</code>, de cima a baixo. Antes, uma frase sobre o Django em si: é um framework "com baterias incluídas" — ORM (acesso a banco), autenticação, permissões, migrações e um admin já vêm prontos, e é por isso que ele carrega a stack sozinho. Um <em>projeto</em> Django (nosso <code>config/</code>) é a configuração; os <em>apps</em> (<code>people</code>, <code>accounts</code>, <code>audit</code>…) são pacotes Python que agrupam o código por assunto. Todos os trechos a seguir são o código real, resumido.</p>
+</section>
+
+<section class="bloco" id="b2">
+  <div class="bloco-head"><span class="bloco-num">2</span><h2>Model: uma classe que é uma tabela</h2><span class="tempo">15 min</span></div>
+  <p>O coração do Django é o ORM (<em>Object-Relational Mapper</em>): você descreve a tabela como uma classe, e o Django traduz Python ↔ SQL. Classe = tabela, atributo = coluna, instância = linha.</p>
+  <pre><code><span class="k">class</span> Person(models.Model):          <span class="c"># herdar de Model = virar tabela (people_person)</span>
+    <span class="k">class</span> Status(models.TextChoices): <span class="c"># vocabulário fechado para um campo</span>
+        ACTIVE = "active", "Ativa"    <span class="c"># (valor no banco, rótulo humano)</span>
+        ARCHIVED = "archived", "Arquivada"
+
+    full_name = models.CharField("nome completo", max_length=200)
+    primary_email = models.EmailField("e-mail principal")   <span class="c"># valida formato</span>
+    phone_number = models.CharField("telefone", max_length=30, blank=True)
+    status = models.CharField(max_length=20, choices=Status,
+                              default=Status.ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)  <span class="c"># carimbo técnico,</span>
+    updated_at = models.DateTimeField(auto_now=True)      <span class="c"># nunca dado de negócio</span></code></pre>
+  <p>Cada tipo de campo (<code>CharField</code>, <code>EmailField</code>, <code>DateTimeField</code>…) sabe seu tipo SQL <em>e</em> sua validação. Detalhe que confunde todo iniciante: <code>blank=True</code> significa "pode vir vazio num formulário" (validação), enquanto <code>null=True</code> significa "a coluna aceita NULL" (banco). Texto opcional usa só <code>blank</code> e guarda <code>""</code>; relação opcional usa os dois.</p>
+  <div class="card">
+    <p class="label">Convenções da casa</p>
+    <p>Nome de model no singular (<code>Person</code>); dinheiro e nota em <code>DecimalField</code>, nunca <code>FloatField</code>; datas sempre com timezone (<code>USE_TZ = True</code>); e <code>auto_now*</code> só para carimbo técnico — data de negócio é campo explícito, preenchido pela regra.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b3">
+  <div class="bloco-head"><span class="bloco-num">3</span><h2>Relações, Meta e constraints</h2><span class="tempo">15 min</span></div>
+  <h3><code>ForeignKey</code> conta a história do domínio</h3>
+  <pre><code>program = models.ForeignKey(         <span class="c"># toda Person pertence a UM programa —</span>
+    "programs.Program",              <span class="c"># a chave de tenant da aula 1</span>
+    on_delete=models.PROTECT,        <span class="c"># proíbe apagar programa que tem gente</span>
+    related_name="people",           <span class="c"># cria o caminho inverso: programa.people</span>
+)
+user = models.ForeignKey(            <span class="c"># FK, NÃO OneToOne, de propósito: o User é</span>
+    settings.AUTH_USER_MODEL,        <span class="c"># global e a Person é por programa — quem atua</span>
+    null=True, blank=True, ...       <span class="c"># em 2 programas tem 1 conta e 2 pessoas.</span>
+)                                    <span class="c"># Opcional: egresso não loga, mas existe.</span></code></pre>
+  <p><code>ForeignKey</code> é o "muitos-para-um" (muitas pessoas, um programa). O <code>on_delete</code> é obrigatório e é uma decisão de domínio: <code>PROTECT</code> faz o banco recusar a exclusão do programa enquanto houver pessoas nele — apagar em cascata seria destruir cadastro. O <code>related_name</code> dá o caminho de volta: de um <code>Program</code>, <code>programa.people.all()</code> lista suas pessoas. Existe também o <code>OneToOneField</code> ("um-para-um"): é o vínculo entre <code>Person</code> e <code>TeacherProfile</code> — uma pessoa tem no máximo um perfil docente.</p>
+  <h3><code>Meta</code> e constraints: o banco é o último guarda</h3>
+  <pre><code><span class="k">class</span> Meta:
+    ordering = ["full_name"]         <span class="c"># ordem padrão de toda listagem</span>
+    constraints = [
+        models.UniqueConstraint(     <span class="c"># e-mail único DENTRO do programa —</span>
+            fields=["program", "primary_email"],  <span class="c"># entre programas repete,</span>
+            name="unique_email_por_programa",     <span class="c"># e é o caso multi-tenant</span>
+        ),
+    ]</code></pre>
+  <p>A classe interna <code>Meta</code> guarda o que é da tabela, não de uma coluna. A <code>UniqueConstraint</code> vira um índice único <strong>no Postgres</strong>: mesmo que algum código esqueça de validar, o banco recusa a duplicata. Repare que a unicidade é composta — <code>(program, primary_email)</code> — porque a mesma pessoa pode existir em dois programas: o multi-tenant da aula 1 aparecendo no nível do banco.</p>
+</section>
+
+<section class="bloco" id="b4">
+  <div class="bloco-head"><span class="bloco-num">4</span><h2>Migrações: o schema do banco versionado no git</h2><span class="tempo">10 min</span></div>
+  <p>Você nunca escreve <code>CREATE TABLE</code>. Mudou o model → <code>make migrations</code> compara as classes com o estado anterior e gera um arquivo Python em <code>migrations/</code> descrevendo a diferença → <code>make migrate</code> aplica no banco, em ordem, registrando o que já rodou. É assim que o banco de todo mundo (e o de produção) evolui igual.</p>
+  <p>Duas regras da casa: migração gerada é <strong>lida antes do commit</strong> (o autogenerate erra — rename vira drop+create, default esquecido trava deploy), e migração já aplicada nunca se edita à mão. E uma regra de deploy que vem da aula 1: a migração roda <em>antes</em> do código novo, então ela precisa ser retrocompatível — campo novo entra <code>null=True</code> ou com default.</p>
+  <p>Migração também carrega <em>dados</em>, não só schema: os papéis do domínio ("Secretaria", "Coordenação") são Groups criados por <em>data migration</em> — você vai ver isso no bloco 7.</p>
+</section>
+
+<section class="bloco" id="b5">
+  <div class="bloco-head"><span class="bloco-num">5</span><h2>QuerySet: consultas escritas em Python</h2><span class="tempo">15 min</span></div>
+  <p><code>Person.objects</code> é o <em>manager</em> — a porta de entrada das consultas. Cada chamada devolve um <code>QuerySet</code>, que é <em>preguiçoso</em> (só vira SQL quando alguém itera) e <em>encadeável</em>. O projeto dá nome aos recortes do domínio como métodos de um QuerySet próprio:</p>
+  <pre><code><span class="k">class</span> PersonQuerySet(models.QuerySet):
+    <span class="k">def</span> for_program(self, program):   <span class="c"># o escopo de tenant, sempre primeiro</span>
+        <span class="k">return</span> self.filter(program=program)
+
+    <span class="k">def</span> teachers(self):               <span class="c"># "tem perfil docente": atravessa a</span>
+        <span class="k">return</span> self.filter(teacher_profile__isnull=False)  <span class="c"># relação com __</span>
+
+    <span class="k">def</span> staff(self):                  <span class="c"># papel vem do Group do usuário (auth),</span>
+        <span class="k">return</span> self.filter(           <span class="c"># não de um campo duplicado em Person</span>
+            user__groups__name__in=("Secretaria", "Coordenação")
+        ).distinct()
+
+<span class="c"># no model:</span> objects = PersonQuerySet.as_manager()</code></pre>
+  <p>O <code>__</code> (dois underscores) navega relações e aplica operadores: <code>teacher_profile__isnull=False</code> é "existe linha ligada na tabela de perfil docente"; <code>user__groups__name__in=…</code> atravessa <em>duas</em> relações até o nome do grupo. E como tudo encadeia, o router compõe: <code>Person.objects.for_program(programa).teachers()</code> — uma frase do domínio que vira um SQL só. Note que os recortes não são exclusivos: o coordenador que dá aula aparece em <code>teachers()</code> <em>e</em> em <code>staff()</code> — por isso vínculo não é um campo "tipo de pessoa" no model.</p>
+  <div class="card">
+    <p class="label">Regra da Seção 8</p>
+    <p>Query fora de <code>models.py</code>/managers precisa de justificativa em comentário. O caminho normal é criar o método nomeado no QuerySet e chamá-lo do router — a consulta ganha nome, teste e um lugar só para mudar.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b6">
+  <div class="bloco-head"><span class="bloco-num">6</span><h2>Regra de negócio e a rota de escrita</h2><span class="tempo">20 min</span></div>
+  <pre><code><span class="k">def</span> archive(self) -> None:
+    <span class="c"># Invariante: arquivar só a partir de ACTIVE. Duas vezes é erro</span>
+    <span class="c"># do chamador, não no-op silencioso.</span>
+    <span class="k">if</span> self.status == self.Status.ARCHIVED:
+        <span class="k">raise</span> InvalidStateTransition("Pessoa já está arquivada.")
+    self.status = self.Status.ARCHIVED</code></pre>
+  <p>É o ADR-002 em uma tela: a regra vive onde o dado vive. O teste disso instancia <code>Person()</code> em memória e chama o método — sem banco, sem mock. A exceção herda de <code>DomainError</code>, e o handler central da API a converte em resposta 4xx padronizada; nenhum router faz <code>try/except</code> de negócio. E veja como a rota que arquiva usa tudo que apareceu até aqui:</p>
+  <pre><code>@router.post("/{int:person_id}/archive", response=PersonOut)
+<span class="k">def</span> archive_person(request, person_id: int):
+    require_perm(request, "people.change_person")     <span class="c"># 1. permissão, sempre 1ª linha</span>
+    person = get_object_or_404(                        <span class="c"># 2. busca JÁ escopada: pessoa de</span>
+        Person.objects.for_program(current_program(request)),  <span class="c"># outro programa = 404</span>
+        pk=person_id,
+    )
+    <span class="k">with</span> transaction.atomic():                     <span class="c"># 3. tudo ou nada</span>
+        person.archive()                               <span class="c"># 4. a regra mora no model</span>
+        person.save(update_fields=["status", "updated_at"])
+        audit.record("people.archive", request=request, target=person)
+    <span class="k">return</span> person                                  <span class="c"># 5. sai moldado pelo PersonOut</span></code></pre>
+  <p>Dois detalhes de Django aí: <code>get_object_or_404</code> busca ou responde 404 (e o 404 é deliberado — 403 revelaria que o id existe em outro tenant); <code>transaction.atomic()</code> garante que a mudança de status e o registro de auditoria entram juntos ou nenhum entra. Este esqueleto de cinco passos é <strong>o padrão de toda rota de escrita do projeto</strong> — decore-o.</p>
+  <p>E o contrato da borda: a rota recebe <code>PersonIn</code> e devolve <code>PersonOut</code> — schemas Pydantic explícitos em <code>schemas.py</code>. Serializar o model direto faria o contrato da API mudar por acidente quando uma coluna mudasse; com o schema, mudar a API é sempre um ato deliberado. É desse contrato que o front gera seus tipos, como a aula 3 vai mostrar.</p>
+</section>
+
+<section class="bloco" id="b7">
+  <div class="bloco-head"><span class="bloco-num">7</span><h2>Auth e Admin: as baterias incluídas</h2><span class="tempo">10 min</span></div>
+  <h3>Auth de fábrica: <code>User</code>, <code>Group</code>, <code>Permission</code></h3>
+  <p>O Django já traz as tabelas de usuário, grupo e permissão — e cria sozinho, para cada model, as permissões <code>add</code>/<code>change</code>/<code>delete</code>/<code>view</code> (o <code>"people.add_person"</code> das rotas é isso: app + ação + model). O projeto não inventa RBAC: papel do domínio ("Secretaria", "Coordenação") é um <code>Group</code> com permissões, criado por data migration, e <code>require_perm()</code> é um helper fino sobre o <code>user.has_perm()</code> nativo (ADR-003). Você viu no <code>staff()</code> do bloco 5 que até a listagem de pessoas administrativas sai do Group — uma verdade só.</p>
+  <h3>Admin: o CRUD que vem de graça (e por isso é trancado)</h3>
+  <pre><code>@admin.register(Person)                <span class="c"># registra o model no Admin</span>
+<span class="k">class</span> PersonAdmin(AuditedModelAdmin):  <span class="c"># base do projeto: toda escrita audita</span>
+    list_display = ("full_name", "primary_email", "program", "status")
+    list_filter = ("program", "status")
+    search_fields = ("full_name", "primary_email")
+    raw_id_fields = ("user",)          <span class="c"># senão vira um &lt;select&gt; com TODOS os usuários</span>
+    readonly_fields = ("created_at", "updated_at")</code></pre>
+  <p>Essas poucas linhas dão uma interface completa de listagem, busca, filtro e edição. É a maior "bateria incluída" do Django — e exatamente por isso é perigosa: editar ali muda o banco <em>por fora</em> dos métodos do model (o <code>archive()</code> nunca roda). Daí o ADR-006: só sysadmin entra, toda escrita audita, e a tela de verdade da secretaria é <code>/pessoas</code> no front.</p>
+  <p>Última peça: o <code>router.py</code> não é Django "puro" — é Django Ninja, a camada de API da aula 1. Mas repare que ele é fino de propósito: tudo de substância que você leu está no model, no QuerySet e no auth nativo. O Ninja só traduz HTTP ↔ Python, com os schemas como contrato explícito — e é por ele que a aula 3 começa.</p>
+</section>
+
+<section class="bloco" id="b8">
+  <div class="bloco-head"><span class="bloco-num">8</span><h2>O ritual de commit</h2><span class="tempo">5 min</span></div>
+  <ul>
+    <li><code>make ready</code> verde antes de qualquer commit — sem exceção.</li>
+    <li>Commits pequenos, mensagem em português, modo imperativo: <em>"adiciona campo phone_number em Person"</em>.</li>
+    <li>Migração gerada é <strong>lida</strong> antes do commit, não só confiada ao autogenerate.</li>
+    <li>PR: <code>make ready</code> verde, migração revisada, screenshot se a mudança é visual.</li>
+    <li>Rota de escrita sem <code>require_perm</code> explícito e sem auditoria não passa em review.</li>
+  </ul>
+  <p>A fonte normativa de tudo isso é o <code>CLAUDE.md</code> na raiz — que, apesar do nome, é o guia do projeto para humanos e agentes de código igualmente. Em conflito entre ele e o código, ele vence.</p>
+</section>
+
+<section class="bloco" id="b9">
+  <div class="bloco-head"><span class="bloco-num">9</span><h2>Exercício e leitura de casa</h2><span class="tempo">restante</span></div>
+  <h3>Exercício guiado</h3>
+  <p>Percorrer juntos o fluxo da Seção 6 do <code>CLAUDE.md</code>: adicionar um campo opcional (o exemplo clássico é o <code>phone_number</code>, que já está lá — escolham outro, como <code>secondary_email</code>) em <code>Person</code>, do model até a tela, terminando com <code>make ready</code> verde. É o fluxo que vocês vão repetir em toda tarefa — e a melhor forma de sentir a régua dos ~6 arquivos do bloco 1.</p>
+  <h3>Leitura de casa</h3>
+  <ul>
+    <li><strong><code>apps/people/</code> inteiro</strong> — <code>models.py</code>, <code>router.py</code>, <code>schemas.py</code>, <code>services.py</code>, <code>admin.py</code>. É o app de referência; cada comentário paga a leitura.</li>
+    <li><strong>Seções 3, 8 e 9 do <code>CLAUDE.md</code></strong> — arquitetura, convenções e testes.</li>
+    <li><strong>ADR-002 e ADR-007</strong> — model como entidade, e as decisões de modelagem do aluno (a mais rica em "por quês").</li>
+    <li><strong>Tutorial oficial do Django</strong> (<a href="https://docs.djangoproject.com/pt-br/5.2/intro/tutorial01/">docs.djangoproject.com, em português</a>) — partes 1, 2 e 7 (models, ORM e admin). Ignore as partes de views/templates: nossa borda HTTP é o Ninja.</li>
+  </ul>
+</section>
+
+<footer>
+  PPGD Manager · material de integração · aula 2 · gerada a partir do app apps/people/ (models, router, schemas, admin) e do CLAUDE.md em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
+</footer>
+</main>

@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aula 3 do PPGD Manager</title>
+<style>
+  :root {
+    --paper: #f6f8f7;
+    --surface: #eaf0ee;
+    --surface-2: #dfe8e5;
+    --ink: #1b2523;
+    --ink-soft: #45524e;
+    --ink-faint: #6b7a75;
+    --accent: #0f6b77;
+    --accent-soft: #d8e8ea;
+    --warn: #b0742a;
+    --warn-soft: #f3e7d3;
+    --line: #c9d4d0;
+    --code-bg: #10201f;
+    --code-ink: #cfe3df;
+    --code-accent: #7fd0c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #101716;
+      --surface: #182220;
+      --surface-2: #1f2c29;
+      --ink: #dde6e3;
+      --ink-soft: #a6b5b0;
+      --ink-faint: #7c8b86;
+      --accent: #56b7c0;
+      --accent-soft: #123a3f;
+      --warn: #d9a45c;
+      --warn-soft: #33291a;
+      --line: #2b3835;
+      --code-bg: #0b1413;
+      --code-ink: #c4d8d4;
+      --code-accent: #6fc4bc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #101716;
+    --surface: #182220;
+    --surface-2: #1f2c29;
+    --ink: #dde6e3;
+    --ink-soft: #a6b5b0;
+    --ink-faint: #7c8b86;
+    --accent: #56b7c0;
+    --accent-soft: #123a3f;
+    --warn: #d9a45c;
+    --warn-soft: #33291a;
+    --line: #2b3835;
+    --code-bg: #0b1413;
+    --code-ink: #c4d8d4;
+    --code-accent: #6fc4bc;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.65;
+    margin: 0;
+    font-size: 1rem;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+  .serif, h1, h2, h3 { font-family: Charter, Georgia, "Times New Roman", serif; }
+  h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.5rem 0 0; text-wrap: balance; font-weight: 700; }
+  h2 { font-size: 1.55rem; margin: 0 0 1rem; text-wrap: balance; }
+  h3 { font-size: 1.15rem; margin: 2rem 0 0.6rem; }
+  p { margin: 0.9rem 0; }
+  a { color: var(--accent); }
+
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.78rem;
+    color: var(--accent); font-weight: 600;
+  }
+  header.hero { border-bottom: 3px double var(--line); padding-bottom: 1.8rem; margin-bottom: 1rem; }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 40rem; }
+
+  .agenda { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.35rem; }
+  .agenda li { display: flex; gap: 0.8rem; align-items: baseline; }
+  .agenda .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1.4rem; text-align: right; }
+  .agenda .t { color: var(--ink-soft); }
+  .agenda a { color: inherit; text-decoration: none; }
+  .agenda a:hover { color: var(--accent); }
+
+  section.bloco { margin-top: 3.5rem; }
+  .bloco-head { display: flex; align-items: baseline; gap: 0.9rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+  .bloco-num {
+    font-family: Charter, Georgia, serif; font-size: 2.2rem; color: var(--accent);
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .tempo { margin-left: auto; font-size: 0.8rem; color: var(--ink-faint); white-space: nowrap; letter-spacing: 0.05em; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto;
+    font-size: 0.88rem; line-height: 1.55;
+  }
+  pre, code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--code-accent); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+  th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); font-weight: 600; padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 2px solid var(--line); }
+  td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono { white-space: nowrap; }
+
+  .card {
+    background: var(--surface); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1.3rem 0;
+  }
+  .card.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 0 8px 8px 0; }
+  .card.warn strong:first-child { color: var(--warn); }
+  .card.accent { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+  .card p:first-child { margin-top: 0; }
+  .card p:last-child { margin-bottom: 0; }
+
+  .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); font-weight: 600; }
+
+  figure { margin: 1.6rem 0; }
+  figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.6rem; text-align: center; }
+  .diagram-wrap { overflow-x: auto; background: var(--surface); border-radius: 8px; padding: 1rem; }
+  .diagram-wrap svg { display: block; margin: 0 auto; min-width: 560px; }
+  svg text { font-family: system-ui, sans-serif; }
+  svg .box { fill: var(--paper); stroke: var(--line); stroke-width: 1.5; rx: 6; }
+  svg .box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  svg .t-title { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  svg .t-sub { fill: var(--ink-faint); font-size: 11px; }
+  svg .t-edge { fill: var(--ink-soft); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+  svg .edge { stroke: var(--ink-soft); stroke-width: 1.5; fill: none; }
+
+  ul { padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--line); padding-top: 1.2rem; font-size: 0.85rem; color: var(--ink-faint); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Integração de novos membros · aula 3 · front · ~2 h</div>
+  <h1>Aula 3 do PPGD Manager</h1>
+  <p class="lede">Nas aulas 1 e 2 vimos a infra e o backend. Hoje atravessamos a fronteira: como o contrato da API chega tipado ao navegador, e como o SvelteKit e as runas do Svelte 5 montam as telas — lendo o código real de <code>frontend/src/</code>.</p>
+  <ol class="agenda">
+    <li><span class="n">1</span><a href="#b1"><span class="t">O contrato: onde o backend termina</span></a></li>
+    <li><span class="n">2</span><a href="#b2"><span class="t">SvelteKit: rotas são pastas</span></a></li>
+    <li><span class="n">3</span><a href="#b3"><span class="t">Svelte: o componente</span></a></li>
+    <li><span class="n">4</span><a href="#b4"><span class="t">Runas: reatividade explícita</span></a></li>
+    <li><span class="n">5</span><a href="#b5"><span class="t">Estado global: a sessão</span></a></li>
+    <li><span class="n">6</span><a href="#b6"><span class="t">O cliente de API</span></a></li>
+    <li><span class="n">7</span><a href="#b7"><span class="t">Uma tela de verdade, de cima a baixo</span></a></li>
+    <li><span class="n">8</span><a href="#b8"><span class="t">Permissão na tela é cortesia</span></a></li>
+    <li><span class="n">9</span><a href="#b9"><span class="t">Exercício e leitura de casa</span></a></li>
+  </ol>
+</header>
+
+<section class="bloco" id="b1">
+  <div class="bloco-head"><span class="bloco-num">1</span><h2>O contrato: onde o backend termina</h2><span class="tempo">15 min</span></div>
+  <p>Antes de entrar no Svelte, fechamos a conta da aula 2. A impressão que fica de lá está certa: <strong>o Django Ninja é mesmo uma camada fina</strong> sobre o Django puro. Tudo de substância — model, QuerySet, auth, transação — é Django; o Ninja só traduz HTTP ↔ Python. O que resta dele para conhecer cabe num arquivo, o <code>backend/api.py</code>:</p>
+  <pre><code>api = NinjaAPI(
+    title="PPGD Manager API", version="1.0.0",
+    auth=django_auth,   <span class="c"># sessão do Django é o PADRÃO de toda rota (ADR-003);</span>
+)                       <span class="c"># rota pública declara auth=None e justifica com "# público"</span>
+
+@api.exception_handler(DomainError)      <span class="c"># todo erro de negócio vira 4xx com</span>
+<span class="k">def</span> on_domain_error(request, exc):       <span class="c"># corpo padronizado {detail, code} —</span>
+    ...                                  <span class="c"># é POR ISSO que router não faz try/except</span>
+
+api.add_router("/auth/", accounts_router)    <span class="c"># cada app pluga seu router;</span>
+api.add_router("/people/", people_router)    <span class="c"># o "/api/v1" vem do config/urls.py</span></code></pre>
+  <p>Três coisas para registrar, e o Ninja está encerrado:</p>
+  <ul>
+    <li><strong>Auth por padrão, exceção explícita.</strong> O <code>auth=django_auth</code> na raiz faz toda rota exigir sessão (e checar CSRF nas escritas) sem que cada router precise lembrar disso. O caminho seguro é o caminho sem esforço.</li>
+    <li><strong>Erros têm um formato só.</strong> Os <em>exception handlers</em> centrais convertem <code>DomainError</code>, autenticação ausente e payload inválido em <code>{detail, code}</code>. O front confia nesse formato — você vai ver <code>mensagemDeErro()</code> e <code>codigoDeErro()</code> no bloco 6 lendo exatamente esses campos.</li>
+    <li><strong>O OpenAPI é o produto.</strong> Como entrada e saída são schemas Pydantic, o Ninja descreve a API inteira em um documento OpenAPI, de graça. É dele que nasce a metade tipada do front.</li>
+  </ul>
+  <p>E é este o gancho da aula: o comando <code>make gen-api</code> exporta esse OpenAPI para <code>frontend/src/lib/api/openapi.json</code> e gera <code>schema.d.ts</code> — um arquivo TypeScript com o tipo de <strong>cada rota, parâmetro e resposta</strong>. A partir daí, o contrato entre back e front não é combinado verbal: é código que o <code>svelte-check</code> verifica.</p>
+  <figure>
+    <div class="diagram-wrap">
+    <svg viewBox="0 0 640 150" role="img" aria-label="Fluxo do contrato: schemas Pydantic geram o OpenAPI, que gera o schema.d.ts, que tipa o cliente das telas">
+      <rect class="box" x="10" y="45" width="140" height="60" rx="6"/>
+      <text class="t-title" x="80" y="70" text-anchor="middle">schemas.py</text>
+      <text class="t-sub" x="80" y="88" text-anchor="middle">PersonIn / PersonOut</text>
+
+      <rect class="box" x="185" y="45" width="120" height="60" rx="6"/>
+      <text class="t-title" x="245" y="70" text-anchor="middle">OpenAPI</text>
+      <text class="t-sub" x="245" y="88" text-anchor="middle">openapi.json</text>
+
+      <rect class="box" x="340" y="45" width="130" height="60" rx="6"/>
+      <text class="t-title" x="405" y="70" text-anchor="middle">schema.d.ts</text>
+      <text class="t-sub" x="405" y="88" text-anchor="middle">gerado — não editar</text>
+
+      <rect class="box box-accent" x="505" y="45" width="125" height="60" rx="6"/>
+      <text class="t-title" x="567" y="70" text-anchor="middle">client.ts</text>
+      <text class="t-sub" x="567" y="88" text-anchor="middle">api.GET('/people/')</text>
+
+      <path class="edge" d="M150 75 L 181 75" marker-end="url(#arr2)"/>
+      <path class="edge" d="M305 75 L 336 75" marker-end="url(#arr2)"/>
+      <path class="edge" d="M470 75 L 501 75" marker-end="url(#arr2)"/>
+      <text class="t-edge" x="320" y="32" text-anchor="middle">make gen-api</text>
+      <path class="edge" d="M245 42 C 260 20 380 20 400 42" stroke-dasharray="4 3"/>
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-soft)"/>
+        </marker>
+      </defs>
+    </svg>
+    </div>
+    <figcaption>Mexeu em schema ou rota → <code>make gen-api</code> (com o backend de pé) → o front recompila com o contrato novo.</figcaption>
+  </figure>
+  <div class="card warn">
+    <p><strong>Regra da casa:</strong> <code>schema.d.ts</code> e <code>openapi.json</code> são gerados — PR que os edita à mão é recusado. E mudou schema ou rota sem rodar <code>make gen-api</code>? O <code>svelte-check</code> de quem só mexeu no front quebra sem entender o porquê.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b2">
+  <div class="bloco-head"><span class="bloco-num">2</span><h2>SvelteKit: rotas são pastas</h2><span class="tempo">15 min</span></div>
+  <p>O Svelte é a linguagem de componentes; o <strong>SvelteKit</strong> é o framework em volta — roteamento, build, convenções de arquivo. A regra central: <strong>a URL é o caminho da pasta</strong> dentro de <code>src/routes/</code>, e arquivos com prefixo <code>+</code> têm papel especial:</p>
+  <pre><code>src/routes/
+  +layout.ts              <span class="c"># export const ssr = false → SPA pura (ADR-005)</span>
+  +layout.svelte          <span class="c"># casca de TODAS as páginas</span>
+  (auth)/login/+page.svelte      <span class="c"># /login</span>
+  (app)/                         <span class="c"># grupo: layout com menu + guarda de sessão</span>
+    +layout.svelte
+    pessoas/[vinculo]/+page.svelte        <span class="c"># /pessoas/candidatos, /pessoas/administrativo</span>
+    pessoas/[vinculo]/[id]/+page.svelte   <span class="c"># /pessoas/administrativo/42</span>
+    professores/+page.svelte              <span class="c"># /professores</span></code></pre>
+  <ul>
+    <li><strong><code>+page.svelte</code></strong> é a tela; <strong><code>+layout.svelte</code></strong> é a moldura que envolve as telas abaixo dela (e layouts aninham).</li>
+    <li><strong><code>(app)</code> e <code>(auth)</code></strong> são <em>grupos</em>: os parênteses agrupam rotas sob um layout comum <strong>sem aparecer na URL</strong>. É assim que todas as telas internas ganham o menu e a guarda de sessão de uma vez, e o login fica fora delas.</li>
+    <li><strong><code>[vinculo]</code></strong> é parâmetro dinâmico: a mesma tela atende <code>/pessoas/candidatos</code> e <code>/pessoas/administrativo</code>, lendo o valor em <code>page.params.vinculo</code>.</li>
+    <li>Navegação por código usa <code>goto()</code>, e links usam <code>resolve()</code> — nunca string montada à mão.</li>
+  </ul>
+  <p>E o que <strong>não</strong> existe aqui, por decisão: <code>+page.server.ts</code> e funções <code>load</code> com acesso a banco. Isso é o mundo SSR do SvelteKit — nosso <code>ssr = false</code> no layout raiz desliga tudo (ADR-005). Toda busca de dado acontece <em>no navegador</em>, via API, depois que a página carrega. O build (<code>adapter-static</code>) gera arquivos estáticos com <code>fallback: index.html</code>: qualquer URL cai no mesmo HTML, e o roteador da SPA decide o que mostrar — é por isso que o Nginx de produção tem o <code>try_files … /index.html</code> que vimos na aula 1.</p>
+</section>
+
+<section class="bloco" id="b3">
+  <div class="bloco-head"><span class="bloco-num">3</span><h2>Svelte: o componente</h2><span class="tempo">15 min</span></div>
+  <p>Um arquivo <code>.svelte</code> é um componente: lógica, marcação e (opcionalmente) estilo, juntos. Diferente do React, o Svelte é um <em>compilador</em> — o template vira código imperativo eficiente no build, não há re-render de árvore inteira.</p>
+  <pre><code>&lt;script lang="ts"&gt;
+  <span class="c">// a lógica: imports, estado, funções</span>
+  <span class="k">let</span> { children } = $props();      <span class="c">// props que o componente recebe</span>
+&lt;/script&gt;
+
+&lt;h1&gt;Olá&lt;/h1&gt;                         <span class="c">&lt;!-- a marcação: HTML de verdade --&gt;</span>
+{#if sessao.usuario}                 <span class="c">&lt;!-- controle de fluxo no template --&gt;</span>
+  {#each pessoas <span class="k">as</span> pessoa (pessoa.id)}   <span class="c">&lt;!-- a chave (id) preserva o DOM --&gt;</span>
+    &lt;li&gt;{pessoa.full_name}&lt;/li&gt;
+  {/each}
+{:else}
+  &lt;p&gt;Carregando…&lt;/p&gt;
+{/if}
+
+{@render children()}                 <span class="c">&lt;!-- layout renderiza a página filha aqui --&gt;</span></code></pre>
+  <p>O essencial da sintaxe: <code>{expressão}</code> interpola; <code>{#if}</code>/<code>{#each}</code>/<code>{:else}</code> controlam fluxo; eventos são atributos (<code>onclick={arquivar}</code>); e <code>{@render children()}</code> é como um layout diz "a página entra aqui". Atributos dinâmicos seguem o HTML: <code>disabled={condição}</code>, <code>class:opacity-55={condição}</code> liga uma classe a um booleano.</p>
+  <div class="card">
+    <p class="label">E o CSS?</p>
+    <p>O projeto usa <strong>Tailwind v4</strong>: classes utilitárias direto na marcação (<code>class="flex items-center gap-4"</code>), com os tokens do projeto (<code>bg-papel</code>, <code>text-grafite</code>, <code>border-borda</code>) definidos no <code>app.css</code>. Classes recorrentes com nome de domínio — <code>etiqueta</code>, <code>botao-icone</code>, <code>aviso-erro</code> — também moram lá. Sem CSS-in-JS.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b4">
+  <div class="bloco-head"><span class="bloco-num">4</span><h2>Runas: reatividade explícita</h2><span class="tempo">20 min</span></div>
+  <p>Reatividade é a pergunta central de todo framework de front: <em>quando o dado muda, quem reexecuta?</em> No Svelte 5 a resposta são as <strong>runas</strong> — marcadores que o compilador entende (por isso o <code>$</code> no nome; não são funções que existem em runtime). São quatro no dia a dia, e a tela de pessoas usa todas:</p>
+
+  <h3 class="mono" style="font-size:1rem">$state — o dado que muda</h3>
+  <pre><code><span class="k">let</span> pessoas = $state&lt;Pessoa[]&gt;([]);
+<span class="k">let</span> carregando = $state(true);
+<span class="k">let</span> erro = $state('');
+<span class="k">let</span> arquivando = $state&lt;number | null&gt;(null);  <span class="c">// id da pessoa em operação</span></code></pre>
+  <p>Uma variável <code>$state</code> é observada: qualquer trecho do template que a lê se atualiza sozinho quando ela muda — e <em>só</em> ele. Atribuir é o bastante (<code>carregando = false</code>); não há <code>setState</code>. Repare no padrão dos quatro estados: dado, carregando, erro, operação-em-curso. Quase toda tela do projeto tem esse quarteto.</p>
+
+  <h3 class="mono" style="font-size:1rem">$derived — o dado calculado</h3>
+  <pre><code><span class="k">const</span> slug = $derived(page.params.vinculo ?? '');   <span class="c">// segue a URL</span>
+<span class="k">const</span> recorte = $derived(RECORTES[slug]);           <span class="c">// segue o slug</span>
+<span class="k">const</span> podeArquivar = $derived(sessao.pode('people.change_person'));</code></pre>
+  <p><code>$derived</code> declara um valor que <em>depende</em> de outros: quando <code>page.params</code> muda (a pessoa navegou de "candidatos" para "administrativo"), <code>slug</code> e <code>recorte</code> recalculam em cascata, e o template atrás deles também. Você nunca escreve "atualize X quando Y mudar" — declara a fórmula e o compilador descobre as dependências.</p>
+
+  <h3 class="mono" style="font-size:1rem">$effect — o ponto de contato com o mundo</h3>
+  <pre><code>$effect(() =&gt; {
+  <span class="k">if</span> (recorte) carregar(recorte.bond);   <span class="c">// mudou o recorte → busca de novo</span>
+});</code></pre>
+  <p><code>$effect</code> roda uma função sempre que algo que ela <em>lê</em> muda. É a ponte para fora da reatividade: buscar na API, redirecionar, mexer no DOM. Regra de bom senso que o projeto segue: efeito é para <em>efeito colateral</em> — se você está usando <code>$effect</code> para calcular um valor e guardar num <code>$state</code>, o certo era um <code>$derived</code>.</p>
+
+  <h3 class="mono" style="font-size:1rem">$props — o que vem de fora</h3>
+  <pre><code><span class="k">let</span> { children } = $props();   <span class="c">// num layout: a página filha</span>
+<span class="c">// num componente: let { nome, tamanho = 16 } = $props();</span></code></pre>
+  <p>Declara o que o componente recebe de quem o usa, com desestruturação e defaults do próprio JavaScript.</p>
+
+  <div class="card warn">
+    <p><strong>Sintaxe legada é proibida para estado local.</strong> Tutoriais antigos de Svelte ensinam <code>let</code> reativo "mágico", <code>$:</code> e <em>stores</em> com <code>writable()</code>. Este projeto é Svelte 5 com runas — a reatividade é explícita e funciona em qualquer arquivo, não só dentro de componente. Se o tutorial que você achou usa <code>$:</code>, ele é de outra era; a referência certa é <a href="https://svelte.dev/docs/svelte">svelte.dev/docs</a>.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b5">
+  <div class="bloco-head"><span class="bloco-num">5</span><h2>Estado global: a sessão</h2><span class="tempo">15 min</span></div>
+  <p>Runas não vivem só em componente: um arquivo <code>.svelte.ts</code> também é compilado, e é assim que o projeto tem estado global sem biblioteca nenhuma. O exemplo canônico é <code>lib/sessao.svelte.ts</code> — quem está logado, para toda a SPA:</p>
+  <pre><code><span class="k">class</span> Sessao {
+  usuario = $state&lt;Usuario | null&gt;(null);   <span class="c">// reflexo, em memória, do cookie</span>
+  carregando = $state(true);                <span class="c">// de sessão — a VERDADE mora no Django</span>
+
+  pode(permissao: string): boolean {        <span class="c">// ex.: sessao.pode('people.view_person')</span>
+    <span class="k">return</span> this.usuario?.permissions.includes(permissao) ?? false;
+  }
+
+  <span class="k">async</span> entrar(username, password) {
+    <span class="k">await</span> garantirCsrf();                 <span class="c">// planta o cookie csrftoken antes</span>
+    <span class="k">const</span> { data, error } = <span class="k">await</span> api.POST('/auth/login', { body: {...} });
+    ...
+    this.usuario = data;                    <span class="c">// TODO template que lê `usuario`</span>
+  }                                         <span class="c">// atualiza sozinho: menu, guarda, tudo</span>
+}
+<span class="k">export const</span> sessao = <span class="k">new</span> Sessao();        <span class="c">// instância única, importada por todos</span></code></pre>
+  <p>Repare no comentário do próprio arquivo: <em>a verdade sobre quem está logado mora no cookie de sessão do Django</em> — esta classe é só o reflexo dela em memória, para as telas não perguntarem ao servidor a cada render. O tipo <code>Usuario</code> vem do contrato (<code>components['schemas']['UserOut']</code>): se o backend mudar o formato do usuário, este arquivo quebra no <code>svelte-check</code>, não em produção.</p>
+  <p>Quem consome a sessão é o layout do grupo <code>(app)</code> — a <strong>guarda</strong> das telas internas:</p>
+  <pre><code>$effect(() =&gt; {                            <span class="c">// sem sessão → volta para o login.</span>
+  <span class="k">if</span> (sessao.usuario === null &amp;&amp; !sessao.carregando) {
+    goto(resolve('/login'), { replaceState: true });
+  }
+});</code></pre>
+</section>
+
+<section class="bloco" id="b6">
+  <div class="bloco-head"><span class="bloco-num">6</span><h2>O cliente de API</h2><span class="tempo">15 min</span></div>
+  <p>Toda chamada de rede do front passa por <strong>um arquivo</strong>: <code>lib/api/client.ts</code>. <code>fetch</code> cru nas telas é proibido (Seção 8 do CLAUDE.md) — e o motivo fica óbvio lendo o que o cliente resolve de uma vez por todas:</p>
+  <pre><code><span class="k">export const</span> api = createClient&lt;paths&gt;({   <span class="c">// &lt;paths&gt; vem do schema.d.ts GERADO:</span>
+  baseUrl: '/api/v1',    <span class="c">// RELATIVA, sempre — URL absoluta quebra a origem única (ADR-004)</span>
+  credentials: 'include' <span class="c">// sem isto o cookie de sessão não acompanha a requisição</span>
+});
+
+api.use(csrf);           <span class="c">// middleware: em todo POST/PUT/PATCH/DELETE, lê o cookie</span>
+                         <span class="c">// `csrftoken` e envia o header X-CSRFToken. NENHUMA tela</span>
+                         <span class="c">// pensa em CSRF — o preço do ADR-003, pago uma vez, foi aqui.</span></code></pre>
+  <p>O <code>createClient&lt;paths&gt;</code> é o <code>openapi-fetch</code> tipado pelo contrato do bloco 1. O efeito prático é que o TypeScript conhece <em>a API inteira</em>:</p>
+  <ul>
+    <li><code>api.GET('/people/', { params: { query: { bond } } })</code> — a URL é autocompletada, e <code>bond</code> só aceita os quatro valores do enum <code>PersonBond</code> que vimos no <code>schemas.py</code> da aula 2.</li>
+    <li>A resposta sai tipada como <code>PersonOut[]</code> paginado. Errar o nome de um campo é erro de compilação, não surpresa em produção.</li>
+    <li>O retorno é sempre <code>{ data, error }</code> — sem exceção para capturar; a tela decide o que fazer com cada um.</li>
+  </ul>
+  <p>Os helpers ao redor completam o kit: <code>garantirCsrf()</code> planta o cookie antes da primeira escrita (no login ainda não há sessão); <code>mensagemDeErro(erro)</code> extrai o <code>detail</code> padronizado pelos exception handlers do bloco 1; e <code>codigoDeErro(erro)</code> extrai o <code>code</code> estável. A distinção importa: <strong>a mensagem é para a pessoa ler; o código é para a tela decidir</strong> — comparar o texto do <code>detail</code> seria acoplar a lógica à redação da mensagem.</p>
+</section>
+
+<section class="bloco" id="b7">
+  <div class="bloco-head"><span class="bloco-num">7</span><h2>Uma tela de verdade, de cima a baixo</h2><span class="tempo">20 min</span></div>
+  <p>Agora tudo junto. A tela <code>pessoas/[vinculo]/+page.svelte</code> lista candidatos ou administrativo — é a ponta do endpoint <code>GET /people/?bond=…</code> que dissecamos na aula 2. O esqueleto dela, anotado:</p>
+  <pre><code><span class="c">// 1. TIPOS DO CONTRATO — nada de interface duplicada à mão</span>
+<span class="k">type</span> Pessoa = components['schemas']['PersonOut'];
+
+<span class="c">// 2. A URL COMANDA — derivados seguem o parâmetro da rota</span>
+<span class="k">const</span> slug = $derived(page.params.vinculo ?? '');
+<span class="k">const</span> recorte = $derived(RECORTES[slug]);   <span class="c">// slug pt na URL → bond do contrato;</span>
+                                            <span class="c">// os dois idiomas não se misturam</span>
+<span class="c">// 3. O QUARTETO DE ESTADO</span>
+<span class="k">let</span> pessoas = $state&lt;Pessoa[]&gt;([]);
+<span class="k">let</span> carregando = $state(true);
+<span class="k">let</span> erro = $state('');
+<span class="k">let</span> arquivando = $state&lt;number | null&gt;(null);
+
+<span class="c">// 4. BUSCAR QUANDO A URL MUDAR</span>
+$effect(() =&gt; { <span class="k">if</span> (recorte) carregar(recorte.bond); });
+
+<span class="c">// 5. ESCREVER: chama a API, atualiza a lista com a RESPOSTA do servidor</span>
+<span class="k">async function</span> arquivar(pessoa: Pessoa) {
+  arquivando = pessoa.id;                    <span class="c">// desabilita SÓ este botão</span>
+  <span class="k">const</span> { data, error } = <span class="k">await</span> api.POST('/people/{person_id}/archive',
+    { params: { path: { person_id: pessoa.id } } });
+  arquivando = null;
+  <span class="k">if</span> (error || !data) { erro = mensagemDeErro(error, '…'); <span class="k">return</span>; }
+  pessoas = pessoas.map((p) =&gt; (p.id === data.id ? data : p));
+}                                            <span class="c">// ↑ a linha nova vem do backend, que é</span>
+                                             <span class="c">// quem sabe o estado real após archive()</span></code></pre>
+  <p>E no template, os três estados sempre presentes — carregando, vazio (com texto que explica <em>de onde a lista vem</em>), e a lista em si:</p>
+  <pre><code>{#if carregando}
+  &lt;p class="etiqueta"&gt;Carregando…&lt;/p&gt;
+{:else if pessoas.length === 0}
+  &lt;p&gt;{recorte.vazio}&lt;/p&gt;                <span class="c">&lt;!-- vazio explicado, nunca tela em branco --&gt;</span>
+{:else}
+  {#each pessoas <span class="k">as</span> pessoa (pessoa.id)}
+    ...
+    {#if podeArquivar}                  <span class="c">&lt;!-- botão só para quem tem a permissão --&gt;</span>
+      &lt;button
+        disabled={pessoa.status === 'archived' || arquivando === pessoa.id}
+        onclick={() =&gt; arquivar(pessoa)}&gt;…&lt;/button&gt;
+    {/if}
+  {/each}
+{/if}</code></pre>
+  <p>Dois detalhes de produto que valem imitar: <em>arquivar é o "excluir" desta tela</em> — a pessoa não some do banco, porque continua sendo quem assinou o que assinou (o invariante do <code>archive()</code> da aula 2); e o botão de pessoa arquivada fica <strong>desabilitado em vez de sumir</strong> — sumir daria a impressão de que a ação não existe.</p>
+  <div class="card accent">
+    <p><strong>O espelho dos cinco passos.</strong> Na aula 2, decoramos o esqueleto da rota de escrita (permissão → busca escopada → transação → método do model → auditoria). Este é o esqueleto gêmeo do lado de cá: <strong>tipos do contrato → derivados da URL → quarteto de estado → efeito que busca → escrita que confia na resposta</strong>. Toda tela nova do projeto é uma variação disso.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b8">
+  <div class="bloco-head"><span class="bloco-num">8</span><h2>Permissão na tela é cortesia</h2><span class="tempo">10 min</span></div>
+  <p>O menu do layout <code>(app)</code> é uma aula de autorização em UI. Cada item é condicional — <em>link que só leva a 403 é pior do que link ausente</em> — e a escolha do critério é deliberada, item a item:</p>
+  <pre><code>{#if sessao.pode('people.view_person')}        <span class="c">&lt;!-- por PERMISSÃO: é o que a</span>
+  &lt;a href={resolve('/pessoas/administrativo')}&gt;…  <span class="c">tela de destino exige --&gt;</span>
+{/if}
+
+{#if sessao.temPapel('Candidato')}             <span class="c">&lt;!-- por PAPEL: os quatro papéis têm</span>
+  &lt;a href={resolve('/acompanhamento')}&gt;…       <span class="c">a mesma view_*, e o que muda é o</span>
+{/if}                                          <span class="c">recorte que o backend aplica --&gt;</span></code></pre>
+  <p>A regra: <strong><code>pode()</code> (permissão) é o critério padrão</strong> — é o mesmo nome que o <code>require_perm</code> checa no backend. <code>temPapel()</code> (Group) só entra quando a permissão não distingue o público, e o comentário no código explica o porquê caso a caso. Até a rota inicial pós-login é decidida por permissão: o Candidato da isolada não tem <code>people.view_person</code>, então jogá-lo em <code>/pessoas</code> seria abrir a sessão com um 403 na cara.</p>
+  <div class="card warn">
+    <p><strong>Mas nada disso é segurança.</strong> Esconder botão e menu é cortesia de UX. Quem protege é o backend: o <code>require_perm</code> na primeira linha de cada rota e o escopo de <code>current_program</code> rodam <em>sempre</em>, inclusive para quem chamar a API por fora da tela. O mesmo vale para validação de formulário: a do front é conforto; a que vale é a do schema Ninja. Nunca confie só no front.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b9">
+  <div class="bloco-head"><span class="bloco-num">9</span><h2>Exercício e leitura de casa</h2><span class="tempo">restante</span></div>
+  <h3>Exercício guiado: quebrar o contrato de propósito</h3>
+  <p>Numa branch descartável, para sentir a maquinaria trabalhando a seu favor:</p>
+  <ol>
+    <li>Renomeie <code>phone_number</code> para <code>phone</code> em <code>PersonOut</code> (<code>apps/people/schemas.py</code>) — só no schema de saída.</li>
+    <li>Rode <code>make gen-api</code> (backend de pé) e depois <code>make typecheck</code>.</li>
+    <li>Veja o <code>svelte-check</code> apontar <strong>cada tela</strong> que lia o campo antigo — é o contrato pegando a quebra em segundos, antes de qualquer clique.</li>
+    <li>Desfaça tudo (<code>git checkout .</code>) e confirme o <code>make ready</code> verde.</li>
+  </ol>
+  <p>Depois, o exercício construtivo: escolha uma tela simples (a listagem de disciplinas, por exemplo) e leia-a inteira identificando o esqueleto do bloco 7 — tipos, derivados, quarteto, efeito, escrita.</p>
+  <h3>Leitura de casa</h3>
+  <ul>
+    <li><strong><code>lib/api/client.ts</code> e <code>lib/sessao.svelte.ts</code></strong> — inteiros; são curtos e cada comentário paga a leitura.</li>
+    <li><strong><code>routes/(app)/+layout.svelte</code></strong> — o menu comentado é o mapa de quem-vê-o-quê do sistema.</li>
+    <li><strong>Tutorial oficial de Svelte</strong> (<a href="https://svelte.dev/tutorial">svelte.dev/tutorial</a>) — interativo, no navegador; faça ao menos as partes de runas e de SvelteKit. Ignore qualquer material que use <code>$:</code> ou stores para estado local.</li>
+    <li><strong>ADR-005</strong> — relembra por que nada disso vira processo Node em produção.</li>
+  </ul>
+</section>
+
+<footer>
+  PPGD Manager · material de integração · aula 3 · gerada a partir de api.py, client.ts, sessao.svelte.ts, +layout.svelte e pessoas/[vinculo]/+page.svelte em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
+</footer>
+</main>

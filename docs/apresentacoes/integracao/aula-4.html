@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aula 4 do PPGD Manager</title>
+<style>
+  :root {
+    --paper: #f6f8f7;
+    --surface: #eaf0ee;
+    --surface-2: #dfe8e5;
+    --ink: #1b2523;
+    --ink-soft: #45524e;
+    --ink-faint: #6b7a75;
+    --accent: #0f6b77;
+    --accent-soft: #d8e8ea;
+    --warn: #b0742a;
+    --warn-soft: #f3e7d3;
+    --line: #c9d4d0;
+    --code-bg: #10201f;
+    --code-ink: #cfe3df;
+    --code-accent: #7fd0c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #101716;
+      --surface: #182220;
+      --surface-2: #1f2c29;
+      --ink: #dde6e3;
+      --ink-soft: #a6b5b0;
+      --ink-faint: #7c8b86;
+      --accent: #56b7c0;
+      --accent-soft: #123a3f;
+      --warn: #d9a45c;
+      --warn-soft: #33291a;
+      --line: #2b3835;
+      --code-bg: #0b1413;
+      --code-ink: #c4d8d4;
+      --code-accent: #6fc4bc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #101716;
+    --surface: #182220;
+    --surface-2: #1f2c29;
+    --ink: #dde6e3;
+    --ink-soft: #a6b5b0;
+    --ink-faint: #7c8b86;
+    --accent: #56b7c0;
+    --accent-soft: #123a3f;
+    --warn: #d9a45c;
+    --warn-soft: #33291a;
+    --line: #2b3835;
+    --code-bg: #0b1413;
+    --code-ink: #c4d8d4;
+    --code-accent: #6fc4bc;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.65;
+    margin: 0;
+    font-size: 1rem;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+  .serif, h1, h2, h3 { font-family: Charter, Georgia, "Times New Roman", serif; }
+  h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.5rem 0 0; text-wrap: balance; font-weight: 700; }
+  h2 { font-size: 1.55rem; margin: 0 0 1rem; text-wrap: balance; }
+  h3 { font-size: 1.15rem; margin: 2rem 0 0.6rem; }
+  p { margin: 0.9rem 0; }
+  a { color: var(--accent); }
+
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.78rem;
+    color: var(--accent); font-weight: 600;
+  }
+  header.hero { border-bottom: 3px double var(--line); padding-bottom: 1.8rem; margin-bottom: 1rem; }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 40rem; }
+
+  .agenda { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.35rem; }
+  .agenda li { display: flex; gap: 0.8rem; align-items: baseline; }
+  .agenda .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1.4rem; text-align: right; }
+  .agenda .t { color: var(--ink-soft); }
+  .agenda a { color: inherit; text-decoration: none; }
+  .agenda a:hover { color: var(--accent); }
+
+  section.bloco { margin-top: 3.5rem; }
+  .bloco-head { display: flex; align-items: baseline; gap: 0.9rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+  .bloco-num {
+    font-family: Charter, Georgia, serif; font-size: 2.2rem; color: var(--accent);
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .tempo { margin-left: auto; font-size: 0.8rem; color: var(--ink-faint); white-space: nowrap; letter-spacing: 0.05em; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto;
+    font-size: 0.88rem; line-height: 1.55;
+  }
+  pre, code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--code-accent); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+  th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); font-weight: 600; padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 2px solid var(--line); }
+  td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono { white-space: nowrap; }
+
+  .card {
+    background: var(--surface); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1.3rem 0;
+  }
+  .card.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 0 8px 8px 0; }
+  .card.warn strong:first-child { color: var(--warn); }
+  .card.accent { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+  .card p:first-child { margin-top: 0; }
+  .card p:last-child { margin-bottom: 0; }
+
+  .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); font-weight: 600; }
+
+  figure { margin: 1.6rem 0; }
+  figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.6rem; text-align: center; }
+  .diagram-wrap { overflow-x: auto; background: var(--surface); border-radius: 8px; padding: 1rem; }
+  .diagram-wrap svg { display: block; margin: 0 auto; min-width: 560px; }
+  svg text { font-family: system-ui, sans-serif; }
+  svg .box { fill: var(--paper); stroke: var(--line); stroke-width: 1.5; rx: 6; }
+  svg .box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  svg .t-title { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  svg .t-sub { fill: var(--ink-faint); font-size: 11px; }
+  svg .t-edge { fill: var(--ink-soft); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+  svg .edge { stroke: var(--ink-soft); stroke-width: 1.5; fill: none; }
+  svg .net { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 5 4; rx: 10; }
+  svg .t-net { fill: var(--accent); font-size: 11px; letter-spacing: 0.08em; font-weight: 600; }
+
+  ul { padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--line); padding-top: 1.2rem; font-size: 0.85rem; color: var(--ink-faint); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Integração de novos membros · aula 4 · debug · ~90 min</div>
+  <h1>Aula 4 do PPGD Manager</h1>
+  <p class="lede">Alguma coisa quebrou — e agora? Esta aula é o mapa de investigação do sistema: onde olhar primeiro, camada por camada, e as ferramentas que o projeto já dá para interrogar cada uma delas na mão, antes de pedir ajuda a qualquer agente.</p>
+  <ol class="agenda">
+    <li><span class="n">1</span><a href="#b1"><span class="t">A postura: reproduzir antes de corrigir</span></a></li>
+    <li><span class="n">2</span><a href="#b2"><span class="t">Logs: o que cada container conta</span></a></li>
+    <li><span class="n">3</span><a href="#b3"><span class="t">A API sem o front: /api/v1/docs e os códigos de erro</span></a></li>
+    <li><span class="n">4</span><a href="#b4"><span class="t">O shell do Django: o ORM ao vivo</span></a></li>
+    <li><span class="n">5</span><a href="#b5"><span class="t">O banco na mão: psql e a auditoria</span></a></li>
+    <li><span class="n">6</span><a href="#b6"><span class="t">O navegador: Network, cookies e o typecheck</span></a></li>
+    <li><span class="n">7</span><a href="#b7"><span class="t">Testes como ferramenta de investigação</span></a></li>
+    <li><span class="n">8</span><a href="#b8"><span class="t">Três diagnósticos guiados</span></a></li>
+    <li><span class="n">9</span><a href="#b9"><span class="t">Leitura de casa</span></a></li>
+  </ol>
+</header>
+
+<section class="bloco" id="b1">
+  <div class="bloco-head"><span class="bloco-num">1</span><h2>A postura: reproduzir antes de corrigir</h2><span class="tempo">10 min</span></div>
+  <p>Duas regras vêm antes de qualquer ferramenta. Primeira: <strong>não se corrige o que não se reproduziu</strong>. Um sintoma que casa com um problema conhecido pode ter outra causa — agir pelo reflexo troca um bug por dois. Segunda, que é da Seção 9 do <code>CLAUDE.md</code>: <strong>todo bug corrigido ganha antes um teste que o reproduz</strong>. O teste vermelho é a prova de que você entendeu a causa; ele ficando verde é a prova do conserto — e ele fica de guarda para sempre.</p>
+  <p>Com isso posto, o mapa. Quase todo problema aqui se localiza perguntando "em qual camada da aula 1 ele mora?":</p>
+  <div class="table-wrap"><table>
+    <tr><th>Sintoma</th><th>Primeira suspeita</th><th>Ferramenta</th></tr>
+    <tr><td>Página nem carrega / 502</td><td>Nginx sem upstream (serviço caiu?)</td><td class="mono">docker compose ps / logs nginx</td></tr>
+    <tr><td>Tela carrega, dado não vem</td><td>API respondendo erro</td><td>DevTools → Network (bloco 6)</td></tr>
+    <tr><td>Erro 4xx com corpo <code>{detail, code}</code></td><td>Regra de negócio, permissão ou validação</td><td>/api/v1/docs (bloco 3)</td></tr>
+    <tr><td>Erro 500</td><td>Bug no backend</td><td class="mono">docker compose logs backend</td></tr>
+    <tr><td>Dado "estranho" no banco</td><td>Estado, não código</td><td>shell do Django, psql, AuditLog (blocos 4–5)</td></tr>
+    <tr><td>Quebra só no build/CI</td><td>Tipo ou lint</td><td class="mono">make typecheck / make lint</td></tr>
+  </table></div>
+</section>
+
+<section class="bloco" id="b2">
+  <div class="bloco-head"><span class="bloco-num">2</span><h2>Logs: o que cada container conta</h2><span class="tempo">10 min</span></div>
+  <pre><code>docker compose logs -f backend    <span class="c"># o mais útil: cada request + traceback de 500</span>
+docker compose logs -f nginx      <span class="c"># access log: qual rota, qual status, qual upstream</span>
+make web                          <span class="c"># atalho para logs -f frontend (o Vite)</span>
+docker compose ps                 <span class="c"># quem está de pé, e desde quando</span></code></pre>
+  <p>O log do <code>backend</code> é o do <code>runserver</code>: uma linha por requisição (<code>"POST /api/v1/people/ 201"</code>) e, num erro 500, o <em>traceback</em> completo do Python — leia-o de baixo para cima: a última linha é o erro, e o primeiro arquivo <em>nosso</em> na pilha (algo em <code>apps/</code>) é onde olhar. Como <code>DEBUG=True</code> em dev, erros de API também voltam com detalhe no corpo da resposta.</p>
+  <p>O log do <code>nginx</code> responde outra pergunta: <em>a requisição chegou onde eu acho que chegou?</em> Um 502 ali significa "o upstream não respondeu" — o Django ou o Vite caíram; um 404 que não aparece no log do backend nunca saiu do Nginx.</p>
+</section>
+
+<section class="bloco" id="b3">
+  <div class="bloco-head"><span class="bloco-num">3</span><h2>A API sem o front: <code>/api/v1/docs</code> e os códigos de erro</h2><span class="tempo">15 min</span></div>
+  <p>O Ninja publica de graça uma interface interativa da API inteira: <a href="http://localhost:8080/api/v1/docs">http://localhost:8080/api/v1/docs</a> (o atalho <code>/api</code> redireciona para lá). Cada rota com seus parâmetros e schemas, e o botão <em>Try it out</em> executa de verdade. Como ela vive na <strong>mesma origem</strong> (aula 1!), sua sessão logada vale ali — dá para isolar "o bug é na tela ou na API?" em um minuto, chamando a rota por fora do front.</p>
+  <p>Todo erro da API tem o formato <code>{detail, code}</code> dos exception handlers do <code>api.py</code>. A tabela de tradução:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Status</th><th>Significado aqui</th><th>Para onde olhar</th></tr>
+    <tr><td class="mono">401</td><td><code>not_authenticated</code> — sem sessão válida</td><td>Cookie <code>sessionid</code> presente? Logou por <code>:8080</code>?</td></tr>
+    <tr><td class="mono">403</td><td>Permissão negada (<code>require_perm</code>) ou CSRF rejeitado</td><td>O usuário tem a permissão? O <code>X-CSRFToken</code> foi junto?</td></tr>
+    <tr><td class="mono">404</td><td>Não existe <strong>ou é de outro programa</strong></td><td>Lembre da aula 2: a busca é escopada — id de outro tenant responde 404 de propósito</td></tr>
+    <tr><td class="mono">422</td><td><code>validation_error</code> — payload fora do schema</td><td>O campo <code>errors</code> aponta campo a campo</td></tr>
+    <tr><td class="mono">4xx</td><td><code>DomainError</code> com <code>code</code> próprio</td><td>Regra de negócio recusou — é comportamento, não bug</td></tr>
+    <tr><td class="mono">500</td><td>Bug nosso</td><td>Traceback no log do backend (bloco 2)</td></tr>
+  </table></div>
+  <div class="card accent">
+    <p><strong>O 404 que parece bug.</strong> "A pessoa existe no banco, mas a API responde 404" é o escopo de tenant funcionando: a conta logada não pertence ao programa daquele registro. Antes de caçar bug, confira <em>com qual conta</em> você está logado — o <code>CONTAS-DEMO.txt</code> tem contas dos dois programas justamente para esse teste.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b4">
+  <div class="bloco-head"><span class="bloco-num">4</span><h2>O shell do Django: o ORM ao vivo</h2><span class="tempo">10 min</span></div>
+  <p>O <code>shell</code> abre um Python interativo com o projeto carregado — o laboratório para testar uma consulta ou uma regra antes de escrever código (roda no host, contra o banco da 5433, como o <code>make run</code>):</p>
+  <pre><code>cd backend && uv run python manage.py shell
+
+&gt;&gt;&gt; <span class="k">from</span> apps.people.models <span class="k">import</span> Person
+&gt;&gt;&gt; Person.objects.count()
+&gt;&gt;&gt; p = Person.objects.filter(primary_email__icontains="demo").first()
+&gt;&gt;&gt; Person.objects.for_program(p.program).staff()   <span class="c"># os recortes da aula 2, ao vivo</span>
+&gt;&gt;&gt; <span class="k">print</span>(Person.objects.staff().query)             <span class="c"># o SQL que o ORM vai emitir</span>
+
+&gt;&gt;&gt; p2 = Person(full_name="Teste", status=Person.Status.ARCHIVED)
+&gt;&gt;&gt; p2.archive()                    <span class="c"># invariante em memória: levanta</span>
+InvalidStateTransition: Pessoa já está arquivada.   <span class="c"># InvalidStateTransition — sem tocar o banco</span></code></pre>
+  <p>O <code>.query</code> merece destaque: quando uma listagem vem errada, imprimir o SQL do QuerySet mostra na hora se o filtro que você imaginou é o filtro que existe. E note a última parte: dá para exercitar um invariante de model <em>sem salvar nada</em> — é exatamente o que os testes de model fazem.</p>
+</section>
+
+<section class="bloco" id="b5">
+  <div class="bloco-head"><span class="bloco-num">5</span><h2>O banco na mão: psql e a auditoria</h2><span class="tempo">10 min</span></div>
+  <p>Território de vocês. O Postgres de dev está publicado no host (aula 1: porta 5433, credenciais padrão <code>ppg</code>/<code>ppg</code>):</p>
+  <pre><code>psql -h localhost -p 5433 -U ppg ppg
+ppg=# \dt                          <span class="c">-- as tabelas: people_person, audit_..., auth_...</span>
+ppg=# \d people_person             <span class="c">-- colunas, índices e as UniqueConstraints da aula 2</span>
+ppg=# select id, full_name, status, program_id from people_person limit 10;</code></pre>
+  <p>Duas disciplinas ao usar isso: <strong>leitura à vontade, escrita jamais</strong> — um <code>UPDATE</code> na mão desvia de invariante, permissão e auditoria de uma vez (é o mesmo motivo do Admin trancado, ADR-006; correção excepcional de dado é pelo Admin, que audita). E lembre que schema quem muda é migração, nunca DDL manual.</p>
+  <p>E a jóia para investigação: o <strong><code>AuditLog</code></strong>. Toda escrita relevante registrou quem, quando, o quê e o alvo — quando o mistério é "quem mudou isso?", a resposta já está gravada. Dá para ler pelo Django Admin (você é sysadmin) ou direto na tabela do app <code>audit</code>.</p>
+</section>
+
+<section class="bloco" id="b6">
+  <div class="bloco-head"><span class="bloco-num">6</span><h2>O navegador: Network, cookies e o typecheck</h2><span class="tempo">10 min</span></div>
+  <p>Para bug de tela, o DevTools (F12) é o log do front. Na aba <strong>Network</strong>, filtre por <code>api/</code> e examine a requisição que falhou:</p>
+  <ul>
+    <li><strong>Request:</strong> o cookie <code>sessionid</code> foi junto? Nas escritas, o header <code>X-CSRFToken</code> apareceu (é o middleware do <code>client.ts</code> da aula 3 trabalhando)?</li>
+    <li><strong>Response:</strong> o corpo <code>{detail, code}</code> diz o motivo — a mesma tabela do bloco 3.</li>
+    <li><strong>Console:</strong> erro de JavaScript e os avisos do Svelte aparecem aqui; o log do processo do Vite é o <code>make web</code>.</li>
+  </ul>
+  <p>E o "debugger que roda antes do bug": <code>make typecheck</code>. O <code>svelte-check</code> e o <code>mypy</code> pegam em segundos o desencontro entre o que a tela espera e o que o contrato entrega — inclusive o clássico "mexi em schema e esqueci o <code>make gen-api</code>", que a aula 3 mostrou como provocar de propósito.</p>
+</section>
+
+<section class="bloco" id="b7">
+  <div class="bloco-head"><span class="bloco-num">7</span><h2>Testes como ferramenta de investigação</h2><span class="tempo">10 min</span></div>
+  <pre><code>make test                                  <span class="c"># a suíte inteira (precisa do banco de pé)</span>
+cd backend && uv run pytest apps/people/   <span class="c"># só um app</span>
+uv run pytest -k archive -x -vv            <span class="c"># só testes com "archive" no nome;</span>
+                                           <span class="c"># -x para no primeiro erro, -vv detalha</span></code></pre>
+  <p>O fluxo de caça a bug é: reproduza o sintoma num teste — de model se o invariante falhou, de API (via client do Ninja) se o fluxo falhou —, veja-o vermelho, e só então mexa no código. O teste vira o critério objetivo de "consertei", substituindo o "parece que agora foi" de clicar na tela. Os testes rodam contra Postgres de verdade (paridade com produção, Seção 9); o <code>conftest.py</code> da raiz do backend prepara isso.</p>
+</section>
+
+<section class="bloco" id="b8">
+  <div class="bloco-head"><span class="bloco-num">8</span><h2>Três diagnósticos guiados</h2><span class="tempo">15 min</span></div>
+  <p>Três defeitos clássicos deste projeto — as armadilhas da aula 1, agora do ponto de vista de quem investiga. Em aula, provocamos cada um de propósito e percorremos o caminho:</p>
+  <div class="card warn">
+    <p><strong>1. Login devolve 403.</strong> Network mostra o POST <code>/auth/login</code> com 403 e o <code>X-CSRFToken</code> presente — então não é o front. Log do backend acusa rejeição de CSRF. Hipótese: origem não confiada → confira <code>CSRF_TRUSTED_ORIGINS</code> no <code>.env</code> contra a porta real do Nginx. É o defeito que <em>não menciona porta nenhuma</em> na mensagem.</p>
+  </div>
+  <div class="card warn">
+    <p><strong>2. Salvei o arquivo e a tela não mudou.</strong> Nenhum erro em lugar nenhum — é o pior tipo. Network (aba WS) mostra o WebSocket do HMR tentando a porta errada. Causa: <code>NGINX_PORT</code> divergindo do <code>hmr.clientPort</code> do <code>vite.config.ts</code>. Enquanto isso, F5 manual funciona — o que confirma que só o hot reload morreu.</p>
+  </div>
+  <div class="card warn">
+    <p><strong>3. 502 Bad Gateway na raiz.</strong> <code>docker compose ps</code> mostra o serviço <code>frontend</code> reiniciando em loop; <code>make web</code> revela o <code>cannot find module</code> de binário glibc — alguém trocou a imagem para <code>-alpine</code>, ou o <code>node_modules</code> do host foi instalado de um jeito exótico. O Nginx está inocente: ele só não tem a quem repassar.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b9">
+  <div class="bloco-head"><span class="bloco-num">9</span><h2>Leitura de casa</h2><span class="tempo">restante</span></div>
+  <ul>
+    <li><strong>Seção 5 do <code>manual_dev.md</code></strong> ("Armadilhas já pagas") — releia depois desta aula; cada item agora tem um caminho de diagnóstico associado.</li>
+    <li><strong><code>backend/api.py</code></strong> — os três exception handlers são a origem de todo corpo de erro que você vai ler no Network.</li>
+    <li><strong><code>backend/conftest.py</code> e um arquivo de <code>apps/people/tests/</code></strong> — veja como um teste de model e um de API são montados, para copiar a estrutura no próximo bug.</li>
+    <li><strong>Exercício solo:</strong> derrube o serviço <code>backend</code> (<code>docker compose stop backend</code>), navegue no sistema, e escreva em três linhas o que cada camada reportou (tela, Network, log do nginx). Depois suba de novo e confirme o <code>make ready</code>.</li>
+  </ul>
+</section>
+
+<footer>
+  PPGD Manager · material de integração · aula 4 · gerada a partir de api.py, Makefile, docker-compose.yml e manual_dev.md em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
+</footer>
+</main>

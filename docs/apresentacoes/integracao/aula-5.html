@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aula 5 do PPGD Manager</title>
+<style>
+  :root {
+    --paper: #f6f8f7;
+    --surface: #eaf0ee;
+    --surface-2: #dfe8e5;
+    --ink: #1b2523;
+    --ink-soft: #45524e;
+    --ink-faint: #6b7a75;
+    --accent: #0f6b77;
+    --accent-soft: #d8e8ea;
+    --warn: #b0742a;
+    --warn-soft: #f3e7d3;
+    --line: #c9d4d0;
+    --code-bg: #10201f;
+    --code-ink: #cfe3df;
+    --code-accent: #7fd0c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #101716;
+      --surface: #182220;
+      --surface-2: #1f2c29;
+      --ink: #dde6e3;
+      --ink-soft: #a6b5b0;
+      --ink-faint: #7c8b86;
+      --accent: #56b7c0;
+      --accent-soft: #123a3f;
+      --warn: #d9a45c;
+      --warn-soft: #33291a;
+      --line: #2b3835;
+      --code-bg: #0b1413;
+      --code-ink: #c4d8d4;
+      --code-accent: #6fc4bc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #101716;
+    --surface: #182220;
+    --surface-2: #1f2c29;
+    --ink: #dde6e3;
+    --ink-soft: #a6b5b0;
+    --ink-faint: #7c8b86;
+    --accent: #56b7c0;
+    --accent-soft: #123a3f;
+    --warn: #d9a45c;
+    --warn-soft: #33291a;
+    --line: #2b3835;
+    --code-bg: #0b1413;
+    --code-ink: #c4d8d4;
+    --code-accent: #6fc4bc;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.65;
+    margin: 0;
+    font-size: 1rem;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+  .serif, h1, h2, h3 { font-family: Charter, Georgia, "Times New Roman", serif; }
+  h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.5rem 0 0; text-wrap: balance; font-weight: 700; }
+  h2 { font-size: 1.55rem; margin: 0 0 1rem; text-wrap: balance; }
+  h3 { font-size: 1.15rem; margin: 2rem 0 0.6rem; }
+  p { margin: 0.9rem 0; }
+  a { color: var(--accent); }
+
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.78rem;
+    color: var(--accent); font-weight: 600;
+  }
+  header.hero { border-bottom: 3px double var(--line); padding-bottom: 1.8rem; margin-bottom: 1rem; }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 40rem; }
+
+  .agenda { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.35rem; }
+  .agenda li { display: flex; gap: 0.8rem; align-items: baseline; }
+  .agenda .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1.4rem; text-align: right; }
+  .agenda .t { color: var(--ink-soft); }
+  .agenda a { color: inherit; text-decoration: none; }
+  .agenda a:hover { color: var(--accent); }
+
+  section.bloco { margin-top: 3.5rem; }
+  .bloco-head { display: flex; align-items: baseline; gap: 0.9rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+  .bloco-num {
+    font-family: Charter, Georgia, serif; font-size: 2.2rem; color: var(--accent);
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .tempo { margin-left: auto; font-size: 0.8rem; color: var(--ink-faint); white-space: nowrap; letter-spacing: 0.05em; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto;
+    font-size: 0.88rem; line-height: 1.55;
+  }
+  pre, code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--code-accent); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+  th { text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); font-weight: 600; padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 2px solid var(--line); }
+  td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono { white-space: nowrap; }
+
+  .card {
+    background: var(--surface); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1.3rem 0;
+  }
+  .card.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 0 8px 8px 0; }
+  .card.warn strong:first-child { color: var(--warn); }
+  .card.accent { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+  .card p:first-child { margin-top: 0; }
+  .card p:last-child { margin-bottom: 0; }
+
+  .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-faint); font-weight: 600; }
+
+  figure { margin: 1.6rem 0; }
+  figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.6rem; text-align: center; }
+  .diagram-wrap { overflow-x: auto; background: var(--surface); border-radius: 8px; padding: 1rem; }
+  .diagram-wrap svg { display: block; margin: 0 auto; min-width: 560px; }
+  svg text { font-family: system-ui, sans-serif; }
+  svg .box { fill: var(--paper); stroke: var(--line); stroke-width: 1.5; rx: 6; }
+  svg .box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  svg .t-title { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  svg .t-sub { fill: var(--ink-faint); font-size: 11px; }
+  svg .t-edge { fill: var(--ink-soft); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+  svg .edge { stroke: var(--ink-soft); stroke-width: 1.5; fill: none; }
+  svg .net { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 5 4; rx: 10; }
+  svg .t-net { fill: var(--accent); font-size: 11px; letter-spacing: 0.08em; font-weight: 600; }
+
+  ul { padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--line); padding-top: 1.2rem; font-size: 0.85rem; color: var(--ink-faint); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Integração de novos membros · aula 5 · agentes · ~90 min</div>
+  <h1>Aula 5 do PPGD Manager</h1>
+  <p class="lede">A última aula da integração: como este projeto desenvolve com agentes de código — o Claude Code no dia a dia interativo, e o Helton, o loop autônomo que trabalha em canteiros isolados. E, mais importante que as ferramentas, as regras que mantêm tudo isso seguro.</p>
+  <ol class="agenda">
+    <li><span class="n">1</span><a href="#b1"><span class="t">Duas peças: o projeto e a esteira</span></a></li>
+    <li><span class="n">2</span><a href="#b2"><span class="t">O CLAUDE.md é para humanos e agentes</span></a></li>
+    <li><span class="n">3</span><a href="#b3"><span class="t">Claude Code interativo: o par de programação</span></a></li>
+    <li><span class="n">4</span><a href="#b4"><span class="t">O disco é o contrato</span></a></li>
+    <li><span class="n">5</span><a href="#b5"><span class="t">O ciclo completo da esteira</span></a></li>
+    <li><span class="n">6</span><a href="#b6"><span class="t">Canteiros: a infra da aula 1 pagando dividendos</span></a></li>
+    <li><span class="n">7</span><a href="#b7"><span class="t">Human gates: o que o loop nunca decide</span></a></li>
+    <li><span class="n">8</span><a href="#b8"><span class="t">Os arquivos que importam (e os que não se tocam)</span></a></li>
+    <li><span class="n">9</span><a href="#b9"><span class="t">Armadilhas, exercício e leitura</span></a></li>
+  </ol>
+</header>
+
+<section class="bloco" id="b1">
+  <div class="bloco-head"><span class="bloco-num">1</span><h2>Duas peças: o projeto e a esteira</h2><span class="tempo">10 min</span></div>
+  <div class="table-wrap"><table>
+    <tr><th>Onde</th><th>O que é</th></tr>
+    <tr><td class="mono">rvnovaes/simple_ppg_manager</td><td><strong>este projeto</strong> — Django + SvelteKit + Postgres + Nginx</td></tr>
+    <tr><td class="mono">rvnovaes/helton <span style="white-space:normal">(em <code>/opt/helton</code>)</span></td><td><strong>a esteira</strong> — o kit que instala o loop autônomo em qualquer projeto</td></tr>
+  </table></div>
+  <p>A esteira é genérica de propósito. <em>Tudo</em> que ela sabe deste projeto está em dois arquivos versionados aqui: <code>scripts/obra/obra.conf</code> (serviços, portas, como instalar dependências, como migrar e semear) e <code>.env.worktree</code> (o overlay de ambiente por canteiro). Instalar em outro repositório é rodar <code>/opt/helton/scripts/instalar-esteira.sh /caminho/do/projeto</code> — ele copia as peças e <strong>para com uma lista de pendências</strong> no que depende do domínio, em vez de inventar configuração.</p>
+  <p>Curiosidade com valor prático: o loop veio do projeto open-source <em>ralph</em> (snarktank/ralph) e foi renomeado para <em>helton</em> — se você encontrar "ralph" em algum link, é a referência ao projeto de origem, não a uma peça nossa.</p>
+</section>
+
+<section class="bloco" id="b2">
+  <div class="bloco-head"><span class="bloco-num">2</span><h2>O CLAUDE.md é para humanos e agentes</h2><span class="tempo">10 min</span></div>
+  <p>Você leu o <code>CLAUDE.md</code> na aula 1 como "o guia do projeto". Agora o segundo sentido do nome: é o arquivo que <strong>todo agente de código lê antes de trabalhar</strong> — o Claude Code interativo a cada sessão, e o Helton a cada iteração. Ele é o mesmo documento para os dois públicos de propósito: uma regra só, válida para quem quer que esteja digitando.</p>
+  <p>E aqui as decisões "fechadas" das aulas anteriores mostram sua segunda utilidade: stack decidida, camadas fixas, <code>make ready</code> como verificação única e anti-padrões listados não servem só para humanos iniciantes — servem para <strong>restringir o espaço de erro do agente</strong>. Um agente com liberdade de escolher ORM, camada e padrão de auth erra de formas criativas; um agente com o CLAUDE.md deste projeto tem um trilho. É a mesma filosofia de "menos decisões em aberto", agora aplicada a quem não dorme.</p>
+</section>
+
+<section class="bloco" id="b3">
+  <div class="bloco-head"><span class="bloco-num">3</span><h2>Claude Code interativo: o par de programação</h2><span class="tempo">15 min</span></div>
+  <p>O uso do dia a dia: abrir <code>claude</code> na raiz do projeto e trabalhar em conversa. Na primeira vez em cada máquina, aceite o diálogo de confiança do workspace — sem isso as permissões do <code>.claude/settings.json</code> são descartadas com aviso.</p>
+  <p>As práticas da casa, na ordem em que importam:</p>
+  <ul>
+    <li><strong>Tarefa grande começa em plan mode.</strong> Peça o plano, julgue o plano (arquivos certos? premissas explícitas?), só então deixe executar. Julgar plano é mais barato que julgar diff.</li>
+    <li><strong>O diff é seu.</strong> O agente propõe; quem commita assina. Revise como revisaria PR de colega — com atenção especial a migração (regra da aula 2: ler o arquivo gerado) e a qualquer coisa na lista de gates do bloco 7.</li>
+    <li><strong><code>make ready</code> decide, não a conversa.</strong> "Parece pronto" não existe; verde ou não está pronto. É o mesmo critério para humano e agente — e é por isso que enfraquecer a verificação é gate (bloco 7).</li>
+    <li><strong>Contexto explícito rende mais.</strong> Aponte o arquivo, a seção do CLAUDE.md, o ADR. O agente que leu <code>apps/people/</code> como referência produz código no padrão; o que não leu produz Django genérico.</li>
+  </ul>
+</section>
+
+<section class="bloco" id="b4">
+  <div class="bloco-head"><span class="bloco-num">4</span><h2>O disco é o contrato</h2><span class="tempo">10 min</span></div>
+  <p>O princípio que organiza a esteira inteira, direto do <code>plans/README.md</code>: <strong>o disco é o contrato, o contexto não é</strong>. Uma fatia de trabalho atravessa quatro sessões <em>frias</em> — nenhuma herda a memória da anterior:</p>
+  <pre><code>/grill-me        <span class="c"># sessão 1: a entrevista extrai a spec → specs/&lt;tema&gt;.md</span>
+plan mode        <span class="c"># sessão 2, NOVA: "leia specs/&lt;tema&gt;.md e faça o plano" → plans/&lt;nome&gt;.md</span>
+/cronograma      <span class="c"># sessão 3, na worktree: plano → scripts/helton/prd.json</span>
+helton.sh        <span class="c"># sessão 4..n: cada iteração zera o contexto e relê prd.json + progress.txt</span></code></pre>
+  <p>Por que a sessão do plano tem de ser nova, e não continuação do grill: plano nascido na mesma sessão herda a conversa inteira — inclusive o que foi <em>dito e não foi parar na spec</em>. Ele sai bom, a spec segue furada, e o buraco só aparece lá adiante, quando o <code>/cronograma</code> traduz mal alguma coisa. Lendo de uma sessão fria, a spec é submetida ao mesmo teste que tudo o mais: se não se sustenta sozinha, é melhor descobrir no plan mode, onde custa uma pergunta.</p>
+</section>
+
+<section class="bloco" id="b5">
+  <div class="bloco-head"><span class="bloco-num">5</span><h2>O ciclo completo da esteira</h2><span class="tempo">15 min</span></div>
+  <pre><code>/grill-me                                  <span class="c"># extrai a spec        → specs/&lt;tema&gt;.md</span>
+sessão NOVA em plan mode                   <span class="c"># o plano              → plans/&lt;nome&gt;.md</span>
+                                           <span class="c"># commit e PUSH: a guarda procura o plano no origin</span>
+/compatibilizar                            <span class="c"># só com mais de um plano → plans/manifest.json</span>
+./scripts/obra/montar-canteiro.sh &lt;nome&gt;   <span class="c"># cria a worktree, sobe a stack, migra e semeia</span>
+  ── dentro da worktree ──
+  /cronograma                              <span class="c"># converte o plano     → scripts/helton/prd.json</span>
+  ./scripts/helton/helton.sh --tool claude 1    <span class="c"># ensaio VIGIADO, uma iteração</span>
+  ./scripts/helton/helton.sh --tool claude 30   <span class="c"># AFK</span>
+  ── de volta ──
+./scripts/obra/desmontar-canteiro.sh &lt;nome&gt;    <span class="c"># preserva a branch helton/&lt;nome&gt;</span>
+git merge --no-ff helton/&lt;nome&gt;
+./scripts/obra/arquivar-plano.sh &lt;nome&gt;        <span class="c"># move o plano para history/</span></code></pre>
+  <p>Três paradas obrigatórias nesse fluxo:</p>
+  <ul>
+    <li><strong>O ensaio vigiado (<code>… 1</code>) vem antes do cap real.</strong> Uma iteração assistida prova que o cronograma faz sentido antes de você sair de perto.</li>
+    <li><strong>O merge é à mão, e é humano.</strong> A esteira entrega uma branch; quem a traz para o tronco é você, revisando com o índice que o desmonte imprime.</li>
+    <li><strong>O <code>arquivar-plano.sh</code> não é opcional.</strong> Plano entregue que fica em <code>plans/</code> volta a ser montado: depois do merge, nenhuma das guardas do <code>--todos</code> dispara, e o loop refaz do zero o que já está no tronco. O script recusa arquivar antes do merge — na ordem certa, nada disso morde.</li>
+  </ul>
+</section>
+
+<section class="bloco" id="b6">
+  <div class="bloco-head"><span class="bloco-num">6</span><h2>Canteiros: a infra da aula 1 pagando dividendos</h2><span class="tempo">10 min</span></div>
+  <p><em>Canteiro</em> é o termo dos scripts para uma <strong>git worktree</strong> — um checkout paralelo do repositório em outra pasta — com <strong>stack Docker própria</strong>: projeto Compose próprio, banco próprio, faixa de portas própria, definidos pelo <code>.env</code> que o <code>montar-canteiro.sh</code> gera a partir do <code>.env.worktree</code>.</p>
+  <p>Agora as decisões esquisitas da aula 1 fecham o círculo: as portas parametrizadas (<code>NGINX_PORT</code>, <code>DB_PORT</code>) existem para N canteiros não disputarem a 8080; e o Vite dentro do Compose existe porque, quando ele rodava no host, os N nginx dos canteiros apontavam todos para o <em>mesmo</em> Vite — cada canteiro exibia o front de outra worktree, sem nenhum erro na tela. A infra foi desenhada para que <strong>agentes trabalhem em paralelo sem pisar um no outro — nem em você</strong>.</p>
+</section>
+
+<section class="bloco" id="b7">
+  <div class="bloco-head"><span class="bloco-num">7</span><h2>Human gates: o que o loop nunca decide</h2><span class="tempo">10 min</span></div>
+  <p>A seção "Human gates" do <code>CLAUDE.md</code> lista o que um loop autônomo <strong>não</strong> decide sozinho neste repositório. O critério é um só — <strong>reversibilidade</strong>: <em>se der errado e só for notado uma semana depois, dá para voltar ao estado anterior usando apenas o git?</em> Não → gate. Na dúvida → gate. As sete categorias:</p>
+  <ol>
+    <li><strong>Decisão sobre a vida acadêmica de alguém</strong> — fechar ciclo, classificar candidato, deferir matrícula: o git não desfaz o e-mail que a secretaria mandou. Inclui os anexos de <code>media/</code>, fora do versionamento.</li>
+    <li><strong>Migrations</strong> — tocam dado real; e a major do Postgres invalida o volume (aula 1).</li>
+    <li><strong>Regra de classificação e contagem de vaga</strong> — teste verde não prova critério certo.</li>
+    <li><strong>Permissões, tenant e autenticação</strong> — vazamento entre programas não aparece em lint; é por isso que o seed cria dois programas.</li>
+    <li><strong>Contrato de API publicado</strong> — quebra o typecheck de todo o front (aula 3).</li>
+    <li><strong>Infra e segredos</strong> — compose, nginx, <code>.env*</code>, settings de produção, ADRs.</li>
+    <li><strong>Enfraquecer a maquinaria de verificação</strong> — apagar asserção, afrouxar lint, tirar passo do <code>make ready</code>. <em>Estender</em> a verificação nunca é gate: é o resultado desejado.</li>
+  </ol>
+  <div class="card accent">
+    <p><strong>Os gates valem para humanos também.</strong> A lista não é "coisas que o robô não pode": é o mapa do que, neste sistema, machuca gente ou não volta atrás. No fluxo autônomo ela vira trava de código (o filtro no prompt do loop barra as stories marcadas); no interativo, ela é o seu checklist de "isso eu reviso em dobro".</p>
+  </div>
+</section>
+
+<section class="bloco" id="b8">
+  <div class="bloco-head"><span class="bloco-num">8</span><h2>Os arquivos que importam (e os que não se tocam)</h2><span class="tempo">5 min</span></div>
+  <div class="table-wrap"><table>
+    <tr><th>Arquivo</th><th>Papel</th><th>Editar?</th></tr>
+    <tr><td class="mono">scripts/obra/obra.conf</td><td>tudo que a esteira sabe deste projeto</td><td><strong>sim — é o único</strong></td></tr>
+    <tr><td class="mono">.env.worktree</td><td>o overlay de ambiente por canteiro</td><td>sim</td></tr>
+    <tr><td class="mono">scripts/helton/helton.sh</td><td>o loop</td><td>não</td></tr>
+    <tr><td class="mono">scripts/helton/CLAUDE.md</td><td><strong>o prompt do loop</strong> (não é documentação!)</td><td>não</td></tr>
+    <tr><td class="mono">scripts/helton/prompt.md</td><td>o mesmo prompt para o Amp — gêmeo do anterior</td><td>não</td></tr>
+    <tr><td class="mono">scripts/helton/prd.json</td><td>o cronograma corrente</td><td>não à mão — é o <code>/cronograma</code> que escreve</td></tr>
+    <tr><td class="mono">.claude/skills/</td><td>grill-me, compatibilizar, cronograma, mobilizar-obras</td><td>não</td></tr>
+  </table></div>
+  <p>O aviso mais sério da tabela: <code>scripts/helton/CLAUDE.md</code> e <code>prompt.md</code> são gêmeos e <strong>têm de mudar juntos</strong> — toda a máquina de segurança (o filtro dos gates) mora neles. Substituí-los pela versão do upstream produziria um loop que executa exatamente as stories que alguém barrou.</p>
+</section>
+
+<section class="bloco" id="b9">
+  <div class="bloco-head"><span class="bloco-num">9</span><h2>Armadilhas, exercício e leitura</h2><span class="tempo">restante</span></div>
+  <h3>Armadilhas específicas da esteira</h3>
+  <div class="card warn"><p><strong>O <code>.gitignore</code> engolindo o <code>.env.worktree</code>.</strong> A regra <code>.env.*</code> o pegaria; existe um <code>!.env.worktree</code> logo abaixo. Sem ele, todo canteiro nasce sem overlay — e o git não acusa nada.</p></div>
+  <div class="card warn"><p><strong><code>CSRF_TRUSTED_ORIGINS</code> e <code>DATABASE_URL</code> precisam estar no overlay.</strong> Sem o primeiro, todo canteiro rejeita o próprio login com 403 (o diagnóstico 1 da aula 4). Sem o segundo, o teste do canteiro valida o schema do banco <em>do checkout principal</em> — ou escreve nele.</p></div>
+  <div class="card warn"><p><strong>Instalação no canteiro é <code>npm ci</code> e <code>uv sync --locked</code>.</strong> As variantes sem trava sujam a árvore, e o primeiro commit do loop usa <code>git add -A</code> — o ruído entraria no histórico.</p></div>
+  <h3>Exercício guiado</h3>
+  <p>Um ciclo completo em miniatura, em dupla, com uma fatia pequena e <strong>sem gate</strong> (um texto de tela, um empty state): <code>/grill-me</code> → plano em sessão nova → <code>montar-canteiro.sh</code> → <code>/cronograma</code> → <strong>uma</strong> iteração vigiada do <code>helton.sh</code>, lendo juntos o que o loop fez → desmontar, revisar o diff, mergear, <strong>arquivar o plano</strong>. O objetivo não é a fatia: é ver cada guarda disparar no lugar certo.</p>
+  <h3>Leitura de casa</h3>
+  <ul>
+    <li><strong><code>manual_dev.md</code></strong> — inteiro, agora com repertório para entendê-lo todo.</li>
+    <li><strong><code>plans/README.md</code></strong> — o contrato da esteira, com o porquê de cada guarda.</li>
+    <li><strong><code>scripts/obra/obra.conf</code></strong> — leia os comentários: é a esteira explicando o que precisou saber deste projeto.</li>
+    <li><strong><code>scripts/helton/CLAUDE.md</code></strong> — ler (não editar!): é instrutivo ver o que o loop é instruído a fazer a cada iteração.</li>
+  </ul>
+</section>
+
+<footer>
+  PPGD Manager · material de integração · aula 5 · gerada a partir de manual_dev.md, plans/README.md, CLAUDE.md (human gates) e scripts/obra/ em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
+</footer>
+</main>
