@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Aula 7 da integração de novos membros do PPGD Manager">
-  <title>Aula 7 — Usando o Gauntlet — Corredor Polonês</title>
+  <meta name="description" content="Verificação métrica de código gerado por agentes">
+  <title>DRAFT — Aula 7 — O Corredor Polonês</title>
   <style>
     :root {
       --paper: #f6f8f7;
@@ -15,7 +15,12 @@
       --ink-faint: #6b7a75;
       --accent: #0f6b77;
       --accent-soft: #d8e8ea;
+      --warn: #b0742a;
+      --warn-soft: #f3e7d3;
       --line: #c9d4d0;
+      --code-bg: #10201f;
+      --code-ink: #cfe3df;
+      --code-accent: #7fd0c8;
     }
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
@@ -27,7 +32,12 @@
         --ink-faint: #7c8b86;
         --accent: #56b7c0;
         --accent-soft: #123a3f;
+        --warn: #d9a45c;
+        --warn-soft: #33291a;
         --line: #2b3835;
+        --code-bg: #0b1413;
+        --code-ink: #c4d8d4;
+        --code-accent: #6fc4bc;
       }
     }
     :root[data-theme="dark"] {
@@ -39,7 +49,12 @@
       --ink-faint: #7c8b86;
       --accent: #56b7c0;
       --accent-soft: #123a3f;
+      --warn: #d9a45c;
+      --warn-soft: #33291a;
       --line: #2b3835;
+      --code-bg: #0b1413;
+      --code-ink: #c4d8d4;
+      --code-accent: #6fc4bc;
     }
     * { box-sizing: border-box; }
     body {
@@ -50,19 +65,13 @@
       margin: 0;
       font-size: 1rem;
     }
-    main {
-      max-width: 46rem;
-      margin: 0 auto;
-      padding: 2.5rem 1.5rem 6rem;
-    }
-    h1 {
-      font-family: Charter, Georgia, "Times New Roman", serif;
-      font-size: clamp(2.2rem, 7vw, 3.4rem);
-      line-height: 1.1;
-      margin: 0.5rem 0 0;
-      text-wrap: balance;
-      font-weight: 700;
-    }
+    main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+    h1, h2, h3 { font-family: Charter, Georgia, "Times New Roman", serif; }
+    h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.5rem 0 0; text-wrap: balance; font-weight: 700; }
+    h2 { font-size: 1.55rem; margin: 0 0 1rem; text-wrap: balance; }
+    h3 { font-size: 1.15rem; margin: 2rem 0 0.6rem; }
+    p { margin: 0.9rem 0; }
+    a { color: var(--accent); }
     .eyebrow {
       text-transform: uppercase;
       letter-spacing: 0.14em;
@@ -70,20 +79,286 @@
       color: var(--accent);
       font-weight: 600;
     }
-    header.hero {
-      border-bottom: 3px double var(--line);
-      padding-bottom: 1.8rem;
-      margin-bottom: 1rem;
+    header.hero { border-bottom: 3px double var(--line); padding-bottom: 1.8rem; margin-bottom: 1rem; }
+    .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 40rem; }
+    .draft-badge {
+      display: inline-block;
+      vertical-align: 0.25em;
+      margin-left: 0.45rem;
+      padding: 0.2rem 0.45rem;
+      border: 1px solid var(--warn);
+      border-radius: 4px;
+      color: var(--warn);
+      font-family: system-ui, sans-serif;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
     }
+    .agenda { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.35rem; }
+    .agenda li { display: flex; gap: 0.8rem; align-items: baseline; }
+    .agenda .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1.4rem; text-align: right; }
+    .agenda .t { color: var(--ink-soft); }
+    .agenda a { color: inherit; text-decoration: none; }
+    .agenda a:hover { color: var(--accent); }
+    section.bloco { margin-top: 3.5rem; }
+    .bloco-head { display: flex; align-items: baseline; gap: 0.9rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+    .bloco-num {
+      font-family: Charter, Georgia, serif;
+      font-size: 2.2rem;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-ink);
+      padding: 1rem 1.2rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.88rem;
+      line-height: 1.55;
+    }
+    pre, code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    code { font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+    pre code { background: none; padding: 0; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+    .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+    th {
+      text-align: left;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-faint);
+      font-weight: 600;
+      padding: 0.5rem 0.9rem 0.5rem 0;
+      border-bottom: 2px solid var(--line);
+    }
+    td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+    td.mono { white-space: nowrap; }
+    .card { background: var(--surface); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1.3rem 0; }
+    .card.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 0 8px 8px 0; }
+    .card.warn strong:first-child { color: var(--warn); }
+    .card.accent { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+    .card p:first-child { margin-top: 0; }
+    .card p:last-child { margin-bottom: 0; }
+    .formula {
+      background: var(--code-bg);
+      color: var(--code-ink);
+      border-radius: 6px;
+      padding: 1.2rem;
+      margin: 1.3rem 0;
+      text-align: center;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 1rem;
+      overflow-x: auto;
+    }
+    blockquote {
+      margin: 1.5rem 0;
+      padding: 1.1rem 1.3rem;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      color: var(--ink);
+      font-family: Charter, Georgia, "Times New Roman", serif;
+      font-size: 1.15rem;
+    }
+    .phases { counter-reset: phase; list-style: none; padding: 0; }
+    .phases li {
+      counter-increment: phase;
+      padding: 0.8rem 0 0.8rem 3rem;
+      position: relative;
+      border-bottom: 1px solid var(--line);
+    }
+    .phases li::before {
+      content: counter(phase);
+      position: absolute;
+      left: 0;
+      top: 0.75rem;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+    ul { padding-left: 1.2rem; }
+    li { margin: 0.35rem 0; }
+    footer { margin-top: 4rem; border-top: 1px solid var(--line); padding-top: 1.2rem; font-size: 0.85rem; color: var(--ink-faint); }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </style>
 </head>
 <body>
-  <main>
-    <header class="hero">
-      <div class="eyebrow">Integração de novos membros · aula 7 · gauntlet · qualidade</div>
-      <h1>Aula 7 — Usando o Gauntlet — Corredor Polonês</h1>
-    </header>
-  </main>
+<main>
+<header class="hero">
+  <div class="eyebrow">Integração de novos membros · aula 7 · métricas · quality gates · agentes</div>
+  <h1>O Corredor Polonês: verificação métrica de código gerado por agentes <span class="draft-badge">DRAFT</span></h1>
+  <p class="lede">Quando agentes produzem código em volume, a revisão humana linha a linha deixa de escalar. Esta aula apresenta uma alternativa: especificações revisadas por humanos e uma sequência determinística de gates que mede o código, testa os testes e impede atalhos.</p>
+  <ol class="agenda">
+    <li><span class="n">1</span><a href="#b1"><span class="t">A tese</span></a></li>
+    <li><span class="n">2</span><a href="#b2"><span class="t">A metáfora do corredor polonês</span></a></li>
+    <li><span class="n">3</span><a href="#b3"><span class="t">As ferramentas</span></a></li>
+    <li><span class="n">4</span><a href="#b4"><span class="t">CRAP: complexidade × cobertura</span></a></li>
+    <li><span class="n">5</span><a href="#b5"><span class="t">Mutation testing</span></a></li>
+    <li><span class="n">6</span><a href="#b6"><span class="t">O gate certo para CRUD/API</span></a></li>
+    <li><span class="n">7</span><a href="#b7"><span class="t">Dosagem por criticidade</span></a></li>
+    <li><span class="n">8</span><a href="#b8"><span class="t">O loop autônomo</span></a></li>
+    <li><span class="n">9</span><a href="#b9"><span class="t">Goodhart e guardas anti-gaming</span></a></li>
+    <li><span class="n">10</span><a href="#b10"><span class="t">Roteiro de implementação</span></a></li>
+  </ol>
+</header>
+
+<div class="card warn">
+  <p><strong>Rascunho.</strong> O conteúdo conceitual está organizado, mas thresholds, ferramentas e fases ainda devem ser confrontados com a implementação real do projeto antes de a aula ser considerada concluída.</p>
+</div>
+
+<section class="bloco" id="b1">
+  <div class="bloco-head"><span class="bloco-num">1</span><h2>A tese</h2></div>
+  <p>Robert C. Martin declarou, em 2026, que <strong>não revisa mais o código que seus agentes de IA escrevem</strong>. Em vez de ler diffs, ele mede: cobertura de testes, estrutura de dependências, complexidade ciclomática, tamanho de módulos e mutation testing — e infere a qualidade a partir das métricas.</p>
+  <p>Humanos revisam <strong>especificações de comportamento</strong>, como Gherkin e testes de aceitação. O código-fonte atravessa uma bateria de verificações determinísticas.</p>
+  <div class="card accent">
+    <p><strong>Mudança de paradigma.</strong> Quando o código é barato de produzir — agentes geram milhares de linhas por hora — a revisão humana linha a linha deixa de escalar. O que escala é a verificação mecânica com critérios explícitos, consumida pelo próprio agente para se autocorrigir.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b2">
+  <div class="bloco-head"><span class="bloco-num">2</span><h2>A metáfora: o corredor polonês</h2></div>
+  <p>Em inglês, <em>running the gauntlet</em>: o castigo militar em que o condenado corre entre duas fileiras de soldados, levando um golpe de cada um. O termo vem do sueco <em>gatlopp</em>, “corrida da rua”, assimilado por semelhança sonora a <em>gauntlet</em>, “manopla”: homônimos acidentais. Em português, <strong>corredor polonês</strong>.</p>
+  <p>Aplicado a software: o código só é aceito se atravessar <strong>todos os gates em sequência</strong> e sair de pé do outro lado. Cada ferramenta é um soldado na fileira. Não se confia no agente; confia-se na corrida que se obriga o código dele a fazer.</p>
+</section>
+
+<section class="bloco" id="b3">
+  <div class="bloco-head"><span class="bloco-num">3</span><h2>As ferramentas: perguntas diferentes</h2></div>
+  <div class="table-wrap"><table>
+    <tr><th>Ferramenta</th><th>Pergunta que responde</th><th>Tipo</th></tr>
+    <tr><td><strong>ruff</strong> (C901)</td><td>Essa função é complexa demais?</td><td>Estática</td></tr>
+    <tr><td><strong>pytest + coverage.py</strong></td><td>Os testes passam? Que linhas executam?</td><td>Dinâmica</td></tr>
+    <tr><td><strong>diff-cover</strong></td><td>O que esta branch mudou tem teste?</td><td>Dinâmica, relativa ao diff</td></tr>
+    <tr><td><strong>CRAP</strong> (crap4py)</td><td>É complexo e mal testado?</td><td>Composta</td></tr>
+    <tr><td><strong>mutmut</strong></td><td>Os testes pegariam um bug?</td><td>Dinâmica, adversarial</td></tr>
+    <tr><td><strong>Testes de API/CRUD</strong></td><td>O sistema se comporta como especificado?</td><td>Comportamental</td></tr>
+    <tr><td><strong>import-linter / tach</strong></td><td>As camadas da arquitetura se respeitam?</td><td>Estática, estrutural</td></tr>
+  </table></div>
+  <p>As ferramentas <strong>não são redundantes</strong>. Cada uma enxerga um defeito que as outras não enxergam.</p>
+</section>
+
+<section class="bloco" id="b4">
+  <div class="bloco-head"><span class="bloco-num">4</span><h2>CRAP — Change Risk Anti-Patterns</h2></div>
+  <p>Métrica clássica do mundo Java, ressuscitada por Martin para a era dos agentes:</p>
+  <div class="formula">CRAP(m) = CC(m)² × (1 − cov(m))³ + CC(m)</div>
+  <p><code>CC</code> é a complexidade ciclomática — o número de caminhos independentes — e <code>cov</code> é a fração de cobertura da função. A semântica é direta: <strong>risco = complexidade não mitigada por testes</strong>.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Função</th><th>CC</th><th>Cobertura</th><th>CRAP</th><th>Diagnóstico</th></tr>
+    <tr><td class="mono">calcula_aliquota</td><td>11</td><td>27%</td><td><strong>58,7</strong></td><td>Complexa e mal testada: risco alto</td></tr>
+    <tr><td class="mono">calcula_aliquota</td><td>11</td><td>100%</td><td>11,0</td><td>Complexa mas verificada: risco aceitável</td></tr>
+    <tr><td class="mono">soma</td><td>1</td><td>0%</td><td>2,0</td><td>Trivial: risco irrelevante mesmo sem teste</td></tr>
+  </table></div>
+  <h3>Por que o linter sozinho não basta</h3>
+  <p>O C901 é binário e cego a testes. Uma função com CC=9 e zero testes passa no lint, se o limite for 10, mas pontua CRAP 90: é o código que quebra em produção. Inversamente, CC=12 com 100% de cobertura falha no lint, mas representa risco baixo.</p>
+  <p>O remédio também muda: C901 alto pede <strong>refatoração</strong>; CRAP alto com CC moderada pede <strong>mais testes</strong>. Para um agente autônomo, essa distinção decide a ação correta.</p>
+  <h3>Por que o ruff não calcula CRAP</h3>
+  <p>Linters fazem análise estática; a cobertura só existe depois de executar a suíte. CRAP é necessariamente composta e opera sobre o relatório de cobertura: crap4j sobre Cobertura/Clover, crap4java sobre JaCoCo e o nosso crap4py sobre coverage.py.</p>
+</section>
+
+<section class="bloco" id="b5">
+  <div class="bloco-head"><span class="bloco-num">5</span><h2>Mutation testing: os mutantes testam os testes</h2></div>
+  <p><strong>O problema:</strong> cobertura mede execução, não verificação. Um teste que chama <code>calcula_aliquota("simples", 1, 1)</code> sem nenhum assert pode dar 100% de cobertura e não verificar nada. CRAP e coverage ficam verdes; o teste é tautológico.</p>
+  <p><strong>A solução:</strong> a ferramenta gera cópias do código, cada uma com um bug proposital — o <strong>mutante</strong>: troca <code>&lt;=</code> por <code>&lt;</code>, <code>0.04</code> por <code>0.05</code>, remove um <code>return</code> ou inverte um <code>if</code>. Depois, executa a suíte contra cada mutante:</p>
+  <ul>
+    <li>algum teste falha → mutante <strong>morto</strong> ✓;</li>
+    <li>todos passam → mutante <strong>sobreviveu</strong> ✗.</li>
+  </ul>
+  <p><strong>Mutation score</strong> é a fração de mutantes mortos. Uma suíte com 100% de cobertura pode ter score de 40% — a métrica expõe a mentira. Os testes testam o código; os mutantes testam os testes.</p>
+  <div class="card warn">
+    <p><strong>Custo.</strong> Trezentos mutantes podem significar até trezentas execuções da suíte. Por isso mutation testing é seletivo: aplica-se aos módulos em que um bug custa caro.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b6">
+  <div class="bloco-head"><span class="bloco-num">6</span><h2>Testes de CRUD/API: o gate certo para código raso</h2></div>
+  <p>Em sistemas CRUD sobre frameworks opinados, como Django Ninja, a complexidade ciclomática é baixa por construção: Pydantic absorve validação, o roteador faz dispatch e o ORM compõe consultas. O CRAP fica quase mudo porque há pouca complexidade para multiplicar.</p>
+  <p>Os bugs reais moram em <strong>integração e dados</strong>: permissão errada, transição inválida aceita, agregação ignorando <code>NULL</code>, <code>Decimal</code> virando <code>float</code> ou corrida em constraint de unicidade.</p>
+  <p>O gate primário passa a ser o <strong>quarteto por endpoint tocado</strong>:</p>
+  <ol>
+    <li>caso feliz: o CRUD funciona;</li>
+    <li>validação rejeitada: payload inválido → 422;</li>
+    <li>permissão negada: usuário errado → 403;</li>
+    <li>transição de estado inválida, quando houver máquina de estados.</li>
+  </ol>
+  <p>Isso se combina com <strong>diff-cover</strong>: independentemente da complexidade, o que a branch mudou precisa ter teste.</p>
+</section>
+
+<section class="bloco" id="b7">
+  <div class="bloco-head"><span class="bloco-num">7</span><h2>Dosagem por criticidade</h2></div>
+  <p>Empilhar todos os gates em toda tarefa é fácil de automatizar, mas nem sempre compensa. <strong>A criticidade governa a profundidade do corredor.</strong></p>
+  <div class="table-wrap"><table>
+    <tr><th>Critério</th><th>PPGD Manager</th><th>Sanfili — módulo fiscal</th></tr>
+    <tr><td>Natureza</td><td>CRUD acadêmico, framework-heavy</td><td>Ramificado: faixas, anexos, CBS/IBS</td></tr>
+    <tr><td>Custo do bug</td><td>Retrabalho interno</td><td>Nota fiscal errada para a Receita</td></tr>
+    <tr><td>Gate primário</td><td>Testes de API + diff-cover 80%</td><td>Corredor completo</td></tr>
+    <tr><td>CRAP</td><td>Sentinela frouxa, threshold 40</td><td>Gate ativo, threshold 15–30</td></tr>
+    <tr><td>Mutation</td><td>Dispensável</td><td>Obrigatório, score ≥ 80%</td></tr>
+  </table></div>
+  <p>No CRUD, o CRAP funciona como <em>tripwire</em>: silencioso quase sempre, mas disparando quando um agente que não entendeu a regra produz uma função-Deus de quinze ramos.</p>
+</section>
+
+<section class="bloco" id="b8">
+  <div class="bloco-head"><span class="bloco-num">8</span><h2>O loop autônomo</h2></div>
+  <pre><code>┌─→ quality.sh (o corredor) ──→ reports/*.json ──→ passou? ──→ merge
+│         │                                          │ não
+│         │ pytest+cov → crap4py → ruff → diff-cover │
+│         └──────────────────────────────────────────┘
+│                                                    ↓
+└──── commit por iteração ←──── agente (Claude Code headless)
+                                 lê os JSONs e corrige
+                                 as 3 piores funções</code></pre>
+  <ul>
+    <li><strong>Filesystem como interface:</strong> cada gate escreve JSON em <code>reports/</code>; <code>quality-gate.json</code> é o contrato, com <code>"passed": true/false</code>. Não se faz parsing de stdout.</li>
+    <li><strong>Relativo ao diff:</strong> <code>--changed-only</code> cobra apenas o que a worktree tocou. Worktrees paralelas não falham por débito histórico ou código alheio.</li>
+    <li><strong>Sessões curtas:</strong> no máximo três funções por invocação do agente; o loop cuida do restante.</li>
+    <li><strong>Auditabilidade:</strong> um commit por iteração, com scores na mensagem; <code>history.jsonl</code> registra a trajetória.</li>
+  </ul>
+</section>
+
+<section class="bloco" id="b9">
+  <div class="bloco-head"><span class="bloco-num">9</span><h2>Goodhart e as guardas anti-gaming</h2></div>
+  <blockquote>“Quando uma medida vira meta, deixa de ser boa medida.”</blockquote>
+  <p>Um agente pressionado a “fazer o gate passar” encontra atalhos. Cada atalho exige uma defesa mecânica:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Ataque</th><th>Defesa</th><th>Camada</th></tr>
+    <tr><td>Afrouxar thresholds</td><td>Arquivos protegidos; qualquer edição é revertida via Git</td><td>Script do loop</td></tr>
+    <tr><td>Apagar testes que falham</td><td>Contagem de testes não pode diminuir; abortar sem commit</td><td>Script do loop</td></tr>
+    <tr><td>Escrever teste tautológico</td><td>Mutation testing: teste vazio não mata mutante</td><td>Gate adicional</td></tr>
+  </table></div>
+  <p>As duas primeiras defesas são baratas. A terceira explica a Fase 3: com mutation no corredor, a única saída é escrever testes que verifiquem comportamento real.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Exit code</th><th>Significado</th></tr>
+    <tr><td class="mono">0</td><td>Corredor verde</td></tr>
+    <tr><td class="mono">2</td><td>Esgotou as iterações</td></tr>
+    <tr><td class="mono">3</td><td>Estagnou: duas iterações sem progresso</td></tr>
+    <tr><td class="mono">4</td><td>A suíte de testes encolheu</td></tr>
+  </table></div>
+  <p>Os códigos 2–4 significam uma única coisa: <strong>intervenção humana</strong>.</p>
+</section>
+
+<section class="bloco" id="b10">
+  <div class="bloco-head"><span class="bloco-num">10</span><h2>Roteiro de implementação</h2></div>
+  <ol class="phases">
+    <li><strong>Ferramentas determinísticas:</strong> crap4py com radon e coverage.xml, ruff C901 e diff-cover; saídas em <code>reports/</code>.</li>
+    <li><strong>O loop:</strong> <code>quality-loop.sh</code>, gate como critério de “done” e guardas anti-gaming mecânicas.</li>
+    <li><strong>Contratos de arquitetura:</strong> import-linter ou tach declarando Controller → Service → Repository.</li>
+    <li><strong>Mutation seletivo:</strong> mutmut nos módulos críticos; mutante sobrevivente vira especificação de um teste faltante entregue ao agente.</li>
+    <li><strong>Agregação:</strong> SonarQube self-hosted como dashboard histórico, considerando que análise de branch é recurso pago.</li>
+    <li><strong>Padrões de swarm:</strong> constitution em camadas e papel de <em>hardener</em> no loop, em diálogo com SwarmForge e unclebob/swarm-forge.</li>
+  </ol>
+</section>
+
+<section class="bloco">
+  <div class="bloco-head"><span class="bloco-num">→</span><h2>Síntese</h2></div>
+  <blockquote>Não leia o código do agente: faça-o correr o corredor polonês. Cada gate responde uma pergunta que os outros não respondem, a profundidade do corredor é proporcional ao custo do bug, e o mutation testing garante que nem os testes consigam mentir.</blockquote>
+</section>
+
+<footer>PPGD Manager · Integração de novos membros · Aula 7 · Rascunho</footer>
+</main>
 </body>
 </html>
