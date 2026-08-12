@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Aula 6 da integração de novos membros do PPGD Manager">
-  <title>Aula 6 — Continuous Integration com Ansible</title>
+  <title>DRAFT — Aula 6 — Fluxo de entrega: Git, CI/CD e Ansible</title>
   <style>
     :root {
       --paper: #f6f8f7;
@@ -15,7 +15,12 @@
       --ink-faint: #6b7a75;
       --accent: #0f6b77;
       --accent-soft: #d8e8ea;
+      --warn: #b0742a;
+      --warn-soft: #f3e7d3;
       --line: #c9d4d0;
+      --code-bg: #10201f;
+      --code-ink: #cfe3df;
+      --code-accent: #7fd0c8;
     }
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
@@ -27,7 +32,12 @@
         --ink-faint: #7c8b86;
         --accent: #56b7c0;
         --accent-soft: #123a3f;
+        --warn: #d9a45c;
+        --warn-soft: #33291a;
         --line: #2b3835;
+        --code-bg: #0b1413;
+        --code-ink: #c4d8d4;
+        --code-accent: #6fc4bc;
       }
     }
     :root[data-theme="dark"] {
@@ -39,7 +49,12 @@
       --ink-faint: #7c8b86;
       --accent: #56b7c0;
       --accent-soft: #123a3f;
+      --warn: #d9a45c;
+      --warn-soft: #33291a;
       --line: #2b3835;
+      --code-bg: #0b1413;
+      --code-ink: #c4d8d4;
+      --code-accent: #6fc4bc;
     }
     * { box-sizing: border-box; }
     body {
@@ -50,19 +65,13 @@
       margin: 0;
       font-size: 1rem;
     }
-    main {
-      max-width: 46rem;
-      margin: 0 auto;
-      padding: 2.5rem 1.5rem 6rem;
-    }
-    h1 {
-      font-family: Charter, Georgia, "Times New Roman", serif;
-      font-size: clamp(2.2rem, 7vw, 3.4rem);
-      line-height: 1.1;
-      margin: 0.5rem 0 0;
-      text-wrap: balance;
-      font-weight: 700;
-    }
+    main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+    h1, h2, h3 { font-family: Charter, Georgia, "Times New Roman", serif; }
+    h1 { font-size: 2.4rem; line-height: 1.15; margin: 0.5rem 0 0; text-wrap: balance; font-weight: 700; }
+    h2 { font-size: 1.55rem; margin: 0 0 1rem; text-wrap: balance; }
+    h3 { font-size: 1.15rem; margin: 2rem 0 0.6rem; }
+    p { margin: 0.9rem 0; }
+    a { color: var(--accent); }
     .eyebrow {
       text-transform: uppercase;
       letter-spacing: 0.14em;
@@ -70,20 +79,241 @@
       color: var(--accent);
       font-weight: 600;
     }
-    header.hero {
-      border-bottom: 3px double var(--line);
-      padding-bottom: 1.8rem;
-      margin-bottom: 1rem;
+    header.hero { border-bottom: 3px double var(--line); padding-bottom: 1.8rem; margin-bottom: 1rem; }
+    .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 40rem; }
+    .draft-badge {
+      display: inline-block;
+      vertical-align: 0.25em;
+      margin-left: 0.45rem;
+      padding: 0.2rem 0.45rem;
+      border: 1px solid var(--warn);
+      border-radius: 4px;
+      color: var(--warn);
+      font-family: system-ui, sans-serif;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
     }
+    .agenda { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.35rem; }
+    .agenda li { display: flex; gap: 0.8rem; align-items: baseline; }
+    .agenda .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1.4rem; text-align: right; }
+    .agenda .t { color: var(--ink-soft); }
+    .agenda a { color: inherit; text-decoration: none; }
+    .agenda a:hover { color: var(--accent); }
+    section.bloco { margin-top: 3.5rem; }
+    .bloco-head { display: flex; align-items: baseline; gap: 0.9rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+    .bloco-num {
+      font-family: Charter, Georgia, serif;
+      font-size: 2.2rem;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .tempo { margin-left: auto; font-size: 0.8rem; color: var(--ink-faint); white-space: nowrap; letter-spacing: 0.05em; }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-ink);
+      padding: 1rem 1.2rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.88rem;
+      line-height: 1.55;
+    }
+    pre, code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    code { font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+    pre code { background: none; padding: 0; }
+    pre .c { color: var(--ink-faint); }
+    pre .k { color: var(--code-accent); }
+    table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+    .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+    th {
+      text-align: left;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-faint);
+      font-weight: 600;
+      padding: 0.5rem 0.9rem 0.5rem 0;
+      border-bottom: 2px solid var(--line);
+    }
+    td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+    td.mono { white-space: nowrap; }
+    .card { background: var(--surface); border-radius: 8px; padding: 1.1rem 1.3rem; margin: 1.3rem 0; }
+    .card.warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 0 8px 8px 0; }
+    .card.warn strong:first-child { color: var(--warn); }
+    .card.accent { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+    .card p:first-child { margin-top: 0; }
+    .card p:last-child { margin-bottom: 0; }
+    .pipeline { list-style: none; padding: 0; margin: 1.2rem 0; display: grid; gap: 0.45rem; }
+    .pipeline li {
+      display: grid;
+      grid-template-columns: 7rem minmax(0, 1fr);
+      gap: 0.8rem;
+      padding: 0.7rem 0.9rem;
+      background: var(--surface);
+      border-radius: 6px;
+    }
+    .pipeline strong { color: var(--accent); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.9rem; }
+    ul { padding-left: 1.2rem; }
+    li { margin: 0.35rem 0; }
+    footer { margin-top: 4rem; border-top: 1px solid var(--line); padding-top: 1.2rem; font-size: 0.85rem; color: var(--ink-faint); }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (max-width: 36rem) {
+      .pipeline li { grid-template-columns: 1fr; gap: 0.2rem; }
+      .tempo { display: none; }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <header class="hero">
-      <div class="eyebrow">Integração de novos membros · aula 6 · ci · ansible</div>
-      <h1>Aula 6 — Continuous Integration com Ansible</h1>
-    </header>
-  </main>
+<main>
+<header class="hero">
+  <div class="eyebrow">Integração de novos membros · aula 6 · Git · CI/CD · Ansible · ~90 min</div>
+  <h1>Aula 6 — Fluxo de entrega: Git, CI/CD e Ansible <span class="draft-badge">DRAFT</span></h1>
+  <p class="lede">A aula 5 terminou com o trabalho pronto em uma branch isolada. Agora acompanhamos esse código até os ambientes de teste e produção: merge, push, build, testes e implantação automatizada. O Git não é um assunto paralelo — é o mecanismo que dispara e documenta a entrega.</p>
+  <ol class="agenda">
+    <li><span class="n">1</span><a href="#b1"><span class="t">Da worktree à entrega</span></a></li>
+    <li><span class="n">2</span><a href="#b2"><span class="t">Branches como contrato de ambientes</span></a></li>
+    <li><span class="n">3</span><a href="#b3"><span class="t">Merge e push em develop</span></a></li>
+    <li><span class="n">4</span><a href="#b4"><span class="t">O pipeline de integração</span></a></li>
+    <li><span class="n">5</span><a href="#b5"><span class="t">O papel do Ansible</span></a></li>
+    <li><span class="n">6</span><a href="#b6"><span class="t">Promoção para produção</span></a></li>
+    <li><span class="n">7</span><a href="#b7"><span class="t">Falha, rollback e correção urgente</span></a></li>
+    <li><span class="n">8</span><a href="#b8"><span class="t">Exercício e decisões pendentes</span></a></li>
+  </ol>
+</header>
+
+<div class="card warn">
+  <p><strong>Rascunho.</strong> A narrativa e o fluxo geral estão definidos. Antes de fechar a aula, ainda é preciso substituir os exemplos genéricos pelos nomes reais dos workflows, playbooks, inventários, ambientes e comandos adotados no projeto.</p>
+</div>
+
+<section class="bloco" id="b1">
+  <div class="bloco-head"><span class="bloco-num">1</span><h2>Da worktree à entrega</h2><span class="tempo">8 min</span></div>
+  <p>Nas aulas anteriores, o desenvolvimento termina em uma branch própria: humana ou produzida pelo Helton em uma worktree. Ela contém commits revisáveis e deve passar pelo mesmo critério local de sempre: <code>make ready</code> verde antes de sair da máquina.</p>
+  <p>A partir daqui muda a pergunta. Já não queremos saber apenas se a mudança funciona isoladamente; queremos saber se ela se integra ao restante do projeto e se pode ser instalada de modo reproduzível.</p>
+  <ul class="pipeline">
+    <li><strong>worktree</strong><span>desenvolver, testar e commitar em isolamento</span></li>
+    <li><strong>develop</strong><span>integrar mudanças e produzir o ambiente de teste</span></li>
+    <li><strong>main</strong><span>representar o estado autorizado para produção</span></li>
+  </ul>
+  <div class="card accent">
+    <p><strong>A ideia central.</strong> Branch não é ambiente, mas neste projeto uma branch protegida funciona como o contrato que autoriza a automação a atualizar determinado ambiente.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b2">
+  <div class="bloco-head"><span class="bloco-num">2</span><h2>Branches como contrato de ambientes</h2><span class="tempo">10 min</span></div>
+  <div class="table-wrap"><table>
+    <tr><th>Branch</th><th>Significado</th><th>Push dispara</th></tr>
+    <tr><td class="mono">branch de trabalho</td><td>Mudança ainda isolada e revisável</td><td>Nenhuma implantação</td></tr>
+    <tr><td class="mono">develop</td><td>Conjunto integrado candidato à próxima entrega</td><td>Build, testes e atualização do ambiente de teste</td></tr>
+    <tr><td class="mono">main</td><td>Estado aprovado para uso produtivo</td><td>Build e implantação em produção</td></tr>
+  </table></div>
+  <p>Esse desenho reduz o vocabulário: não existe um procedimento manual diferente para cada servidor. Existe uma promoção explícita no Git, e o pipeline traduz essa promoção em build, verificação e implantação.</p>
+  <p>O nome da branch produtiva deve ser uniforme em código, documentação e configuração. Este repositório usa <code>main</code>; qualquer referência antiga a <code>master</code> deve ser corrigida antes de finalizar a aula.</p>
+</section>
+
+<section class="bloco" id="b3">
+  <div class="bloco-head"><span class="bloco-num">3</span><h2>Merge e push em <span class="mono">develop</span></h2><span class="tempo">12 min</span></div>
+  <p>O caminho normal integra a branch concluída em <code>develop</code>. O merge registra que duas linhas de trabalho se encontraram; o push entrega esse novo estado ao repositório remoto e aciona o pipeline.</p>
+  <pre><code>git switch develop
+git pull --ff-only origin develop
+
+<span class="c"># branch criada na worktree ou no canteiro</span>
+git merge --no-ff helton/&lt;nome-da-entrega&gt;
+
+make ready
+git push origin develop</code></pre>
+  <p>O segundo <code>make ready</code> não é repetição inútil. A branch de trabalho pode estar verde sozinha e, ainda assim, conflitar semanticamente com outra mudança que entrou em <code>develop</code>. O teste após o merge verifica o estado que será efetivamente enviado.</p>
+  <div class="card warn">
+    <p><strong>Push não é experimento.</strong> Se <code>make ready</code> falhou, não se envia para “ver o que o CI diz”. O CI repete o critério em ambiente limpo; ele não substitui a verificação local.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b4">
+  <div class="bloco-head"><span class="bloco-num">4</span><h2>O pipeline de integração</h2><span class="tempo">15 min</span></div>
+  <p>Continuous Integration significa integrar mudanças frequentemente e provar, de forma automatizada, que o conjunto continua coerente. O gatilho é o push em <code>develop</code>; o valor está nas verificações que vêm depois.</p>
+  <ul class="pipeline">
+    <li><strong>checkout</strong><span>obtém exatamente o commit enviado</span></li>
+    <li><strong>build</strong><span>monta backend e frontend em ambiente limpo</span></li>
+    <li><strong>quality</strong><span>executa lint, typecheck e demais verificações estáticas</span></li>
+    <li><strong>test</strong><span>roda a suíte automatizada contra os serviços necessários</span></li>
+    <li><strong>artifact</strong><span>produz ou identifica o artefato que será implantado</span></li>
+    <li><strong>deploy-test</strong><span>chama a automação do ambiente de teste somente se tudo estiver verde</span></li>
+  </ul>
+  <p>A ordem é uma barreira: a implantação não deve começar se build ou testes falharem. O commit permanece em <code>develop</code>, mas o ambiente conhecido como saudável não é substituído por uma entrega reprovada.</p>
+  <h3>CI e CD não são a mesma coisa</h3>
+  <p>Build e testes pertencem à integração contínua. Atualizar o ambiente de teste e, depois, a produção pertence à entrega ou implantação contínua. Por isso o título da aula fala em <strong>CI/CD</strong>: o Ansible entra principalmente depois que a integração foi validada.</p>
+</section>
+
+<section class="bloco" id="b5">
+  <div class="bloco-head"><span class="bloco-num">5</span><h2>O papel do Ansible</h2><span class="tempo">15 min</span></div>
+  <p>O pipeline decide <em>quando</em> uma implantação pode acontecer. O Ansible descreve <em>como</em> levar o servidor ao estado desejado: arquivos, serviços, variáveis, migrações e reinícios necessários.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Peça</th><th>Responsabilidade</th></tr>
+    <tr><td>Workflow do CI/CD</td><td>Gatilho, ordem das etapas, gates e associação entre branch e ambiente</td></tr>
+    <tr><td>Inventário</td><td>Quais hosts pertencem a teste ou produção</td></tr>
+    <tr><td>Playbook</td><td>Sequência declarativa para alcançar o estado desejado</td></tr>
+    <tr><td>Roles</td><td>Responsabilidades reutilizáveis: aplicação, proxy, banco, observabilidade</td></tr>
+    <tr><td>Secrets</td><td>Credenciais fornecidas fora do repositório e apenas ao ambiente autorizado</td></tr>
+  </table></div>
+  <p>A propriedade essencial é a <strong>idempotência</strong>: executar o playbook duas vezes deve produzir o mesmo estado, não duplicar configuração nem acumular efeitos colaterais.</p>
+  <div class="card accent">
+    <p><strong>Separação de poderes.</strong> O pipeline não deve conter uma longa sequência de SSH improvisada, e o playbook não deve decidir qual branch merece produção. Cada peça mantém sua responsabilidade.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b6">
+  <div class="bloco-head"><span class="bloco-num">6</span><h2>Promoção para produção</h2><span class="tempo">12 min</span></div>
+  <p>Depois que o commit foi validado em <code>develop</code> e observado no ambiente de teste, ele é promovido para <code>main</code>. Não se reconstrói a mudança nem se altera o código “na passagem”: promove-se o que já foi testado.</p>
+  <pre><code>git switch main
+git pull --ff-only origin main
+git merge --no-ff develop
+git push origin main</code></pre>
+  <p>O push em <code>main</code> aciona o pipeline produtivo. Ele repete as verificações necessárias, identifica o commit promovido e chama o inventário/playbook de produção. A diferença entre teste e produção deve estar na configuração do ambiente, não em branches com código divergente.</p>
+  <div class="card warn">
+    <p><strong>Gate humano.</strong> Produção é uma decisão institucional. Definir se o merge exige pull request, aprovação, janela de implantação ou acionamento manual é parte da política do projeto e deve estar refletido nas proteções de branch — não apenas escrito nesta aula.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b7">
+  <div class="bloco-head"><span class="bloco-num">7</span><h2>Falha, rollback e correção urgente</h2><span class="tempo">10 min</span></div>
+  <p>Automação segura não é a que nunca falha; é a que falha de modo visível, interrompe no ponto correto e preserva um caminho de recuperação.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Falha</th><th>Resposta esperada</th></tr>
+    <tr><td>Build ou teste em <code>develop</code></td><td>Pipeline vermelho; nenhuma implantação; corrigir em nova branch</td></tr>
+    <tr><td>Ansible no ambiente de teste</td><td>Interromper; examinar a tarefa e o host; corrigir o playbook antes de produção</td></tr>
+    <tr><td>Pipeline de <code>main</code></td><td>Bloquear a nova versão e preservar a última versão conhecida como saudável</td></tr>
+    <tr><td>Defeito descoberto após implantação</td><td>Reverter para artefato/commit anterior ou produzir correção urgente pelo mesmo fluxo</td></tr>
+  </table></div>
+  <p>Uma correção urgente não autoriza editar o servidor na mão. Ela encurta o tempo, não elimina rastreabilidade, testes e capacidade de repetir a implantação.</p>
+  <div class="card warn">
+    <p><strong>Decisão pendente do rascunho.</strong> Registrar o mecanismo real de rollback: imagem anterior, checkout de tag, reversão de commit, backup de banco e compatibilidade de migrações. Sem isso, “rollback” é apenas uma intenção.</p>
+  </div>
+</section>
+
+<section class="bloco" id="b8">
+  <div class="bloco-head"><span class="bloco-num">8</span><h2>Exercício e decisões pendentes</h2><span class="tempo">8 min</span></div>
+  <h3>Exercício guiado</h3>
+  <ol>
+    <li>Partir de uma branch de trabalho já aprovada.</li>
+    <li>Integrá-la em <code>develop</code> e executar <code>make ready</code>.</li>
+    <li>Fazer o push e acompanhar cada etapa do pipeline.</li>
+    <li>Confirmar a versão no ambiente de teste.</li>
+    <li>Simular uma falha controlada e identificar em qual gate ela é interrompida.</li>
+    <li>Descrever, sem executar, a promoção do mesmo commit para <code>main</code>.</li>
+  </ol>
+  <h3>Para fechar esta aula</h3>
+  <ul>
+    <li>Inserir os nomes e caminhos reais dos workflows e playbooks.</li>
+    <li>Confirmar se produção usa <code>main</code> e remover referências a <code>master</code>.</li>
+    <li>Definir proteções e aprovações exigidas em <code>develop</code> e <code>main</code>.</li>
+    <li>Documentar onde ficam os logs do pipeline e do Ansible.</li>
+    <li>Escrever o procedimento testado de rollback.</li>
+    <li>Confirmar como migrações de banco são tratadas antes e durante a implantação.</li>
+  </ul>
+</section>
+
+<footer>PPGD Manager · Integração de novos membros · Aula 6 · Rascunho</footer>
+</main>
 </body>
 </html>
