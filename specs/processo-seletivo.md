@@ -138,9 +138,76 @@ TL;DR autossuficiente — a sessão de plano lê **isto**, não a conversa.
   pacotes; o **número de matrícula é emitido pelo DRCA e digitado de volta** no
   sistema pela secretaria — mesmo padrão das isoladas.
 
+### Precedência
+Onde este arquivo divergir de `specs/bancas-projeto-coletivo.md`, **vence o que
+estiver fundamentado no edital** — aquela spec cita os editais do PS2027
+verbatim. Ver a seção "Interseção", logo abaixo.
+
 ### Escopo cortado nesta rodada
 - **Recursos inteiros → fase 2** (decisão do usuário). Mas a ata precisa nascer
   **versionável** agora, senão a fase 2 custa migration destrutiva.
+
+## Interseção com `specs/bancas-projeto-coletivo.md` (12/08/2026)
+
+⚠️ **Ler antes de planejar.** Existe uma spec anterior, fechada, sobre o
+**cadastro da banca examinadora**, fundamentada nos **editais reais do PS2027**
+(SEI 5294767 / Edital 1539 regular; SEI 5294775 / Edital 1540 suplementar) e nas
+relações nominais publicadas. Ela **já modelou** o `Board` (4 FKs diretas:
+presidente, titular 1, titular 2, suplente; sem through-model; chave temporal =
+**ano do processo seletivo como inteiro**, ex. `2027`). Este módulo **pendura
+nela** — não recria composição de banca.
+
+### O que ela resolve de flag meu
+- **Existe PRESIDENTE**, papel nomeado, coluna do documento oficial. (Meu flag 5.)
+- **Banca é por (projeto coletivo × nível)** — provado por evidência: no projeto
+  "Direito Administrativo…", presidente do mestrado ≠ presidente do doutorado.
+  Confirma que a **ata por nível** que capturei está certa.
+- **Volume**: 6 linhas de pesquisa, **~36 projetos coletivos**, até **~72 bancas**
+  por processo seletivo, ~288 vínculos de docente. (Meu flag 9, parcialmente.)
+
+### Conflitos reais a resolver com o usuário
+
+**C1 — Membro externo.** Hoje (Q15/Q16) o usuário disse: *"a banca tem 3 membros
+**e pode ter externo**"*, e que o externo ganha cadastro e **assina por link com
+token**. A spec de 12/08 registra, a partir dos PDFs oficiais: *"**sem coluna de
+instituição — todos os membros são docentes do programa**"*. As duas podem ser
+verdade (permitido no regulamento, não usado no PS2027), mas **a diferença é
+cara**: se não há externo, cai a assinatura por token — que é a **segunda
+superfície não autenticada** do módulo, com todo o desenho de token de uso único.
+→ **Decidir antes de planejar a assinatura.**
+
+**C2 — Composição: 3 ou 4.** Hoje: *"3 membros, os três assinam"*. Edital,
+verbatim: *"3 (três) membros titulares e 1 (um) membro suplente"*, e *"o suplente
+somente participará em caso de impedimento de um dos membros titulares"*.
+Reconciliação provável (a confirmar): **assinam os 3 titulares**; havendo
+impedimento, o suplente assina **no lugar** do titular. A ata precisa registrar
+**quem de fato assinou**, não a composição nominal.
+
+**C3 — O alvo da banca DIFERE por edital.** Item 5.1 do Regular: banca *"para
+cada **projeto coletivo**"*. Item 4.1 do Suplementar: banca *"para cada **linha
+de pesquisa**"*. Hoje capturei a ata como (edital × nível × **projeto coletivo** ×
+etapa) — mas o exemplo que o usuário deu era do **Regular**. Para o Suplementar,
+a ata provavelmente é por **linha de pesquisa**. E, por tabela: **as vagas do
+Suplementar são por projeto coletivo ou por linha?** Hoje o usuário respondeu
+"por nível e projeto coletivo" **sem distinguir edital**. → **Flag alto: muda a
+chave de duas entidades centrais.**
+
+**C4 — Retificação de edital move vaga entre projetos coletivos.** A spec de
+12/08 registra caso real do PS2027: o projeto *"4E – Justiça: teoria e
+realidade"* foi **excluído por retificação**, com **realocação de vagas** para
+*"4F – Macrofilosofia do Estado de Direito"*. Hoje o usuário disse que
+redistribuição de vaga é *"apenas dentro do mesmo projeto coletivo, entre
+níveis"*. São coisas diferentes — retificação de edital não é redistribuição de
+vaga —, mas **o efeito no dado é o mesmo**, e o desenho precisa comportar as
+duas. A banca de um projeto extinto **precisa sobreviver como histórico**.
+
+### Dependência de escopo
+A spec de bancas deixou **fora** a banca do Suplementar (flag F8 dela) e a
+**declaração de impedimento/suspeição** (F7), que os editais exigem divulgar
+junto com as bancas. Como aqui a ata do Suplementar é necessária, **este módulo
+não fecha sem a fatia F8**.
+
+---
 
 ## Q&A log
 
@@ -589,6 +656,10 @@ Nada aqui bloqueia a **sessão de plano**; tudo aqui bloqueia a **implementaçã
 da fatia correspondente.
 
 ### Domínio — precisam do usuário / da secretaria / do edital real
+0. **Os quatro conflitos C1–C4** com `specs/bancas-projeto-coletivo.md` (ver
+   seção "Interseção"). **C1** (existe membro externo?) e **C3** (banca e vaga do
+   Suplementar são por linha de pesquisa, não por projeto coletivo?) são os que
+   mudam chave de entidade — resolver **antes** do plan mode.
 1. **Candidato aprovado nos DOIS editais** (perguntado 3×, sem resposta):
    escolhe um? a vaga liberada vai para quem, se não há lista de espera?
    → owner: usuário / comissão do processo seletivo.
