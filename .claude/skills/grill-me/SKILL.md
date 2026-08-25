@@ -32,7 +32,7 @@ grill-me is for when there's a body of knowledge in someone's head and the way t
 
 ### 1. Resolve the capture path
 
-Write to `specs/<tema>.md` — a spec é a entrada da sessão de plan mode que vem depois, e essa sessão lê o ARQUIVO, não esta conversa. Fora de um projeto com essa convenção, `notes/YYYY-MM-DD-<topic>-grill.md` serve. Data com `date +%F`.
+Write to `scripts/helton/projects/specs/<tema>.md` — a spec é a entrada da sessão de plan mode que vem depois, e essa sessão lê o ARQUIVO, não esta conversa. Fora de um projeto com essa convenção, `notes/YYYY-MM-DD-<topic>-grill.md` serve. Data com `date +%F`.
 
 ### 2. Create the file immediately
 

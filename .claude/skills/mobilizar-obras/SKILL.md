@@ -1,12 +1,12 @@
 ---
 name: mobilizar-obras
-description: Mobiliza de uma vez todos os canteiros liberados pela compatibilização — lê plans/manifest.json, monta a worktree e a stack de cada plano marcado como parallel, gera o cronograma (prd.json) de cada um e entrega o roteiro dos terminais a abrir. Use quando o usuário pedir "mobiliza as obras", "monta os canteiros", "sobe as worktrees dos planos", "prepara tudo para rodar em paralelo" ou quiser provisionar mais de um plano de uma vez.
+description: Mobiliza de uma vez todos os canteiros liberados pela compatibilização — lê scripts/helton/projects/plans/manifest.json, monta a worktree e a stack de cada plano marcado como parallel, gera o cronograma (prd.json) de cada um e entrega o roteiro dos terminais a abrir. Use quando o usuário pedir "mobiliza as obras", "monta os canteiros", "sobe as worktrees dos planos", "prepara tudo para rodar em paralelo" ou quiser provisionar mais de um plano de uma vez.
 ---
 
 # Mobilizar obras
 
 Skill fina sobre script gordo: quem provisiona é o
-`scripts/obra/montar-canteiro.sh`. Aqui só se lê o manifesto, se chama o script
+`scripts/helton/obra/montar-canteiro.sh`. Aqui só se lê o manifesto, se chama o script
 na ordem certa, se gera o cronograma de cada canteiro e se confere que cada um
 nasceu inteiro.
 
@@ -15,7 +15,7 @@ nasceu inteiro.
 Rode **do checkout principal**, na `develop`. Antes de tocar em qualquer
 coisa, confira e pare no primeiro problema:
 
-1. `plans/manifest.json` existe. Se não, ofereça rodar `/compatibilizar` — sem
+1. `scripts/helton/projects/plans/manifest.json` existe. Se não, ofereça rodar `/compatibilizar` — sem
    manifesto não há como saber o que pode ir em paralelo, e adivinhar aqui é o
    erro exato que a esteira existe para evitar.
 2. **A árvore está limpa e o que importa está commitado.** Worktree só enxerga o
@@ -48,7 +48,7 @@ Para cada plano `parallel`, em sequência (nunca em paralelo — os scripts
 disputam a mesma sondagem de portas):
 
 ```bash
-./scripts/obra/montar-canteiro.sh <plano>
+./scripts/helton/obra/montar-canteiro.sh <plano>
 ```
 
 Se um falhar, **pare a mobilização** e relate. Não siga para o próximo: uma
@@ -59,7 +59,7 @@ em todos.
 
 Para cada canteiro montado, siga a skill `/cronograma` tomando
 `../<projeto>-<plano>` como raiz — todos os caminhos daquela execução
-(`plans/<plano>.md`, `scripts/helton/prd.json`) são relativos a **essa**
+(`scripts/helton/projects/plans/<plano>.md`, `scripts/helton/projects/prds/prd.json`) são relativos a **essa**
 worktree, não ao checkout principal.
 
 Faça um canteiro por vez, do começo ao fim, antes de começar o próximo. O
@@ -75,8 +75,8 @@ dois planos, porque o contexto de um plano polui o julgamento do outro.
 Para cada um, todas as quatro:
 
 ```bash
-test -f ../<projeto>-<plano>/scripts/helton/prd.json
-jq -e '.userStories | length > 0' ../<projeto>-<plano>/scripts/helton/prd.json
+test -f ../<projeto>-<plano>/scripts/helton/projects/prds/prd.json
+jq -e '.userStories | length > 0' ../<projeto>-<plano>/scripts/helton/projects/prds/prd.json
 grep -E '^(COMPOSE_PROJECT_NAME|APP_PORT|DB_PORT|NGINX_PORT)=' ../<projeto>-<plano>/.env
 docker compose -p <projeto>-<plano> ps
 ```
@@ -104,6 +104,6 @@ Liste também, ao fim, os planos que **não** foram mobilizados e por quê — o
 
 - Não dispare o `helton.sh`. Nem o ensaio: quem decide começar é o usuário.
 - Não faça merge nem abra PR. A colheita é do
-  `scripts/obra/desmontar-canteiro.sh` e do merge em fila, um de cada vez.
+  `scripts/helton/obra/desmontar-canteiro.sh` e do merge em fila, um de cada vez.
 - Não mobilize plano `serialized_after` "porque o predecessor está quase" —
   quase não é mergeado.

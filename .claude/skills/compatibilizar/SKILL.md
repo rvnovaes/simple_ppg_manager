@@ -1,6 +1,6 @@
 ---
 name: compatibilizar
-description: Compatibiliza os planos de desenvolvimento de plans/ antes de mandá-los para worktrees paralelas — varre os arquivos que cada plano reivindica, detecta choques entre eles, resolve as ambiguidades com o usuário e grava plans/manifest.json dizendo quais podem rodar em paralelo e quais precisam esperar. Use quando o usuário pedir para "compatibilizar os planos", "verificar choque entre planos", "analisar a interseção dos planos", "ver se dá para rodar em paralelo", "preparar a esteira" ou antes de montar mais de um canteiro de obra ao mesmo tempo.
+description: Compatibiliza os planos de desenvolvimento de plans/ antes de mandá-los para worktrees paralelas — varre os arquivos que cada plano reivindica, detecta choques entre eles, resolve as ambiguidades com o usuário e grava scripts/helton/projects/plans/manifest.json dizendo quais podem rodar em paralelo e quais precisam esperar. Use quando o usuário pedir para "compatibilizar os planos", "verificar choque entre planos", "analisar a interseção dos planos", "ver se dá para rodar em paralelo", "preparar a esteira" ou antes de montar mais de um canteiro de obra ao mesmo tempo.
 ---
 
 # Compatibilizar planos
@@ -12,13 +12,13 @@ de desenvolvimento antes de eles virarem empreitadas paralelas.
 
 ## Quando roda
 
-Depois que os planos existem em `plans/<nome>.md` e antes de qualquer
+Depois que os planos existem em `scripts/helton/projects/plans/<nome>.md` e antes de qualquer
 `montar-canteiro.sh`. Um choque descoberto aqui custa uma conversa; descoberto
 depois, custa duas branches que não fazem merge.
 
 ## O que produz
 
-`plans/manifest.json`. É o único artefato, e é ele que o `/cronograma` e o
+`scripts/helton/projects/plans/manifest.json`. É o único artefato, e é ele que o `/cronograma` e o
 `/mobilizar-obras` leem depois.
 
 ```json
@@ -27,7 +27,7 @@ depois, custa duas branches que não fazem merge.
   "plans": [
     {
       "name": "onda-2",
-      "file": "plans/onda-2.md",
+      "file": "scripts/helton/projects/plans/onda-2.md",
       "hash": "sha256:2b1e...",
       "claims": ["app/domain/stock/**", "web/src/routes/(app)/estoque/**"],
       "creates_migration": false,
@@ -38,7 +38,7 @@ depois, custa duas branches que não fazem merge.
     },
     {
       "name": "pedido-desconto",
-      "file": "plans/pedido-desconto.md",
+      "file": "scripts/helton/projects/plans/pedido-desconto.md",
       "hash": "sha256:9fa0...",
       "claims": ["app/domain/sales/**", "app/api/contracts/sales.py"],
       "creates_migration": true,
@@ -61,7 +61,7 @@ depois, custa duas branches que não fazem merge.
 
 ### 1. Ler os planos
 
-Todo `plans/*.md` que não seja o `manifest.json`. Se `plans/` não existir ou
+Todo `scripts/helton/projects/plans/*.md` que não seja o `manifest.json`. Se `scripts/helton/projects/plans/` não existir ou
 estiver vazio, diga isso e pare — não há o que compatibilizar.
 
 ### 2. Extrair os claims de cada plano
@@ -126,7 +126,7 @@ Não invente resposta. Se o usuário não decidir, o plano fica `needs_reslicing
 detector de deriva: se o plano for editado depois, o `/cronograma` percebe que a
 decisão registrada aqui já não corresponde ao texto e volta a perguntar.
 
-Calcule com `sha256sum plans/<nome>.md`.
+Calcule com `sha256sum scripts/helton/projects/plans/<nome>.md`.
 
 ### 6. Relatar
 

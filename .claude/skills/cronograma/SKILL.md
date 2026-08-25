@@ -1,11 +1,11 @@
 ---
 name: cronograma
-description: Transforma o plano aprovado desta worktree em scripts/helton/prd.json — o cronograma de user stories que o loop Helton executa, com prioridade, dependências, esforço e as travas de revisão humana já marcadas. Use quando o usuário pedir "gera o cronograma", "vira o plano em prd", "monta as tarefas do Helton", "prepara a empreitada" ou logo depois de montar um canteiro com montar-canteiro.sh.
+description: Transforma o plano aprovado desta worktree em scripts/helton/projects/prds/prd.json — o cronograma de user stories que o loop Helton executa, com prioridade, dependências, esforço e as travas de revisão humana já marcadas. Use quando o usuário pedir "gera o cronograma", "vira o plano em prd", "monta as tarefas do Helton", "prepara a empreitada" ou logo depois de montar um canteiro com montar-canteiro.sh.
 ---
 
 # Cronograma (plano → prd.json)
 
-Converte `plans/<plano>.md` no `scripts/helton/prd.json` desta worktree. É o passo
+Converte `scripts/helton/projects/plans/<plano>.md` no `scripts/helton/projects/prds/prd.json` desta worktree. É o passo
 entre montar o canteiro e soltar a empreitada.
 
 ## Antes de qualquer coisa
@@ -20,19 +20,19 @@ git branch --show-current       # tem de ser helton/<plano>
 ```
 
 Se estiver no checkout principal, pare e diga ao usuário para montar o canteiro
-primeiro (`./scripts/obra/montar-canteiro.sh <plano>`).
+primeiro (`./scripts/helton/obra/montar-canteiro.sh <plano>`).
 
 ## Entrada
 
-1. `plans/<plano>.md` — o plano aprovado. O `<plano>` sai do nome da branch
+1. `scripts/helton/projects/plans/<plano>.md` — o plano aprovado. O `<plano>` sai do nome da branch
    (`helton/onda-2` → `onda-2`).
-2. `plans/manifest.json` — a compatibilização. Dele saem:
+2. `scripts/helton/projects/plans/manifest.json` — a compatibilização. Dele saem:
    - `status`: se não for `parallel` nem o predecessor já mergeado de um
      `serialized_after`, **pare** e avise — gerar cronograma para um plano
      serializado é construir sobre um develop que ainda vai mudar.
    - `resolved_questions`: as ambiguidades já decididas. **Use-as como contexto
      das stories e não pergunte de novo.**
-   - `hash`: confira contra `sha256sum plans/<plano>.md`.
+   - `hash`: confira contra `sha256sum scripts/helton/projects/plans/<plano>.md`.
 
 **Deriva de hash é a única razão para reabrir perguntas.** Se o hash bate, o
 plano é o mesmo que foi compatibilizado e todas as decisões já estão tomadas;
@@ -40,7 +40,7 @@ gere o prd calado. Se não bate, o plano foi editado depois — mostre o que mud
 pergunte o que a mudança implica, e sugira rodar `/compatibilizar` de novo se a
 edição mexeu nos arquivos reivindicados.
 
-Sem `plans/manifest.json`, ofereça rodar `/compatibilizar` antes. Se o usuário
+Sem `scripts/helton/projects/plans/manifest.json`, ofereça rodar `/compatibilizar` antes. Se o usuário
 recusar (plano único, sem paralelismo), siga — mas então a fase de perguntas
 desta skill é bloqueante: **nenhum prd é gravado com pergunta pendente.**
 
@@ -133,9 +133,12 @@ Regras de preenchimento:
   `CLAUDE.md` da raiz. `make ready` é o piso; story de UI pede verificação no
   browser (ver **Automação de browser** no `CLAUDE.md`); story de backend com
   regra nova pede teste próprio.
-- **`effort_label`** — `low` / `medium` / `high`. Roteia modelo, e **`high`
-  implica `human_gate: true`**: fatia grande demais para o loop não é fatia, é
-  plano.
+- **`effort_label`** — `low` / `medium` / `high`. Roteia modelo. `high` é sinal
+  de que a story **precisa ser quebrada** — fatia grande demais para o loop não é
+  fatia, é plano. Quebre-a; se realmente não der, marque `review_required: true`.
+  `high` **não** implica mais `human_gate` (mudou em 22/08/2026): tamanho é
+  problema de fatiamento, não de irreversibilidade, e barrar por tamanho era mais
+  uma fonte de empreitada travada cedo.
 - **`priority`** — inteiro, menor executa antes. Não repita número: a ordem é o
   cronograma.
 - **`passes`** — sempre `false` num prd novo.
@@ -146,21 +149,36 @@ O `CLAUDE.md` da raiz tem a seção `## Human gates` com as instâncias deste
 projeto. **Leia-a e aplique-a.** Se ela não existir, ofereça criá-la e não
 prossiga sem — nunca invente gates em silêncio.
 
-O teste é sempre o mesmo: *se der errado e só for percebido uma semana depois, dá
-para voltar ao estado anterior usando apenas o git?* Não → gate. Na dúvida,
-gate.
+**A régua é o canteiro, não o arquivo** (revista em 22/08/2026). A pergunta não é
+"este arquivo é sensível?", é **"o efeito escapa da worktree?"**. Cada empreitada
+roda em worktree própria, com stack e volume de Postgres próprios: o que acontece
+lá dentro se desfaz com `git` e com `desmontar-canteiro.sh --volumes`.
 
-Em `execution: sandboxed`, o isolamento reduz o **raio de alcance**, não a
-**correção**. Risco que o sandbox contém vira `review_required: true` — a story
-executa e entra no índice de revisão do PR. Continuam `human_gate: true` mesmo
-em sandbox:
+O teste concreto, antes de marcar qualquer gate: *o estrago sobrevive a
+`desmontar-canteiro.sh --volumes` e a um `git revert`?*
 
-- **Enfraquecer a maquinaria de verificação** (categoria 7 do `CLAUDE.md`): o
-  loop nunca mexe na própria guarda — testes, asserções, `make ready`, hooks,
-  `scripts/helton/`, `scripts/obra/`, estas skills. Ampliar a verificação (teste
-  novo, check a mais) **não** é gate: é o resultado desejado.
-- **Efeito que escapa do sandbox**: chamada a API externa real, webhook,
-  e-mail que sai da máquina, emissão fiscal fora de homologação.
+- **Não sobrevive** → `review_required: true`. A story **executa**, e entra no
+  índice de revisão do desmonte. **Na dúvida, é aqui.**
+- **Sobrevive** → `human_gate: true`.
+
+Gate barra a story e, por `blocked_by_gate`, tudo que depende dela. Marcar gate
+por precaução não deixa a fatia mais segura — deixa a empreitada parada, e o
+humano revisa no merge de qualquer jeito.
+
+Continuam `human_gate: true`, e só estes:
+
+- **Efeito que escapa do canteiro**: chamada a API externa real, webhook, e-mail
+  que sai da máquina, emissão fiscal fora de homologação, numeração de série.
+- **Segredos e o que roda fora daqui**: `.env*`, vaults, `ansible/`, DNS,
+  `.github/workflows/`.
+- **Enfraquecer a maquinaria de verificação**: o loop nunca mexe na própria
+  guarda — testes, asserções, `make ready`, hooks, `scripts/helton/`,
+  `scripts/helton/obra/`, estas skills. Ampliar a verificação (teste novo, check
+  a mais) **não** é gate: é o resultado desejado.
+
+**Não** são gate, e sim `review_required`: migration, aritmética de dinheiro e
+imposto, permissões e escopo de tenant, contrato de API, `docker-compose*.yml`, e
+o fiscal que não emite (DTO, parser, tabela, tela, regra tributária).
 
 `gate_reason` é obrigatório quando `human_gate: true`, em uma frase, dizendo qual
 categoria disparou.
@@ -169,6 +187,15 @@ categoria disparou.
 `depends_on` sobre stories com `human_gate: true`. Se A é gate e B depende de A,
 B é `blocked_by_gate: true`; se C depende de B, C também. `review_required` **não**
 propaga bloqueio — quem revisa é o humano no merge, não o loop.
+
+### Migration destravada tem um preço, e ele é pago no manifesto
+
+Dois canteiros criando migration em paralelo produzem dois heads de Alembic, e
+dois heads derrubam produção sem que o portão de testes perceba. Quem resolve é o
+`/compatibilizar`, pelo `creates_migration` do manifesto. Ao gerar cronograma para
+um plano com migration, **confira que o manifesto existe e que este plano não
+divide schema com outro em voo**; se dividir e não houver plano-zero, pare e
+avise.
 
 ## Documentação obrigatória
 
@@ -183,20 +210,20 @@ Refactor, infra e migration sem efeito visível não disparam a regra.
 
 ## Preservação de estado
 
-Se já existir `scripts/helton/prd.json`:
+Se já existir `scripts/helton/projects/prds/prd.json`:
 
 - **Mesmo `branchName`** — é a mesma empreitada, retomada. **Não sobrescreva
   `passes`, `notes` nem `priority`** das stories que já existem: elas carregam o
   que o loop já fez. Mostre o diff (stories novas, removidas, alteradas) e peça
   confirmação antes de gravar.
 - **`branchName` diferente** — é outra empreitada. Arquive a anterior em
-  `scripts/helton/archive/AAAA-MM-DD-<fase>/` (prd.json e progress.txt juntos)
+  `scripts/helton/projects/prds/implemented/AAAA-MM-DD-<fase>/` (prd.json e progress.txt juntos)
   antes de escrever o novo. O `helton.sh` também arquiva sozinho ao detectar
   troca de branch, mas não conte com isso: arquive você.
 
 ## Depois de gravar
 
-1. Valide: `jq -e '.userStories | length' scripts/helton/prd.json`.
+1. Valide: `jq -e '.userStories | length' scripts/helton/projects/prds/prd.json`.
 2. Confira que todo `depends_on` aponta para um `id` que existe.
 3. Confira que `blocked_by_gate` está coerente com o fechamento transitivo.
 4. Relate ao usuário: quantas stories, quantas barradas por gate (e por quê),

@@ -70,7 +70,7 @@ Two adjustments, because you run inside an autonomous loop:
 - **You are already in your worktree.** The root `CLAUDE.md` tells each agent to create one;
   that step was done by whoever launched `helton.sh`. Do not create another. Work where you are.
   If `branchName` doesn't exist yet, branch from the same base the root file prescribes for
-  worktrees — a base configurada em `BASE_BRANCH` (`scripts/obra/obra.conf`), never the
+  worktrees — a base configurada em `BASE_BRANCH` (`scripts/helton/obra/obra.conf`), never the
   repository default branch.
 - **Commit narrowly.** `git add -A` is fine only because this worktree is yours alone. Stage
   the files you actually touched; never sweep the whole tree on a shared checkout.
@@ -195,7 +195,7 @@ grep -E '^(COMPOSE_PROJECT_NAME|NGINX_PORT|APP_PORT|DB_PORT|MAILPIT_UI_PORT)=' .
 - Mailpit (e-mail capturado): `http://localhost:$MAILPIT_UI_PORT`
 
 Se o `.env` não existir, a worktree ainda não tem ambiente — e não é você que monta. Pare e
-diga isso: quem provisiona é o `scripts/obra/montar-canteiro.sh`, rodado do checkout
+diga isso: quem provisiona é o `scripts/helton/obra/montar-canteiro.sh`, rodado do checkout
 principal, e é ele que escolhe a faixa de portas desviando das que os outros agentes já
 tomaram. Copiar o `.env` do vizinho à mão é como duas stacks acabam brigando por porta ou,
 pior, compartilhando banco sem ninguém perceber.
@@ -205,7 +205,7 @@ Regras:
   worktree — é ele que mantém containers, rede e volumes separados dos outros agentes
 - `docker compose exec <serviço>`, NUNCA `docker exec <nome>`: os containers não têm nome fixo
 - Serviços desta stack: veja `SERVICES`, `DB_SERVICE` e `MIGRATE_SERVICE` em
-  `scripts/obra/obra.conf`, ou `docker compose ps`
+  `scripts/helton/obra/obra.conf`, ou `docker compose ps`
 - Mudou algo no front: `docker compose up -d --build <serviço do front>` antes de verificar a tela.
   Sem rebuild, o navegador mostra o bundle antigo e a verificação passa errada
 - Migration nova: `docker compose up -d migrate` aplica; `make migrate` também serve

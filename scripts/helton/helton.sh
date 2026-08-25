@@ -34,10 +34,11 @@ if [[ "$TOOL" != "amp" && "$TOOL" != "claude" ]]; then
   exit 1
 fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PRD_FILE="$SCRIPT_DIR/prd.json"
-PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
-ARCHIVE_DIR="$SCRIPT_DIR/archive"
-LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
+PRDS_DIR="$SCRIPT_DIR/projects/prds"
+PRD_FILE="$PRDS_DIR/prd.json"
+PROGRESS_FILE="$PRDS_DIR/progress.txt"
+ARCHIVE_DIR="$PRDS_DIR/implemented"
+LAST_BRANCH_FILE="$PRDS_DIR/.last-branch"
 
 # Archive previous run if branch changed
 if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
