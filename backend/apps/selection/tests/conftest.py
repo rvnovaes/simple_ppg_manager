@@ -10,6 +10,7 @@ padrão de cada tipo; testes de janela fechada ajustam as datas na hora.
 """
 
 from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -19,11 +20,13 @@ from apps.programs.models import CollectiveProject, Program, ResearchLine
 from apps.selection.models import (
     Application,
     Board,
+    ExaminationRecord,
     QuotaCategory,
     SelectionKind,
     SelectionLevel,
     SelectionProcess,
     SelectionStage,
+    StageScore,
     gerar_protocolo,
 )
 
@@ -195,3 +198,40 @@ def inscricao(
     candidata.homologate(at=datetime(2026, 2, 2, 10, 0, tzinfo=UTC))
     candidata.save()
     return candidata
+
+
+@pytest.fixture
+def nota(
+    program: Program, inscricao: Application, edital_regular: SelectionProcess
+) -> StageScore:
+    """Nota 85.50 da `inscricao` na primeira etapa do edital regular."""
+    linha = StageScore(
+        program=program,
+        application=inscricao,
+        stage=edital_regular.stages.get(order=1),
+        score=Decimal("85.50"),
+    )
+    linha.clean()
+    linha.save()
+    return linha
+
+
+@pytest.fixture
+def ata_regular(
+    program: Program,
+    edital_regular: SelectionProcess,
+    banca_regular: Board,
+) -> ExaminationRecord:
+    """Ata em rascunho (versão 1) da primeira etapa, mestrado × `projeto`,
+    com a `banca_regular`. Congelar e assinar é com o teste."""
+    ata = ExaminationRecord(
+        program=program,
+        process=edital_regular,
+        stage=edital_regular.stages.get(order=1),
+        level=banca_regular.level,
+        project=banca_regular.project,
+        board=banca_regular,
+    )
+    ata.clean()
+    ata.save()
+    return ata

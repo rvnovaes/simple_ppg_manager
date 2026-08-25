@@ -79,3 +79,20 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - Cuidado com `cd backend && ...` quando o cwd já é `backend`: o `cd` falha e a cadeia inteira é pulada em silêncio.
   - CPFs válidos para teste: 52998224725, 11144477735, 12345678909.
 ---
+## 2026-08-25 - f0-score-record-signature
+- `StageScore`: unique `(application, stage)`, checks `absent XOR score` e `score` 0–100, `passed` (corte `NOTA_DE_CORTE`), `as_record_row()` (nota como texto), `clean()` → `stage_mismatch`/duplicata; QuerySet `for_stage`/`for_target(level, project, research_line)`.
+- `ExaminationRecord` versionável: `version` + `supersedes` OneToOne self (check `version=1 ⇔ supersedes IS NULL`), unique `(process, stage, level, project, research_line, version)` com `nulls_distinct=False`, XOR de alvo, `board` PROTECT, `replaced_member`, `pdf` em `caminho_da_ata`, permissão custom `sign_examinationrecord`.
+- Hash: helper de módulo `hash_canonico(documento)` (`json.dumps(sort_keys=True, separators=(",",":"), ensure_ascii=False)` + sha256) sobre `canonical_document()` = cabeçalho (ids do edital/etapa/banca/alvo/impedido + `version`) + `content`. `verify_hash()` exige hash gravado. `normalize_content` ordena por `(full_name, protocol)` e força `score` a `str(Decimal(...))`.
+- Máquina da ata: `freeze(content, at)` → `record_not_draft`/`no_candidates`; `reopen()` limpa hash e `frozen_at`; `mark_signed(at)`; `supersede()`. `_exigir_status` gera `record_not_<status>` (InvalidStateTransition).
+- `RecordSignature`: `method_for(signer)` (EXTERNAL → token), unique `(record, signer)`, check `method='token' OR token_hash=''`; `sign(at, content_hash, user=None, ip=None)` → `already_signed`/`record_changed`; `issue_token(at, ttl=VALIDADE_DO_TOKEN)` devolve o texto uma vez e grava só `hash_do_token(raw)` (→ `token_not_applicable`); `consume_token(at)` → `token_expired`/`token_already_used`; `ensure_can_sign_by_login(user)` → `NotAllowed`; QuerySet `pending()`/`by_token(raw)`.
+- Migration `selection/0004_stagescore_examinationrecord_recordsignature.py` lida antes do commit; `makemigrations --check` limpo.
+- Conftest: fixtures `nota` (85.50 na etapa 1) e `ata_regular` (rascunho v1, mestrado × `projeto`, `banca_regular`).
+- 50 testes em `apps/selection/tests/test_record.py` (a maioria em memória; os de unique/check/`by_token` com banco). `make ready` verde, 773 testes.
+- Files: backend/apps/selection/models.py, backend/apps/selection/migrations/0004_stagescore_examinationrecord_recordsignature.py, backend/apps/selection/tests/test_record.py, backend/apps/selection/tests/conftest.py
+- **Learnings for future iterations:**
+  - Os testes deste app estão em arquivos por bloco (`test_models.py`, `test_vacancy_board.py`, `test_application.py`, `test_record.py`) — o `files` do prd cita `test_models.py`, mas o padrão vencedor é arquivo novo por story.
+  - O hash cobre o **cabeçalho**, não só as linhas: mudar `replaced_member` ou `version` invalida assinatura dada. Quem gerar v2 (f3-rectify) precisa recongelar, não copiar o hash.
+  - `freeze` recebe as linhas já montadas (dicts com `full_name`/`protocol`/`score`); quem monta é o service de f3 (`generate/refresh_record`), lendo `StageScore.objects.for_stage(...).for_target(...)`.
+  - `issue_token` zera `token_sent_at`: quem envia o e-mail (f3-record-services) grava o carimbo depois do envio.
+  - `RecordSignature.clean()` chama `ata.expected_signers()` (query na banca) — em teste em memória atribua `record` com `board` já montado.
+---

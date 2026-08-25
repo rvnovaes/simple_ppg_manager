@@ -17,12 +17,15 @@ Convenções válidas para todos os models deste app (não repetidas por model):
   colidem (precedente: `AdjustmentStatus` em `apps/academic/models.py`).
 """
 
+import hashlib
+import json
 import secrets
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -30,7 +33,7 @@ from apps.academic.models import (
     EXTENSOES_DE_DOCUMENTO,
     TAMANHO_MAXIMO_DO_DOCUMENTO,
 )
-from apps.core.exceptions import DomainError, InvalidStateTransition
+from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
 
 # ---------------------------------------------------------------------------
 # Enums de módulo
@@ -1234,4 +1237,752 @@ class ApplicationDocument(models.Model):
             raise DomainError(
                 "A inscrição já tem um documento deste tipo.",
                 code="duplicate_document",
+            )
+
+
+# ---------------------------------------------------------------------------
+# StageScore (nota de uma etapa)
+# ---------------------------------------------------------------------------
+
+
+class StageScoreQuerySet(models.QuerySet["StageScore"]):
+    def for_stage(self, stage: Any) -> "StageScoreQuerySet":
+        return self.filter(stage=stage)
+
+    def for_target(
+        self, level: str, project: Any, research_line: Any
+    ) -> "StageScoreQuerySet":
+        """Notas das inscrições de um nível × alvo — o recorte da ata."""
+        return self.filter(
+            application__level=level,
+            application__project=project,
+            application__research_line=research_line,
+        )
+
+
+class StageScore(models.Model):
+    """Nota de uma inscrição em uma etapa — rascunho até a ata assinar.
+
+    Três situações, e a diferença importa para a ata:
+
+    - linha com `score`: o candidato foi avaliado;
+    - linha com `absent=True`: faltou (elimina);
+    - **sem linha**: não avaliado, porque foi eliminado antes ou porque a
+      etapa ainda não chegou.
+
+    `absent` e `score` são XOR (constraint e `clean()`); a nota vale de 0 a
+    100 e o corte é `NOTA_DE_CORTE`. Enquanto a ata corrente da (etapa ×
+    nível × alvo) está em rascunho a banca pode reescrever a linha; com
+    ela congelada ou assinada a nota é só leitura (`record_frozen`, na
+    rota — o model não conhece a ata).
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="selection_stage_scores",
+        verbose_name="programa",
+    )
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.PROTECT,
+        related_name="scores",
+        verbose_name="inscrição",
+    )
+    stage = models.ForeignKey(
+        SelectionStage,
+        on_delete=models.PROTECT,
+        related_name="scores",
+        verbose_name="etapa",
+    )
+    score = models.DecimalField(
+        "nota", max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    absent = models.BooleanField("ausente", default=False)
+    entered_by = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="selection_scores_entered",
+        null=True,
+        blank=True,
+        verbose_name="lançada por",
+    )
+    # Carimbo técnico da última escrita da linha; o instante de negócio
+    # que conta é o `frozen_at`/`signed_at` da ata.
+    entered_at = models.DateTimeField("lançada em", auto_now=True)
+
+    objects = StageScoreQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "nota da etapa"
+        verbose_name_plural = "notas da etapa"
+        ordering = ["stage", "application"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "stage"],
+                name="unique_nota_por_inscricao_e_etapa",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(absent=True, score__isnull=True)
+                | models.Q(absent=False, score__isnull=False),
+                name="stagescore_absent_xor_score",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(score__isnull=True)
+                | models.Q(score__gte=0, score__lte=100),
+                name="stagescore_score_range",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        nota = "ausente" if self.absent else str(self.score)
+        return f"{self.application_id} × {self.stage_id}: {nota}"
+
+    @property
+    def passed(self) -> bool:
+        """No corte ou acima; ausente nunca passa."""
+        return (
+            not self.absent and self.score is not None and self.score >= NOTA_DE_CORTE
+        )
+
+    def as_record_row(self) -> dict[str, Any]:
+        """A linha desta nota no `content` da ata.
+
+        `score` vai como texto (`"85.50"`) porque JSON não tem `Decimal` e
+        `float` mudaria o hash entre gravações (armadilha 7 do plano).
+        """
+        inscricao = self.application
+        return {
+            "application_id": inscricao.pk,
+            "protocol": inscricao.protocol,
+            "full_name": inscricao.full_name,
+            "quota_category": str(inscricao.quota_category),
+            "score": None if self.score is None else str(self.score),
+            "absent": self.absent,
+            "passed": self.passed,
+        }
+
+    def clean(self) -> None:
+        """XOR entre ausência e nota, nota no intervalo, etapa do mesmo
+        edital da inscrição e uma linha por (inscrição, etapa) — espelho
+        da UniqueConstraint."""
+        super().clean()
+        if self.absent == (self.score is not None):
+            raise DomainError(
+                "Informe a nota ou marque ausência — um dos dois, nunca ambos.",
+                code="absent_xor_score",
+            )
+        if self.score is not None and not Decimal(0) <= self.score <= NOTA_MAXIMA:
+            raise DomainError(
+                f"A nota fica entre 0 e {NOTA_MAXIMA}.", code="invalid_score"
+            )
+        if self.application_id is None or self.stage_id is None:
+            return
+        if self.stage.process_id != self.application.process_id:
+            raise DomainError(
+                "A etapa não pertence ao edital desta inscrição.",
+                code="stage_mismatch",
+            )
+        duplicatas = StageScore.objects.filter(
+            application_id=self.application_id, stage_id=self.stage_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Esta inscrição já tem nota nesta etapa.", code="duplicate_score"
+            )
+
+
+# ---------------------------------------------------------------------------
+# ExaminationRecord (ata)
+# ---------------------------------------------------------------------------
+
+
+def caminho_da_ata(instance: "ExaminationRecord", filename: str) -> str:
+    """`selecao/edital-{id}/atas/ata-{id}-v{version}.pdf` — o nome vem da
+    própria ata, não do upload: o PDF é gerado pelo sistema."""
+    return (
+        f"selecao/edital-{instance.process_id}/atas/"
+        f"ata-{instance.pk}-v{instance.version}.pdf"
+    )
+
+
+def hash_canonico(documento: Any) -> str:
+    """SHA-256 da serialização canônica de um JSON (armadilha 9 do plano).
+
+    `sort_keys` + separadores sem espaço + `ensure_ascii=False`: o mesmo
+    dicionário produz sempre os mesmos bytes, independentemente da ordem
+    de inserção ou de quem serializou.
+    """
+    texto = json.dumps(
+        documento, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    return hashlib.sha256(texto.encode("utf-8")).hexdigest()
+
+
+class ExaminationRecordQuerySet(models.QuerySet["ExaminationRecord"]):
+    def for_program(self, program: Any) -> "ExaminationRecordQuerySet":
+        return self.filter(program=program)
+
+    def for_process(self, process: Any) -> "ExaminationRecordQuerySet":
+        return self.filter(process=process)
+
+    def current(self) -> "ExaminationRecordQuerySet":
+        """Atas vigentes: tudo que não foi substituído por versão nova."""
+        return self.exclude(status=RecordStatus.SUPERSEDED)
+
+    def for_key(
+        self, stage: Any, level: str, project: Any, research_line: Any
+    ) -> "ExaminationRecordQuerySet":
+        """Todas as versões da ata de uma (etapa × nível × alvo)."""
+        return self.filter(
+            stage=stage, level=level, project=project, research_line=research_line
+        )
+
+
+class ExaminationRecord(models.Model):
+    """Ata de uma etapa para um nível × alvo, versionável.
+
+    O `content` é a fotografia das notas no instante do congelamento —
+    lista de linhas ordenada por nome, uma por inscrição viva do alvo.
+    O `content_hash` é o que cada assinatura confere: se a ata mudar
+    entre congelar e assinar, a assinatura recusa (`record_changed`).
+
+    Versão: retificação (fase 2) cria a versão `n+1` apontando para a
+    anterior em `supersedes`; quando a nova fica assinada, a anterior
+    vira `superseded`. Há sempre no máximo **uma ata corrente** (não
+    substituída) por chave — invariante do `clean()`.
+
+    As transições não salvam, como nos demais models do app.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="selection_records",
+        verbose_name="programa",
+    )
+    process = models.ForeignKey(
+        SelectionProcess,
+        on_delete=models.PROTECT,
+        related_name="records",
+        verbose_name="edital",
+    )
+    stage = models.ForeignKey(
+        SelectionStage,
+        on_delete=models.PROTECT,
+        related_name="records",
+        verbose_name="etapa",
+    )
+    level = models.CharField("nível", max_length=20, choices=SelectionLevel)
+    project = models.ForeignKey(
+        "programs.CollectiveProject",
+        on_delete=models.PROTECT,
+        related_name="selection_records",
+        null=True,
+        blank=True,
+        verbose_name="projeto coletivo",
+    )
+    research_line = models.ForeignKey(
+        "programs.ResearchLine",
+        on_delete=models.PROTECT,
+        related_name="selection_records",
+        null=True,
+        blank=True,
+        verbose_name="linha de pesquisa",
+    )
+    board = models.ForeignKey(
+        Board,
+        on_delete=models.PROTECT,
+        related_name="records",
+        verbose_name="banca",
+    )
+    replaced_member = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="selection_records_replaced_in",
+        null=True,
+        blank=True,
+        verbose_name="titular impedido",
+    )
+    version = models.PositiveSmallIntegerField("versão", default=1)
+    supersedes = models.OneToOneField(
+        "self",
+        on_delete=models.PROTECT,
+        related_name="superseded_by",
+        null=True,
+        blank=True,
+        verbose_name="substitui a versão",
+    )
+    rectification_reason = models.TextField("motivo da retificação", blank=True)
+    status = models.CharField(
+        "situação",
+        max_length=20,
+        choices=RecordStatus,
+        default=RecordStatus.DRAFT,
+    )
+    content = models.JSONField("conteúdo", default=list, blank=True)
+    content_hash = models.CharField("hash do conteúdo", max_length=64, blank=True)
+    pdf = models.FileField("PDF", upload_to=caminho_da_ata, blank=True)
+    frozen_at = models.DateTimeField("congelada em", null=True, blank=True)
+    signed_at = models.DateTimeField("assinada em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ExaminationRecordQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "ata de exame"
+        verbose_name_plural = "atas de exame"
+        ordering = ["process", "stage", "level", "project", "research_line", "version"]
+        constraints = [
+            xor_de_alvo("examinationrecord"),
+            models.UniqueConstraint(
+                fields=[
+                    "process",
+                    "stage",
+                    "level",
+                    "project",
+                    "research_line",
+                    "version",
+                ],
+                nulls_distinct=False,
+                name="unique_ata_por_edital_etapa_nivel_alvo_e_versao",
+            ),
+            # version = 1 ⇔ supersedes IS NULL
+            models.CheckConstraint(
+                condition=models.Q(version=1, supersedes__isnull=True)
+                | models.Q(version__gt=1, supersedes__isnull=False),
+                name="examinationrecord_version_matches_supersedes",
+            ),
+        ]
+        permissions = [
+            ("sign_examinationrecord", "Pode assinar ata de exame"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Ata {self.stage_id} — {self.get_level_display()} v{self.version}"
+
+    # -- leitura ----------------------------------------------------------
+
+    @property
+    def is_current(self) -> bool:
+        return self.status != RecordStatus.SUPERSEDED
+
+    @property
+    def is_draft(self) -> bool:
+        return self.status == RecordStatus.DRAFT
+
+    @property
+    def is_frozen(self) -> bool:
+        """Congelada ou assinada: as notas por trás dela são só leitura."""
+        return self.status in (RecordStatus.AWAITING_SIGNATURES, RecordStatus.SIGNED)
+
+    def expected_signers(self) -> list[Any]:
+        """Quem assina: delega à banca, com o titular impedido trocado
+        pelo suplente."""
+        return self.board.expected_signers(self.replaced_member)
+
+    # -- hash -------------------------------------------------------------
+
+    def canonical_document(self) -> dict[str, Any]:
+        """Cabeçalho (ids e versão) + conteúdo: é isto que é hasheado.
+
+        O cabeçalho entra para que o mesmo conteúdo em outra etapa, outra
+        banca ou outra versão produza hash diferente — assinatura não é
+        reaproveitável entre atas.
+        """
+        return {
+            "process_id": self.process_id,
+            "stage_id": self.stage_id,
+            "board_id": self.board_id,
+            "level": str(self.level),
+            "project_id": self.project_id,
+            "research_line_id": self.research_line_id,
+            "replaced_member_id": self.replaced_member_id,
+            "version": self.version,
+            "content": self.content,
+        }
+
+    def compute_hash(self) -> str:
+        return hash_canonico(self.canonical_document())
+
+    def verify_hash(self) -> bool:
+        """O conteúdo gravado ainda corresponde ao hash que foi assinado?"""
+        return bool(self.content_hash) and self.compute_hash() == self.content_hash
+
+    @staticmethod
+    def normalize_content(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Ordena por nome (e protocolo, no empate) e força `score` a texto.
+
+        Chamado por `freeze`, para que o hash não dependa da ordem em que
+        as notas saíram do banco nem do tipo com que a nota chegou.
+        """
+        normalizadas = []
+        for row in rows:
+            score = row.get("score")
+            normalizadas.append(
+                {**row, "score": None if score is None else str(Decimal(str(score)))}
+            )
+        return sorted(normalizadas, key=lambda r: (r["full_name"], r["protocol"]))
+
+    # -- estado -----------------------------------------------------------
+
+    def _exigir_status(self, esperado: str) -> None:
+        if self.status != esperado:
+            raise InvalidStateTransition(
+                f"A ata precisa estar {RecordStatus(esperado).label.lower()}; "
+                f"está {self.get_status_display().lower()}.",
+                code=f"record_not_{esperado}",
+            )
+
+    def freeze(self, content: Iterable[dict[str, Any]], at: datetime) -> None:
+        """Rascunho → aguardando assinaturas, com conteúdo e hash fixados.
+
+        Ata sem candidato não existe: a etapa sem ninguém vivo no alvo
+        não tem o que assinar.
+        """
+        self._exigir_status(RecordStatus.DRAFT)
+        linhas = self.normalize_content(content)
+        if not linhas:
+            raise DomainError(
+                "Não há candidato vivo neste nível e alvo para compor a ata.",
+                code="no_candidates",
+            )
+        self.content = linhas
+        self.content_hash = self.compute_hash()
+        self.frozen_at = at
+        self.status = RecordStatus.AWAITING_SIGNATURES
+
+    def reopen(self) -> None:
+        """Aguardando assinaturas → rascunho. Quem garante que não há
+        assinatura dada (e apaga as pendentes) é o service."""
+        self._exigir_status(RecordStatus.AWAITING_SIGNATURES)
+        self.status = RecordStatus.DRAFT
+        self.content_hash = ""
+        self.frozen_at = None
+
+    def mark_signed(self, at: datetime) -> None:
+        """Sistema, na última assinatura."""
+        self._exigir_status(RecordStatus.AWAITING_SIGNATURES)
+        self.status = RecordStatus.SIGNED
+        self.signed_at = at
+
+    def supersede(self) -> None:
+        """Sistema, quando a versão seguinte fica assinada."""
+        self._exigir_status(RecordStatus.SIGNED)
+        self.status = RecordStatus.SUPERSEDED
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """Alvo compatível com o edital e igual ao da banca; etapa do
+        edital; versão coerente com `supersedes`; titular impedido é
+        titular da banca; uma ata corrente por chave e uma versão por
+        chave (espelhos da UniqueConstraint, NULL igual a NULL)."""
+        super().clean()
+        if (self.version == 1) != (self.supersedes_id is None):
+            raise DomainError(
+                "A primeira versão não substitui ninguém; as seguintes "
+                "precisam apontar a versão anterior.",
+                code="invalid_version",
+            )
+        anterior = getattr(self, "supersedes", None)
+        if anterior is not None and anterior.version + 1 != self.version:
+            raise DomainError(
+                "A versão nova é a seguinte à que ela substitui.",
+                code="invalid_version",
+            )
+        if self.process_id is None:
+            return
+        self.process.ensure_target(self.project, self.research_line)
+        if self.stage_id is not None and self.stage.process_id != self.process_id:
+            raise DomainError(
+                "A etapa não pertence a este edital.", code="stage_mismatch"
+            )
+        banca = getattr(self, "board", None)
+        if banca is not None:
+            if (banca.level, banca.project_id, banca.research_line_id) != (
+                self.level,
+                self.project_id,
+                self.research_line_id,
+            ):
+                raise DomainError(
+                    "A banca não é a deste nível e alvo.", code="board_mismatch"
+                )
+            impedido = getattr(self, "replaced_member", None)
+            if impedido is not None:
+                banca.expected_signers(impedido)  # → not_a_titular_member
+        mesma_chave = ExaminationRecord.objects.for_key(
+            self.stage_id, self.level, self.project_id, self.research_line_id
+        ).filter(process_id=self.process_id)
+        if self.pk is not None:
+            mesma_chave = mesma_chave.exclude(pk=self.pk)
+        if self.is_current and mesma_chave.current().exists():
+            raise DomainError(
+                "Já existe ata vigente para esta etapa, nível e alvo.",
+                code="record_already_exists",
+            )
+        if mesma_chave.filter(version=self.version).exists():
+            raise DomainError(
+                "Já existe esta versão da ata para esta etapa, nível e alvo.",
+                code="duplicate_record",
+            )
+
+
+# ---------------------------------------------------------------------------
+# RecordSignature (assinatura da ata)
+# ---------------------------------------------------------------------------
+
+VALIDADE_DO_TOKEN = timedelta(days=7)
+
+
+def hash_do_token(raw: str) -> str:
+    """Só o SHA-256 do token vai para o banco: quem lê a tabela não
+    consegue assinar por ninguém."""
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+class RecordSignatureQuerySet(models.QuerySet["RecordSignature"]):
+    def pending(self) -> "RecordSignatureQuerySet":
+        return self.filter(signed_at__isnull=True)
+
+    def by_token(self, raw: str) -> "RecordSignatureQuerySet":
+        """Assinatura dona do token em texto — a rota pública nunca vê o
+        hash, e o banco nunca vê o texto."""
+        return self.filter(method=SignatureMethod.TOKEN, token_hash=hash_do_token(raw))
+
+
+class RecordSignature(models.Model):
+    """Assinatura de um signatário em uma ata congelada.
+
+    Nasce pendente (`signed_at` nulo) no congelamento, uma por
+    `expected_signers`. Professor do programa assina logado
+    (`method=login`); o externo, que não tem conta, assina por token
+    recebido por e-mail (`method=token`) — o método é decidido pela
+    categoria do signatário, não escolhido.
+
+    `signed_hash` guarda o hash que o signatário viu: é a prova de que
+    todos assinaram o mesmo conteúdo.
+    """
+
+    record = models.ForeignKey(
+        ExaminationRecord,
+        on_delete=models.PROTECT,
+        related_name="signatures",
+        verbose_name="ata",
+    )
+    signer = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="selection_signatures",
+        verbose_name="signatário",
+    )
+    method = models.CharField("método", max_length=20, choices=SignatureMethod)
+    signed_at = models.DateTimeField("assinada em", null=True, blank=True)
+    signed_hash = models.CharField("hash assinado", max_length=64, blank=True)
+    signed_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="selection_signatures",
+        null=True,
+        blank=True,
+        verbose_name="conta que assinou",
+    )
+    ip_address = models.GenericIPAddressField("IP", null=True, blank=True)
+    token_hash = models.CharField("hash do token", max_length=64, blank=True)
+    token_expires_at = models.DateTimeField("token expira em", null=True, blank=True)
+    token_sent_at = models.DateTimeField("token enviado em", null=True, blank=True)
+    token_used_at = models.DateTimeField("token usado em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = RecordSignatureQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "assinatura da ata"
+        verbose_name_plural = "assinaturas da ata"
+        ordering = ["record", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["record", "signer"],
+                name="unique_assinatura_por_ata_e_signatario",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(method=SignatureMethod.TOKEN)
+                | models.Q(token_hash=""),
+                name="recordsignature_token_only_for_token_method",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        situacao = "assinada" if self.is_signed else "pendente"
+        return f"Assinatura {self.signer_id} na ata {self.record_id} ({situacao})"
+
+    # -- construção -------------------------------------------------------
+
+    @staticmethod
+    def method_for(signer: Any) -> str:
+        """Externo assina por token; todo o resto, logado."""
+        if signer.category == signer.Category.EXTERNAL:
+            return SignatureMethod.TOKEN
+        return SignatureMethod.LOGIN
+
+    @classmethod
+    def for_signer(cls, record: ExaminationRecord, signer: Any) -> "RecordSignature":
+        """Assinatura pendente com o método certo para o signatário."""
+        return cls(record=record, signer=signer, method=cls.method_for(signer))
+
+    # -- leitura ----------------------------------------------------------
+
+    @property
+    def is_signed(self) -> bool:
+        return self.signed_at is not None
+
+    @property
+    def uses_token(self) -> bool:
+        return self.method == SignatureMethod.TOKEN
+
+    def token_valid_at(self, at: datetime) -> bool:
+        """Há token emitido, não usado e dentro do prazo?"""
+        return (
+            bool(self.token_hash)
+            and self.token_used_at is None
+            and self.token_expires_at is not None
+            and at < self.token_expires_at
+        )
+
+    # -- assinatura -------------------------------------------------------
+
+    def _exigir_pendente(self) -> None:
+        if self.is_signed:
+            raise InvalidStateTransition(
+                "Este signatário já assinou a ata.", code="already_signed"
+            )
+
+    def sign(
+        self,
+        at: datetime,
+        content_hash: str,
+        user: Any | None = None,
+        ip: str | None = None,
+    ) -> None:
+        """Registra a assinatura sobre o hash que o signatário viu.
+
+        Recusa se a ata não está aguardando assinaturas, se o hash visto
+        não é o corrente ou se o conteúdo gravado deixou de bater com o
+        hash — qualquer um dos três significa que quem assina não está
+        assinando o que acha (`record_changed`).
+        """
+        self._exigir_pendente()
+        ata = self.record
+        if ata.status != RecordStatus.AWAITING_SIGNATURES:
+            raise InvalidStateTransition(
+                "A ata não está aguardando assinaturas.",
+                code="record_not_awaiting_signatures",
+            )
+        if content_hash != ata.content_hash or not ata.verify_hash():
+            raise InvalidStateTransition(
+                "O conteúdo da ata mudou desde que foi apresentado; "
+                "confira a versão atual antes de assinar.",
+                code="record_changed",
+            )
+        self.signed_at = at
+        self.signed_hash = content_hash
+        self.signed_by_user = user
+        self.ip_address = ip
+
+    def ensure_can_sign_by_login(self, user: Any) -> None:
+        """Só o próprio signatário, logado, e só quando o método é login."""
+        if not self.uses_token and self._user_is_signer(user):
+            return
+        raise NotAllowed(
+            "Só o próprio signatário, autenticado, pode assinar esta ata.",
+            code="not_the_signer",
+        )
+
+    def _user_is_signer(self, user: Any) -> bool:
+        if user is None or not getattr(user, "pk", None):
+            return False
+        pessoa = getattr(self.signer, "person", None)
+        return pessoa is not None and pessoa.user_id == user.pk
+
+    # -- token ------------------------------------------------------------
+
+    def issue_token(self, at: datetime, ttl: timedelta = VALIDADE_DO_TOKEN) -> str:
+        """Emite (ou reemite, invalidando o anterior) o token do externo.
+
+        Devolve o texto **uma única vez** — é o que vai no e-mail; no
+        banco fica só o hash. `token_sent_at` é do service, depois que o
+        e-mail de fato saiu.
+        """
+        if not self.uses_token:
+            raise DomainError(
+                "Este signatário assina logado, não por token.",
+                code="token_not_applicable",
+            )
+        self._exigir_pendente()
+        raw = secrets.token_urlsafe(32)
+        self.token_hash = hash_do_token(raw)
+        self.token_expires_at = at + ttl
+        self.token_sent_at = None
+        self.token_used_at = None
+        return raw
+
+    def consume_token(self, at: datetime) -> None:
+        """Marca o token como usado; a assinatura em si é `sign()`, na
+        mesma transação."""
+        if not self.uses_token or not self.token_hash:
+            raise DomainError(
+                "Não há token emitido para esta assinatura.",
+                code="token_not_applicable",
+            )
+        if self.token_used_at is not None:
+            raise InvalidStateTransition(
+                "Este token já foi usado.", code="token_already_used"
+            )
+        if self.token_expires_at is None or at >= self.token_expires_at:
+            raise InvalidStateTransition(
+                "Este token expirou; peça à secretaria um novo.",
+                code="token_expired",
+            )
+        self.token_used_at = at
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """Método coerente com a categoria do signatário, signatário
+        esperado pela ata e um por ata (espelho da UniqueConstraint)."""
+        super().clean()
+        signatario = getattr(self, "signer", None)
+        if signatario is not None and self.method != self.method_for(signatario):
+            raise DomainError(
+                "O método de assinatura é decidido pela categoria do "
+                "signatário: externo assina por token, os demais logados.",
+                code="signature_method_mismatch",
+            )
+        if not self.uses_token and self.token_hash:
+            raise DomainError(
+                "Assinatura por login não carrega token.",
+                code="token_not_applicable",
+            )
+        ata = getattr(self, "record", None)
+        if ata is None or signatario is None:
+            return
+        if signatario.pk not in {s.pk for s in ata.expected_signers()}:
+            raise DomainError(
+                "Este professor não é signatário desta ata.",
+                code="signer_not_expected",
+            )
+        if self.record_id is None:
+            return
+        duplicatas = RecordSignature.objects.filter(
+            record_id=self.record_id, signer_id=self.signer_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Este signatário já consta na ata.", code="duplicate_signature"
             )
