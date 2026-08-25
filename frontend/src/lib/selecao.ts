@@ -136,3 +136,69 @@ export function rotuloDoExaminador(examinador: {
 		? `${examinador.full_name} · ${examinador.home_institution}`
 		: examinador.full_name;
 }
+
+/**
+ * Espelho de `ApplicationDocumentKind` (`apps/selection/models.py`).
+ *
+ * O valor é também o **nome do campo** no POST público: `ApplicationIn`
+ * recebe um `File(...)` por tipo de documento, com o mesmo identificador.
+ * Percorrer esta lista é o que faz a tela montar o `<input type="file">`
+ * certo sem repetir os sete nomes em cada lugar.
+ */
+export type TipoDeDocumentoDaInscricao =
+	| 'identity'
+	| 'diploma'
+	| 'lattes'
+	| 'payment_receipt'
+	| 'expanded_abstract'
+	| 'memorial'
+	| 'quota_proof';
+
+export const ROTULO_DO_DOCUMENTO_DA_INSCRICAO: Record<TipoDeDocumentoDaInscricao, string> = {
+	identity: 'Documento de identidade',
+	diploma: 'Diploma',
+	lattes: 'Currículo Lattes',
+	payment_receipt: 'Comprovante de pagamento',
+	expanded_abstract: 'Resumo expandido',
+	memorial: 'Memorial',
+	quota_proof: 'Comprovação da cota'
+};
+
+/**
+ * Espelho de `Application.required_document_kinds()`.
+ *
+ * Cópia deliberada, como `COTAS_POR_TIPO`: a tela precisa desenhar os
+ * campos de anexo antes de existir inscrição alguma. Quem recusa o envio
+ * incompleto continua sendo o backend (`missing_documents`) — se as duas
+ * listas divergirem, o erro aparece como `missing_documents` no POST, e é
+ * aqui que se conserta.
+ */
+export function documentosExigidos(tipo: Tipo, cota: Cota): TipoDeDocumentoDaInscricao[] {
+	const exigidos: TipoDeDocumentoDaInscricao[] = [
+		'identity',
+		'diploma',
+		'lattes',
+		'payment_receipt',
+		tipo === 'regular' ? 'expanded_abstract' : 'memorial'
+	];
+	if (cota !== 'open') exigidos.push('quota_proof');
+	return exigidos;
+}
+
+export type SituacaoDaInscricao = components['schemas']['ApplicationStatus'];
+
+/**
+ * O que cada situação significa para quem consulta o protocolo.
+ *
+ * O rótulo curto vem do servidor (`status_label`) — não se traduz aqui o
+ * que ele já traduz. O que mora nesta tabela é a frase que explica o
+ * rótulo a quem não conhece o vocabulário do edital.
+ */
+export const EXPLICACAO_DA_SITUACAO: Record<SituacaoDaInscricao, string> = {
+	submitted: 'Recebemos sua inscrição. A secretaria ainda vai conferir a documentação.',
+	homologated: 'Documentação conferida: você está apto a participar das etapas do edital.',
+	rejected: 'A inscrição não foi homologada. A secretaria informa o motivo pelos canais do edital.',
+	eliminated: 'Você não seguiu para a etapa seguinte do processo seletivo.',
+	approved: 'Você foi aprovado. Acompanhe a convocação para a matrícula.',
+	enrolled: 'Matrícula efetivada: você já consta como aluno do programa.'
+};

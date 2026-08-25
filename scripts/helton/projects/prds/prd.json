@@ -415,7 +415,7 @@
         "f2-inscricao-publica-api"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
