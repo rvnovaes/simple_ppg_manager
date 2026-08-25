@@ -99,7 +99,7 @@
         "f0-process-stage"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

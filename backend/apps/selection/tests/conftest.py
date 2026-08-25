@@ -15,8 +15,14 @@ import pytest
 
 from apps.academic.models import Teacher
 from apps.people.models import Person
-from apps.programs.models import Program
-from apps.selection.models import SelectionKind, SelectionProcess, SelectionStage
+from apps.programs.models import CollectiveProject, Program, ResearchLine
+from apps.selection.models import (
+    Board,
+    SelectionKind,
+    SelectionLevel,
+    SelectionProcess,
+    SelectionStage,
+)
 
 ABERTURA = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
 ENCERRAMENTO = datetime(2026, 12, 31, 23, 59, tzinfo=UTC)
@@ -101,3 +107,61 @@ def edital_suplementar(program: Program) -> SelectionProcess:
         "Edital Suplementar 2027",
         ETAPAS_SUPLEMENTAR,
     )
+
+
+def _professor(program: Program, nome: str, email: str) -> Teacher:
+    pessoa = Person.objects.create(program=program, full_name=nome, primary_email=email)
+    return Teacher.objects.create(
+        program=program,
+        person=pessoa,
+        category=Teacher.Category.PERMANENT,
+        academic_degree=Teacher.AcademicDegree.DOCTORATE,
+        accredited_since=date(2020, 3, 1),
+    )
+
+
+@pytest.fixture
+def linha(program: Program) -> ResearchLine:
+    return ResearchLine.objects.create(program=program, name="Direito e Tecnologia")
+
+
+@pytest.fixture
+def projeto(program: Program, linha: ResearchLine) -> CollectiveProject:
+    return CollectiveProject.objects.create(
+        program=program, research_line=linha, name="Regulação de plataformas"
+    )
+
+
+@pytest.fixture
+def professores(program: Program, docente: Teacher, externo: Teacher) -> list[Teacher]:
+    """Quatro professores credenciados do programa, na ordem
+    presidente, membro 1, membro 2, suplente (o externo é o suplente)."""
+    return [
+        docente,
+        _professor(program, "Daniel Alves", "daniel@example.com"),
+        _professor(program, "Elisa Prado", "elisa@example.com"),
+        externo,
+    ]
+
+
+@pytest.fixture
+def banca_regular(
+    program: Program,
+    edital_regular: SelectionProcess,
+    projeto: CollectiveProject,
+    professores: list[Teacher],
+) -> Board:
+    presidente, membro_1, membro_2, suplente = professores
+    banca = Board(
+        program=program,
+        process=edital_regular,
+        level=SelectionLevel.MASTERS,
+        project=projeto,
+        president=presidente,
+        member_1=membro_1,
+        member_2=membro_2,
+        alternate=suplente,
+    )
+    banca.clean()
+    banca.save()
+    return banca

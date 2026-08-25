@@ -521,3 +521,306 @@ class SelectionStage(models.Model):
                 "de desempate neste edital.",
                 code="duplicate_stage",
             )
+
+
+# ---------------------------------------------------------------------------
+# Vacancy (vaga)
+# ---------------------------------------------------------------------------
+
+
+class Vacancy(models.Model):
+    """Linha da grade de vagas de um edital: nível × alvo × categoria de cota.
+
+    `quantity` zero é permitido de propósito: a realocação
+    (`VacancyReallocation`) pode esvaziar uma linha, e a linha zerada é o
+    histórico de que ali havia vaga — apagar perderia o rastro.
+
+    O alvo (projeto coletivo OU linha de pesquisa) é XOR pela
+    `CheckConstraint`; a amarração ao tipo do edital é
+    `process.ensure_target`, no `clean()`.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="selection_vacancies",
+        verbose_name="programa",
+    )
+    process = models.ForeignKey(
+        SelectionProcess,
+        on_delete=models.PROTECT,
+        related_name="vacancies",
+        verbose_name="edital",
+    )
+    level = models.CharField("nível", max_length=20, choices=SelectionLevel)
+    project = models.ForeignKey(
+        "programs.CollectiveProject",
+        on_delete=models.PROTECT,
+        related_name="selection_vacancies",
+        null=True,
+        blank=True,
+        verbose_name="projeto coletivo",
+    )
+    research_line = models.ForeignKey(
+        "programs.ResearchLine",
+        on_delete=models.PROTECT,
+        related_name="selection_vacancies",
+        null=True,
+        blank=True,
+        verbose_name="linha de pesquisa",
+    )
+    quota_category = models.CharField(
+        "categoria de cota", max_length=20, choices=QuotaCategory
+    )
+    quantity = models.PositiveSmallIntegerField("quantidade")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "vaga"
+        verbose_name_plural = "vagas"
+        ordering = ["process", "level", "project", "research_line", "quota_category"]
+        constraints = [
+            xor_de_alvo("vacancy"),
+            # `nulls_distinct=False`: sem isso o Postgres trata cada NULL
+            # como valor distinto e duas vagas do mesmo projeto (linha
+            # nula) passariam pela unique.
+            models.UniqueConstraint(
+                fields=[
+                    "process",
+                    "level",
+                    "project",
+                    "research_line",
+                    "quota_category",
+                ],
+                nulls_distinct=False,
+                name="unique_vaga_por_edital_nivel_alvo_e_cota",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.get_level_display()} — {self.project or self.research_line} — "
+            f"{self.get_quota_category_display()}: {self.quantity}"
+        )
+
+    def target_key(self) -> tuple[str, int | None, int | None]:
+        """Chave de agrupamento da classificação: mesmo nível e mesmo alvo
+        disputam as mesmas vagas, cota a cota."""
+        return (self.level, self.project_id, self.research_line_id)
+
+    def clean(self) -> None:
+        """Alvo compatível com o tipo do edital, cota permitida nele e uma
+        linha por (edital, nível, alvo, cota) — espelho da UniqueConstraint,
+        contando NULL como igual a NULL."""
+        super().clean()
+        if self.process_id is None:
+            return
+        self.process.ensure_target(self.project, self.research_line)
+        if self.quota_category:
+            self.process.ensure_quota_category(self.quota_category)
+        duplicatas = Vacancy.objects.filter(
+            process_id=self.process_id,
+            level=self.level,
+            project_id=self.project_id,
+            research_line_id=self.research_line_id,
+            quota_category=self.quota_category,
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Já existe vaga para este nível, este alvo e esta categoria "
+                "de cota neste edital.",
+                code="duplicate_vacancy",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Board (banca)
+# ---------------------------------------------------------------------------
+
+
+class BoardQuerySet(models.QuerySet["Board"]):
+    def for_process(self, process: Any) -> "BoardQuerySet":
+        return self.filter(process=process)
+
+    def with_teacher(self, teacher: Any) -> "BoardQuerySet":
+        """Bancas em que o professor ocupa qualquer um dos quatro papéis.
+
+        É o único lugar em que o `Q()` de quatro ramos é escrito — quem
+        precisar de "as bancas do professor" (rota `boards/mine`, checagem
+        de `board_in_use`) chama daqui.
+        """
+        return self.filter(
+            models.Q(president=teacher)
+            | models.Q(member_1=teacher)
+            | models.Q(member_2=teacher)
+            | models.Q(alternate=teacher)
+        )
+
+
+class Board(models.Model):
+    """Banca examinadora de um nível × alvo de um edital.
+
+    Três titulares (presidente e dois membros) e um suplente. Quem assina
+    a ata são os titulares; se um deles estiver impedido, o suplente
+    assina no lugar (`expected_signers`). Uma banca por (edital, nível,
+    alvo).
+
+    As FKs para `Teacher` são PROTECT: descredenciar é preencher
+    `accredited_until`, e a banca da qual o professor participou é
+    histórico.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="selection_boards",
+        verbose_name="programa",
+    )
+    process = models.ForeignKey(
+        SelectionProcess,
+        on_delete=models.PROTECT,
+        related_name="boards",
+        verbose_name="edital",
+    )
+    level = models.CharField("nível", max_length=20, choices=SelectionLevel)
+    project = models.ForeignKey(
+        "programs.CollectiveProject",
+        on_delete=models.PROTECT,
+        related_name="selection_boards",
+        null=True,
+        blank=True,
+        verbose_name="projeto coletivo",
+    )
+    research_line = models.ForeignKey(
+        "programs.ResearchLine",
+        on_delete=models.PROTECT,
+        related_name="selection_boards",
+        null=True,
+        blank=True,
+        verbose_name="linha de pesquisa",
+    )
+    president = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="selection_boards_as_president",
+        verbose_name="presidente",
+    )
+    member_1 = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="selection_boards_as_member_1",
+        verbose_name="membro 1",
+    )
+    member_2 = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="selection_boards_as_member_2",
+        verbose_name="membro 2",
+    )
+    alternate = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="selection_boards_as_alternate",
+        verbose_name="suplente",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = BoardQuerySet.as_manager()
+
+    # Nome do campo → rótulo, na ordem em que aparecem na ata.
+    PAPEIS = ("president", "member_1", "member_2", "alternate")
+
+    class Meta:
+        verbose_name = "banca"
+        verbose_name_plural = "bancas"
+        ordering = ["process", "level", "project", "research_line"]
+        constraints = [
+            xor_de_alvo("board"),
+            models.UniqueConstraint(
+                fields=["process", "level", "project", "research_line"],
+                nulls_distinct=False,
+                name="unique_banca_por_edital_nivel_e_alvo",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"Banca {self.get_level_display()} — {self.project or self.research_line}"
+        )
+
+    # -- composição -------------------------------------------------------
+
+    def titular_members(self) -> list[Any]:
+        return [self.president, self.member_1, self.member_2]
+
+    def _members(self) -> list[Any]:
+        return [*self.titular_members(), self.alternate]
+
+    def is_member(self, teacher: Any) -> bool:
+        """Titular ou suplente."""
+        return teacher.pk in {m.pk for m in self._members()}
+
+    def expected_signers(self, replaced_member: Any | None = None) -> list[Any]:
+        """Quem precisa assinar a ata: os três titulares, ou — com um
+        titular impedido — os outros dois mais o suplente, na posição do
+        impedido. Suplente ou estranho como `replaced_member` é erro."""
+        titulares = self.titular_members()
+        if replaced_member is None:
+            return titulares
+        posicoes = [m.pk for m in titulares]
+        if replaced_member.pk not in posicoes:
+            raise DomainError(
+                "Só um membro titular pode ser substituído pelo suplente.",
+                code="not_a_titular_member",
+            )
+        titulares[posicoes.index(replaced_member.pk)] = self.alternate
+        return titulares
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """Alvo compatível com o tipo do edital; quatro professores
+        distintos, todos do programa da banca e credenciados; uma banca por
+        (edital, nível, alvo) — espelho da UniqueConstraint, com NULL igual
+        a NULL."""
+        super().clean()
+        membros = [
+            m for m in (getattr(self, papel, None) for papel in self.PAPEIS) if m
+        ]
+        if len({m.pk for m in membros}) != len(membros):
+            raise DomainError(
+                "Um professor não pode ocupar dois lugares na mesma banca.",
+                code="duplicate_board_member",
+            )
+        for membro in membros:
+            if membro.program_id != self.program_id:
+                raise DomainError(
+                    "Todos os membros da banca precisam ser professores "
+                    "deste programa.",
+                    code="teacher_from_other_program",
+                )
+            if not membro.is_accredited:
+                raise DomainError(
+                    "Professor descredenciado não pode compor banca.",
+                    code="teacher_not_accredited",
+                )
+        if self.process_id is None:
+            return
+        self.process.ensure_target(self.project, self.research_line)
+        duplicatas = Board.objects.filter(
+            process_id=self.process_id,
+            level=self.level,
+            project_id=self.project_id,
+            research_line_id=self.research_line_id,
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Já existe banca para este nível e este alvo neste edital.",
+                code="duplicate_board",
+            )

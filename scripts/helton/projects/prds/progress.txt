@@ -46,3 +46,17 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `ruff` C408: usar literal `{}` em vez de `dict(...)` em kwargs de helper de teste.
   - `scripts/helton/obra/montar-canteiro.sh` está modificado na worktree desde antes desta iteração (não é desta story; não foi commitado).
 ---
+## 2026-08-25 - f0-vacancy-board
+- `Vacancy` (`program`/`process` PROTECT, `level`, alvo XOR, `quota_category`, `quantity` com 0 permitido), unique `(process, level, project, research_line, quota_category)` com `nulls_distinct=False`, `target_key()` e `clean()` → `ensure_target` + `ensure_quota_category` + `duplicate_vacancy`.
+- `Board` (4 FKs `academic.Teacher` PROTECT, `related_name="selection_boards_as_<papel>"`), unique `(process, level, project, research_line)` `nulls_distinct=False`, `BoardQuerySet.for_process`/`with_teacher` (o `Q()` de 4 ramos escrito uma vez), `titular_members()`, `is_member()`, `expected_signers(replaced_member)` → `not_a_titular_member`, `clean()` → `duplicate_board_member`, `teacher_from_other_program`, `teacher_not_accredited` (usa `Teacher.is_accredited`, que já existia), `target_mismatch`, `duplicate_board`.
+- Migration `selection/0002_vacancy_board.py` lida: `nulls_distinct=False` nas duas uniques, `CheckConstraint` XOR em ambas.
+- Conftest: fixtures `linha`, `projeto`, `professores` (4 credenciados, externo como suplente) e `banca_regular` (mestrado × projeto no edital regular).
+- 25 testes em `selection/tests/test_vacancy_board.py` (16 em memória, 9 com banco — inclui `IntegrityError` direto na constraint para provar que nulos colidem e que o XOR vale sem `clean()`). `make ready` verde, 638 testes.
+- Files: backend/apps/selection/models.py, backend/apps/selection/migrations/0002_vacancy_board.py, backend/apps/selection/tests/conftest.py, backend/apps/selection/tests/test_vacancy_board.py
+- **Learnings for future iterations:**
+  - Em teste em memória, não use `str(teacher)` (chama `person` → `RelatedObjectDoesNotExist`); as mensagens de `Board.clean()` são genéricas por isso.
+  - `getattr(model, "fk", None)` funciona para FK não atribuída (o `RelatedObjectDoesNotExist` herda de `AttributeError`).
+  - `Teacher.is_accredited` é property (`accredited_until is None`) — é o critério de `teacher_not_accredited`; não há flag separada.
+  - Os `clean()` deste app checam `ensure_target` ANTES da query de duplicata, então teste de alvo incompatível roda em memória com `process=SelectionProcess(pk=1, ...)`.
+  - Teste de `IntegrityError` dentro de `django_db` precisa de `with transaction.atomic()` para não sujar a transação do teste.
+---
