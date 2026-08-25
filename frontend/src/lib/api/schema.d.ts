@@ -1133,6 +1133,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/processes/{process_id}/stages/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stages
+         * @description As etapas do edital, na ordem em que acontecem.
+         *
+         *     Sem paginação de propósito: são três etapas por edital, e a tela monta
+         *     a grade inteira de uma vez.
+         */
+        get: operations["apps_selection_router_list_stages"];
+        put?: never;
+        /** Create Stage */
+        post: operations["apps_selection_router_create_stage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/stages/{stage_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Stage
+         * @description Único DELETE do app.
+         *
+         *     Em rascunho a etapa ainda não tem nota, ata nem convocação pendurada,
+         *     então apagar a linha errada é a correção honesta. Depois de publicado
+         *     nada é apagado — o histórico do edital é o que a seleção prova.
+         *
+         *     A auditoria é gravada **antes** do `delete()`: depois dele a instância
+         *     perde o pk e o alvo do registro sairia vazio.
+         *
+         *     A permissão exigida é `change_selectionstage`, e não `delete_`: nenhum
+         *     papel de domínio recebe `delete_*` (migration `0006_papeis_da_selecao`,
+         *     com teste guardando), porque apagar dado da seleção é quebra-vidro de
+         *     sysadmin. Tirar uma linha da grade **em rascunho** não é isso — é a
+         *     mesma edição da grade que o PATCH faz, e quem trava o resto é o
+         *     `ensure_editable` logo abaixo.
+         */
+        delete: operations["apps_selection_router_delete_stage"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Stage
+         * @description `exclude_unset` sem `exclude_none`: `session_at` e `tiebreak_rank`
+         *     precisam poder voltar a nulo (desmarcar a sessão, tirar a etapa do
+         *     desempate).
+         */
+        patch: operations["apps_selection_router_update_stage"];
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/vacancies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vacancies
+         * @description A grade de vagas do edital. Sem paginação: é a grade inteira que a
+         *     tela soma para dizer quantas vagas o edital oferece.
+         */
+        get: operations["apps_selection_router_list_vacancies"];
+        put?: never;
+        /** Create Vacancy */
+        post: operations["apps_selection_router_create_vacancy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/vacancies/{vacancy_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Vacancy
+         * @description Correção da grade, só em rascunho.
+         *
+         *     Não existe DELETE de vaga (ao contrário de etapa): a linha zerada é o
+         *     histórico de que ali havia vaga, e `quantity=0` é permitido justamente
+         *     para isso.
+         */
+        patch: operations["apps_selection_router_update_vacancy"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2540,6 +2650,173 @@ export interface components {
             convocation_subject?: string | null;
             /** Convocation Body */
             convocation_body?: string | null;
+        };
+        /**
+         * SelectionStageOut
+         * @description A etapa como a tela do edital a vê.
+         *
+         *     `program_id` viaja porque a etapa é filha de agregado e a tela não tem
+         *     o edital carregado em toda listagem; a propriedade do model resolve.
+         */
+        SelectionStageOut: {
+            /** Id */
+            id: number;
+            /** Process Id */
+            process_id: number;
+            /** Program Id */
+            program_id: number;
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at: string | null;
+            /** Location */
+            location: string;
+            /** Tiebreak Rank */
+            tiebreak_rank: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SelectionStageIn
+         * @description Etapa nova do edital, digitada pela secretaria.
+         *
+         *     Sem `process_id`: o edital é o da URL, escopado por programa. Sem
+         *     `program_id` pela mesma razão de sempre — quem escolhe o tenant é a
+         *     sessão.
+         *
+         *     `tiebreak_rank` nulo significa "esta etapa não entra no desempate"; é
+         *     o caso da última etapa dos dois tipos de edital.
+         */
+        SelectionStageIn: {
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at?: string | null;
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /** Tiebreak Rank */
+            tiebreak_rank?: number | null;
+        };
+        /**
+         * SelectionStagePatch
+         * @description Correção da etapa em rascunho: só os campos presentes são aplicados.
+         *
+         *     `session_at` e `tiebreak_rank` aceitam `null` explícito (desmarcar a
+         *     sessão, tirar a etapa do desempate), então aqui o corte é por
+         *     `exclude_unset` e não por `exclude_none`.
+         */
+        SelectionStagePatch: {
+            /** Name */
+            name?: string | null;
+            /** Order */
+            order?: number | null;
+            /** Session At */
+            session_at?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Tiebreak Rank */
+            tiebreak_rank?: number | null;
+        };
+        /**
+         * QuotaCategory
+         * @enum {string}
+         */
+        QuotaCategory: "open" | "racial" | "disability" | "quilombola" | "trans" | "indigenous";
+        /**
+         * SelectionLevel
+         * @description Mesmos valores de `Student.Level` — a conversão em aluno copia direto.
+         * @enum {string}
+         */
+        SelectionLevel: "masters" | "doctorate";
+        /**
+         * VacancyOut
+         * @description A vaga como a grade da secretaria a vê.
+         *
+         *     Os rótulos e o nome do alvo viajam resolvidos: a tela lista dezenas de
+         *     linhas e não deve ter que cruzar id de projeto com nome de projeto.
+         */
+        VacancyOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Quantity */
+            quantity: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * VacancyIn
+         * @description Linha da grade de vagas: nível × alvo × categoria de cota.
+         *
+         *     O alvo é XOR e amarrado ao tipo do edital (`ensure_target`): Regular
+         *     pede `project_id`, Suplementar pede `research_line_id`. Mandar os dois
+         *     (ou nenhum) volta `target_mismatch`, não um 500 da CheckConstraint.
+         */
+        VacancyIn: {
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quantity */
+            quantity: number;
+        };
+        /**
+         * VacancyPatch
+         * @description Correção da vaga em rascunho.
+         *
+         *     O caso comum é `quantity`; os demais campos existem porque em rascunho
+         *     a grade inteira ainda é rascunho. Depois de publicado nada disto muda —
+         *     a correção vira `VacancyReallocation`, com ofício da comissão.
+         */
+        VacancyPatch: {
+            level?: components["schemas"]["SelectionLevel"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            quota_category?: components["schemas"]["QuotaCategory"] | null;
+            /** Quantity */
+            quantity?: number | null;
         };
     };
     responses: never;
@@ -4193,6 +4470,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_stages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionStageOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionStageIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionStageOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_delete_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_selection_router_update_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionStagePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionStageOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_vacancies: {
+        parameters: {
+            query?: {
+                level?: components["schemas"]["SelectionLevel"] | null;
+                quota_category?: components["schemas"]["QuotaCategory"] | null;
+            };
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_vacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VacancyIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_update_vacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                vacancy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VacancyPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyOut"];
                 };
             };
         };

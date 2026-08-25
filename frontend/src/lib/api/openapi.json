@@ -3168,6 +3168,362 @@
           }
         ]
       }
+    },
+    "/selection/processes/{process_id}/stages/": {
+      "get": {
+        "operationId": "apps_selection_router_list_stages",
+        "summary": "List Stages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SelectionStageOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "As etapas do edital, na ordem em que acontecem.\n\nSem paginação de propósito: são três etapas por edital, e a tela monta\na grade inteira de uma vez.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_stage",
+        "summary": "Create Stage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionStageOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionStageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/stages/{stage_id}/": {
+      "patch": {
+        "operationId": "apps_selection_router_update_stage",
+        "summary": "Update Stage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionStageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "`exclude_unset` sem `exclude_none`: `session_at` e `tiebreak_rank`\nprecisam poder voltar a nulo (desmarcar a sessão, tirar a etapa do\ndesempate).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionStagePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_selection_router_delete_stage",
+        "summary": "Delete Stage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Único DELETE do app.\n\nEm rascunho a etapa ainda não tem nota, ata nem convocação pendurada,\nentão apagar a linha errada é a correção honesta. Depois de publicado\nnada é apagado — o histórico do edital é o que a seleção prova.\n\nA auditoria é gravada **antes** do `delete()`: depois dele a instância\nperde o pk e o alvo do registro sairia vazio.\n\nA permissão exigida é `change_selectionstage`, e não `delete_`: nenhum\npapel de domínio recebe `delete_*` (migration `0006_papeis_da_selecao`,\ncom teste guardando), porque apagar dado da seleção é quebra-vidro de\nsysadmin. Tirar uma linha da grade **em rascunho** não é isso — é a\nmesma edição da grade que o PATCH faz, e quem trava o resto é o\n`ensure_editable` logo abaixo.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/vacancies/": {
+      "get": {
+        "operationId": "apps_selection_router_list_vacancies",
+        "summary": "List Vacancies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "quota_category",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuotaCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VacancyOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "A grade de vagas do edital. Sem paginação: é a grade inteira que a\ntela soma para dizer quantas vagas o edital oferece.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_vacancy",
+        "summary": "Create Vacancy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacancyOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacancyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/vacancies/{vacancy_id}/": {
+      "patch": {
+        "operationId": "apps_selection_router_update_vacancy",
+        "summary": "Update Vacancy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "vacancy_id",
+            "schema": {
+              "title": "Vacancy Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacancyOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Correção da grade, só em rascunho.\n\nNão existe DELETE de vaga (ao contrário de etapa): a linha zerada é o\nhistórico de que ali havia vaga, e `quantity=0` é permitido justamente\npara isso.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacancyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -6326,6 +6682,405 @@
           }
         },
         "title": "SelectionProcessPatch",
+        "type": "object"
+      },
+      "SelectionStageOut": {
+        "description": "A etapa como a tela do edital a vê.\n\n`program_id` viaja porque a etapa é filha de agregado e a tela não tem\no edital carregado em toda listagem; a propriedade do model resolve.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "tiebreak_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiebreak Rank"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "process_id",
+          "program_id",
+          "name",
+          "order",
+          "session_at",
+          "location",
+          "tiebreak_rank",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SelectionStageOut",
+        "type": "object"
+      },
+      "SelectionStageIn": {
+        "description": "Etapa nova do edital, digitada pela secretaria.\n\nSem `process_id`: o edital é o da URL, escopado por programa. Sem\n`program_id` pela mesma razão de sempre — quem escolhe o tenant é a\nsessão.\n\n`tiebreak_rank` nulo significa \"esta etapa não entra no desempate\"; é\no caso da última etapa dos dois tipos de edital.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "default": "",
+            "title": "Location",
+            "type": "string"
+          },
+          "tiebreak_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiebreak Rank"
+          }
+        },
+        "required": [
+          "name",
+          "order"
+        ],
+        "title": "SelectionStageIn",
+        "type": "object"
+      },
+      "SelectionStagePatch": {
+        "description": "Correção da etapa em rascunho: só os campos presentes são aplicados.\n\n`session_at` e `tiebreak_rank` aceitam `null` explícito (desmarcar a\nsessão, tirar a etapa do desempate), então aqui o corte é por\n`exclude_unset` e não por `exclude_none`.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "tiebreak_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiebreak Rank"
+          }
+        },
+        "title": "SelectionStagePatch",
+        "type": "object"
+      },
+      "QuotaCategory": {
+        "enum": [
+          "open",
+          "racial",
+          "disability",
+          "quilombola",
+          "trans",
+          "indigenous"
+        ],
+        "title": "QuotaCategory",
+        "type": "string"
+      },
+      "SelectionLevel": {
+        "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto.",
+        "enum": [
+          "masters",
+          "doctorate"
+        ],
+        "title": "SelectionLevel",
+        "type": "string"
+      },
+      "VacancyOut": {
+        "description": "A vaga como a grade da secretaria a vê.\n\nOs rótulos e o nome do alvo viajam resolvidos: a tela lista dezenas de\nlinhas e não deve ter que cruzar id de projeto com nome de projeto.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "quantity",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VacancyOut",
+        "type": "object"
+      },
+      "VacancyIn": {
+        "description": "Linha da grade de vagas: nível × alvo × categoria de cota.\n\nO alvo é XOR e amarrado ao tipo do edital (`ensure_target`): Regular\npede `project_id`, Suplementar pede `research_line_id`. Mandar os dois\n(ou nenhum) volta `target_mismatch`, não um 500 da CheckConstraint.",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "level",
+          "quota_category",
+          "quantity"
+        ],
+        "title": "VacancyIn",
+        "type": "object"
+      },
+      "VacancyPatch": {
+        "description": "Correção da vaga em rascunho.\n\nO caso comum é `quantity`; os demais campos existem porque em rascunho\na grade inteira ainda é rascunho. Depois de publicado nada disto muda —\na correção vira `VacancyReallocation`, com ofício da comissão.",
+        "properties": {
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "quota_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuotaCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          }
+        },
+        "title": "VacancyPatch",
         "type": "object"
       }
     },

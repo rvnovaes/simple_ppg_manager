@@ -10,7 +10,14 @@ from pathlib import Path
 from django.utils import timezone
 from ninja import Schema
 
-from .models import SelectionKind, SelectionProcess, SelectionProcessStatus
+from .models import (
+    QuotaCategory,
+    SelectionKind,
+    SelectionLevel,
+    SelectionProcess,
+    SelectionProcessStatus,
+    Vacancy,
+)
 
 
 class SelectionProcessIn(Schema):
@@ -119,3 +126,130 @@ class SelectionProcessOut(Schema):
     def resolve_vacancy_count(obj: SelectionProcess) -> int:
         anotado = getattr(obj, "vacancy_count", None)
         return obj.vacancies.count() if anotado is None else anotado
+
+
+# ---------------------------------------------------------------------------
+# Etapas
+# ---------------------------------------------------------------------------
+
+
+class SelectionStageIn(Schema):
+    """Etapa nova do edital, digitada pela secretaria.
+
+    Sem `process_id`: o edital é o da URL, escopado por programa. Sem
+    `program_id` pela mesma razão de sempre — quem escolhe o tenant é a
+    sessão.
+
+    `tiebreak_rank` nulo significa "esta etapa não entra no desempate"; é
+    o caso da última etapa dos dois tipos de edital.
+    """
+
+    name: str
+    order: int
+    session_at: datetime.datetime | None = None
+    location: str = ""
+    tiebreak_rank: int | None = None
+
+
+class SelectionStagePatch(Schema):
+    """Correção da etapa em rascunho: só os campos presentes são aplicados.
+
+    `session_at` e `tiebreak_rank` aceitam `null` explícito (desmarcar a
+    sessão, tirar a etapa do desempate), então aqui o corte é por
+    `exclude_unset` e não por `exclude_none`.
+    """
+
+    name: str | None = None
+    order: int | None = None
+    session_at: datetime.datetime | None = None
+    location: str | None = None
+    tiebreak_rank: int | None = None
+
+
+class SelectionStageOut(Schema):
+    """A etapa como a tela do edital a vê.
+
+    `program_id` viaja porque a etapa é filha de agregado e a tela não tem
+    o edital carregado em toda listagem; a propriedade do model resolve.
+    """
+
+    id: int
+    process_id: int
+    program_id: int
+    name: str
+    order: int
+    session_at: datetime.datetime | None
+    location: str
+    tiebreak_rank: int | None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+# ---------------------------------------------------------------------------
+# Vagas
+# ---------------------------------------------------------------------------
+
+
+class VacancyIn(Schema):
+    """Linha da grade de vagas: nível × alvo × categoria de cota.
+
+    O alvo é XOR e amarrado ao tipo do edital (`ensure_target`): Regular
+    pede `project_id`, Suplementar pede `research_line_id`. Mandar os dois
+    (ou nenhum) volta `target_mismatch`, não um 500 da CheckConstraint.
+    """
+
+    level: SelectionLevel
+    project_id: int | None = None
+    research_line_id: int | None = None
+    quota_category: QuotaCategory
+    quantity: int
+
+
+class VacancyPatch(Schema):
+    """Correção da vaga em rascunho.
+
+    O caso comum é `quantity`; os demais campos existem porque em rascunho
+    a grade inteira ainda é rascunho. Depois de publicado nada disto muda —
+    a correção vira `VacancyReallocation`, com ofício da comissão.
+    """
+
+    level: SelectionLevel | None = None
+    project_id: int | None = None
+    research_line_id: int | None = None
+    quota_category: QuotaCategory | None = None
+    quantity: int | None = None
+
+
+class VacancyOut(Schema):
+    """A vaga como a grade da secretaria a vê.
+
+    Os rótulos e o nome do alvo viajam resolvidos: a tela lista dezenas de
+    linhas e não deve ter que cruzar id de projeto com nome de projeto.
+    """
+
+    id: int
+    program_id: int
+    process_id: int
+    level: SelectionLevel
+    level_label: str
+    project_id: int | None
+    research_line_id: int | None
+    target_label: str
+    quota_category: QuotaCategory
+    quota_category_label: str
+    quantity: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_level_label(obj: Vacancy) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_quota_category_label(obj: Vacancy) -> str:
+        return obj.get_quota_category_display()
+
+    @staticmethod
+    def resolve_target_label(obj: Vacancy) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""

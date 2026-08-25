@@ -16,10 +16,28 @@ from ninja.pagination import paginate
 from apps.core import audit
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
-from apps.programs.models import Program
+from apps.programs.models import CollectiveProject, Program, ResearchLine
 
-from .models import SelectionKind, SelectionProcess, SelectionProcessStatus
-from .schemas import SelectionProcessIn, SelectionProcessOut, SelectionProcessPatch
+from .models import (
+    QuotaCategory,
+    SelectionKind,
+    SelectionLevel,
+    SelectionProcess,
+    SelectionProcessStatus,
+    SelectionStage,
+    Vacancy,
+)
+from .schemas import (
+    SelectionProcessIn,
+    SelectionProcessOut,
+    SelectionProcessPatch,
+    SelectionStageIn,
+    SelectionStageOut,
+    SelectionStagePatch,
+    VacancyIn,
+    VacancyOut,
+    VacancyPatch,
+)
 from .services import publish_process
 
 router = Router(tags=["selection"])
@@ -186,3 +204,244 @@ def upload_notice_file(
             replaced=bool(anterior),
         )
     return edital
+
+
+# ---------------------------------------------------------------------------
+# Etapas do edital
+# ---------------------------------------------------------------------------
+#
+# Toda escrita daqui para baixo passa por `ensure_editable`: etapa e vaga
+# só mudam com o edital em rascunho (409 `process_not_editable`). Depois de
+# publicado o candidato já se inscreveu contra esta grade — corrigir vaga
+# vira `VacancyReallocation`, com ofício da comissão.
+
+
+def _etapa_do_edital(edital: SelectionProcess, stage_id: int) -> SelectionStage:
+    """A etapa é filha de agregado: buscar dentro do edital já escopado é o
+    que garante o tenant, sem um `for_program` próprio."""
+    return get_object_or_404(edital.stages, pk=stage_id)
+
+
+@router.get("/processes/{int:process_id}/stages/", response=list[SelectionStageOut])
+def list_stages(request: HttpRequest, process_id: int):
+    """As etapas do edital, na ordem em que acontecem.
+
+    Sem paginação de propósito: são três etapas por edital, e a tela monta
+    a grade inteira de uma vez.
+    """
+    require_perm(request, "selection.view_selectionstage")
+    edital = _edital_do_programa(request, process_id)
+    return edital.stages.all()
+
+
+@router.post("/processes/{int:process_id}/stages/", response={201: SelectionStageOut})
+def create_stage(request: HttpRequest, process_id: int, payload: SelectionStageIn):
+    require_perm(request, "selection.add_selectionstage")
+    edital = _edital_do_programa(request, process_id)
+    edital.ensure_editable()
+    etapa = SelectionStage(process=edital, **payload.model_dump())
+    with transaction.atomic():
+        etapa.clean()
+        etapa.save()
+        audit.record(
+            "selection.stage.create",
+            request=request,
+            target=etapa,
+            program=edital.program,
+            process_id=edital.pk,
+            order=etapa.order,
+        )
+    return Status(201, etapa)
+
+
+@router.patch(
+    "/processes/{int:process_id}/stages/{int:stage_id}/",
+    response=SelectionStageOut,
+)
+def update_stage(
+    request: HttpRequest,
+    process_id: int,
+    stage_id: int,
+    payload: SelectionStagePatch,
+):
+    """`exclude_unset` sem `exclude_none`: `session_at` e `tiebreak_rank`
+    precisam poder voltar a nulo (desmarcar a sessão, tirar a etapa do
+    desempate)."""
+    require_perm(request, "selection.change_selectionstage")
+    edital = _edital_do_programa(request, process_id)
+    edital.ensure_editable()
+    etapa = _etapa_do_edital(edital, stage_id)
+    campos = payload.model_dump(exclude_unset=True)
+    for campo, valor in campos.items():
+        setattr(etapa, campo, valor)
+    with transaction.atomic():
+        etapa.clean()
+        etapa.save(update_fields=[*campos, "updated_at"] if campos else None)
+        audit.record(
+            "selection.stage.update",
+            request=request,
+            target=etapa,
+            program=edital.program,
+            fields=sorted(campos),
+        )
+    return etapa
+
+
+@router.delete(
+    "/processes/{int:process_id}/stages/{int:stage_id}/", response={204: None}
+)
+def delete_stage(request: HttpRequest, process_id: int, stage_id: int):
+    """Único DELETE do app.
+
+    Em rascunho a etapa ainda não tem nota, ata nem convocação pendurada,
+    então apagar a linha errada é a correção honesta. Depois de publicado
+    nada é apagado — o histórico do edital é o que a seleção prova.
+
+    A auditoria é gravada **antes** do `delete()`: depois dele a instância
+    perde o pk e o alvo do registro sairia vazio.
+
+    A permissão exigida é `change_selectionstage`, e não `delete_`: nenhum
+    papel de domínio recebe `delete_*` (migration `0006_papeis_da_selecao`,
+    com teste guardando), porque apagar dado da seleção é quebra-vidro de
+    sysadmin. Tirar uma linha da grade **em rascunho** não é isso — é a
+    mesma edição da grade que o PATCH faz, e quem trava o resto é o
+    `ensure_editable` logo abaixo.
+    """
+    require_perm(request, "selection.change_selectionstage")
+    edital = _edital_do_programa(request, process_id)
+    edital.ensure_editable()
+    etapa = _etapa_do_edital(edital, stage_id)
+    with transaction.atomic():
+        audit.record(
+            "selection.stage.delete",
+            request=request,
+            target=etapa,
+            program=edital.program,
+            name=etapa.name,
+            order=etapa.order,
+        )
+        etapa.delete()
+    return Status(204, None)
+
+
+# ---------------------------------------------------------------------------
+# Grade de vagas
+# ---------------------------------------------------------------------------
+
+
+def _alvo(program: Program, project_id: int | None, research_line_id: int | None):
+    """Projeto e linha da vaga, ambos escopados no programa da sessão.
+
+    Id de outro programa é 404, não 403: responder 403 confirmaria que o id
+    existe em algum lugar.
+    """
+    projeto = (
+        None
+        if project_id is None
+        else get_object_or_404(
+            CollectiveProject.objects.for_program(program), pk=project_id
+        )
+    )
+    linha = (
+        None
+        if research_line_id is None
+        else get_object_or_404(
+            ResearchLine.objects.for_program(program), pk=research_line_id
+        )
+    )
+    return projeto, linha
+
+
+def _vagas(edital: SelectionProcess):
+    return edital.vacancies.select_related("project", "research_line")
+
+
+@router.get("/processes/{int:process_id}/vacancies/", response=list[VacancyOut])
+def list_vacancies(
+    request: HttpRequest,
+    process_id: int,
+    level: SelectionLevel | None = None,
+    quota_category: QuotaCategory | None = None,
+):
+    """A grade de vagas do edital. Sem paginação: é a grade inteira que a
+    tela soma para dizer quantas vagas o edital oferece."""
+    require_perm(request, "selection.view_vacancy")
+    edital = _edital_do_programa(request, process_id)
+    filtros = {"level": level, "quota_category": quota_category}
+    return _vagas(edital).filter(
+        **{campo: valor for campo, valor in filtros.items() if valor is not None}
+    )
+
+
+@router.post("/processes/{int:process_id}/vacancies/", response={201: VacancyOut})
+def create_vacancy(request: HttpRequest, process_id: int, payload: VacancyIn):
+    require_perm(request, "selection.add_vacancy")
+    program: Program = current_program(request)
+    edital = _edital_do_programa(request, process_id)
+    edital.ensure_editable()
+    dados = payload.model_dump()
+    projeto, linha = _alvo(
+        program, dados.pop("project_id"), dados.pop("research_line_id")
+    )
+    vaga = Vacancy(
+        program=program,
+        process=edital,
+        project=projeto,
+        research_line=linha,
+        **dados,
+    )
+    with transaction.atomic():
+        vaga.clean()
+        vaga.save()
+        audit.record(
+            "selection.vacancy.create",
+            request=request,
+            target=vaga,
+            process_id=edital.pk,
+            quantity=vaga.quantity,
+        )
+    return Status(201, vaga)
+
+
+@router.patch(
+    "/processes/{int:process_id}/vacancies/{int:vacancy_id}/", response=VacancyOut
+)
+def update_vacancy(
+    request: HttpRequest, process_id: int, vacancy_id: int, payload: VacancyPatch
+):
+    """Correção da grade, só em rascunho.
+
+    Não existe DELETE de vaga (ao contrário de etapa): a linha zerada é o
+    histórico de que ali havia vaga, e `quantity=0` é permitido justamente
+    para isso.
+    """
+    require_perm(request, "selection.change_vacancy")
+    program: Program = current_program(request)
+    edital = _edital_do_programa(request, process_id)
+    edital.ensure_editable()
+    vaga = get_object_or_404(_vagas(edital), pk=vacancy_id)
+    campos = payload.model_dump(exclude_unset=True)
+    alvo = {
+        campo: campos.pop(campo)
+        for campo in ("project_id", "research_line_id")
+        if campo in campos
+    }
+    if alvo:
+        vaga.project, vaga.research_line = _alvo(
+            program,
+            alvo.get("project_id", vaga.project_id),
+            alvo.get("research_line_id", vaga.research_line_id),
+        )
+    for campo, valor in campos.items():
+        setattr(vaga, campo, valor)
+    alterados = [*campos, *alvo]
+    with transaction.atomic():
+        vaga.clean()
+        vaga.save(update_fields=[*alterados, "updated_at"] if alterados else None)
+        audit.record(
+            "selection.vacancy.update",
+            request=request,
+            target=vaga,
+            fields=sorted(alterados),
+        )
+    return vaga

@@ -146,3 +146,20 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - Duas anotações `Count` no mesmo `annotate` precisam de `distinct=True`: o join de etapas com vagas multiplica as linhas.
   - O `code` do erro de publicação incompleta é `process_incomplete` para as três faltas (a mensagem diz qual) — a tela lê a mensagem, não três códigos.
 ---
+## 2026-08-25 - f1-stages-vacancies-api
+- `schemas.py`: `SelectionStageIn/Patch/Out` (sem `process_id` no corpo — o edital é o da URL; `program_id` sai no Out pela propriedade do model) e `VacancyIn/Patch/Out` (com `level_label`, `quota_category_label` e `target_label` resolvidos no servidor, para a grade não cruzar id com nome).
+- `router.py`: `GET/POST /processes/{id}/stages/`, `PATCH/DELETE /processes/{id}/stages/{id}/`, `GET/POST /processes/{id}/vacancies/` (filtros `level`/`quota_category`) e `PATCH /processes/{id}/vacancies/{id}/`. Toda escrita chama `edital.ensure_editable()` logo depois do 404 escopado → 409 `process_not_editable`.
+- Helpers novos: `_etapa_do_edital` (busca dentro de `edital.stages`, então o tenant já está garantido pelo `_edital_do_programa`), `_alvo(program, project_id, research_line_id)` (projeto e linha escopados, 404 para id de outro programa) e `_vagas` (com `select_related` do alvo).
+- Listagens **sem paginação** de propósito: são ~3 etapas e algumas dezenas de linhas de vaga por edital, e a tela soma a grade inteira.
+- **Decisão para o revisor**: o DELETE de etapa exige `selection.change_selectionstage`, não `delete_selectionstage`. Nenhum papel de domínio recebe `delete_*` (migration `0006_papeis_da_selecao`, com o teste `test_nenhum_papel_apaga_dado_da_selecao` guardando); tirar linha da grade **em rascunho** é a mesma edição que o PATCH faz, e o que trava o resto é o `ensure_editable`. A alternativa seria dar `delete_selectionstage` à Secretaria e afrouxar aquele teste — caminho recusado.
+- 42 testes em `apps/selection/tests/test_api_etapas_vagas.py`: conjunto canônico nos dois recursos (201 + auditoria, payload não escolhe tenant, duplicata com `code`, 403, 401, 404 de outro programa, CSRF), 409 em edital publicado nas cinco escritas, unicidade de etapa parametrizada nos 3 campos (ordem/nome/desempate), `target_mismatch` (linha no Regular e sem alvo), `quota_category_not_allowed`, `duplicate_vacancy` com alvo nulo, PATCH com `null` explícito desmarcando o desempate, e o "zerar vaga é permitido".
+- `make ready` verde, 942 testes; `make gen-api` regenerado (openapi.json + schema.d.ts, `make lint` verde depois). Sem migration (`makemigrations --check` limpo).
+- Files: backend/apps/selection/{router,schemas}.py, backend/apps/selection/tests/test_api_etapas_vagas.py, frontend/src/lib/api/{openapi.json,schema.d.ts}
+- **Learnings for future iterations:**
+  - **`delete_*` não existe para papel de domínio neste projeto.** Qualquer rota DELETE futura tem que escolher entre exigir a permissão de `change_` (se o ato for edição em rascunho) ou não existir. O teste `test_nenhum_papel_apaga_dado_da_selecao` é o guarda.
+  - `audit.record` infere o programa por `getattr(target, "program", None)`. `SelectionStage` **não tem** FK `program` (só a propriedade `program_id`), então as rotas de etapa passam `program=edital.program` explícito — sem isso o `AuditLog` sai sem chave de tenant.
+  - Em DELETE, `audit.record` vem **antes** do `delete()`: depois dele a instância perde o pk e `target_id` sairia vazio.
+  - PATCH com campo nullable de verdade (`session_at`, `tiebreak_rank`, `project_id`) usa `model_dump(exclude_unset=True)` **sem** `exclude_none` — o `exclude_none` do PATCH de edital só funciona lá porque nenhum campo do edital é nullable.
+  - `update_fields` precisa de `"updated_at"` junto, senão o `auto_now` não é gravado.
+  - Fixture `projeto` (e `linha`) já existem no `conftest.py` do app; `client_sem_permissao`, `secretaria` e `program` vêm do `backend/conftest.py`.
+---
