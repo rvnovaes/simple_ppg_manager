@@ -888,8 +888,8 @@
         "f6-seed-demo"
       ],
       "priority": 36,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "manual_dev.md ganhou a Seção 5 (fluxo ponta a ponta + Mailpit); CLAUDE.md lista ADR-008/009 e as três armadilhas. Pendência sinalizada, não executada: a Seção 'Human gates' ainda diz que o projeto não tem efeito irreversível sobre terceiro — deixou de ser verdade com f4-convocacoes-api, mas a story proíbe alterar aquela seção."
     },
     {
       "id": "f6-gate-env-example",
