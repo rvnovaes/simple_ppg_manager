@@ -113,3 +113,18 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - O texto renderizado usa `TIME_ZONE` do projeto: 17:30 UTC vira 14:30 no corpo do e-mail (mesma armadilha já anotada em `render_convocation`).
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; não é de nenhuma delas e segue fora dos commits.
 ---
+## 2026-08-25 - f0-papeis-admin
+- Migration `selection/0006_papeis_da_selecao.py` (molde de `academic/0011`): cria o grupo **Comissão de Seleção** e estende Secretaria, Docente e Coordenação. Docstring registra o desenho: secretaria opera o edital (monta processo/etapa/vaga/banca, `change_application`, `download_applicationdocument`, `add_convocation`), docente avalia (`add/change/view` de `stagescore` e `examinationrecord` + `sign_examinationrecord`), Comissão realoca vaga (`add_vacancyreallocation`) e lê tudo, Coordenação só lê. Ninguém recebe `delete_*`.
+- `TUDO_SO_LEITURA` = `view_` dos 12 models do app; helper `_verbos(model, *verbos)` monta o resto. `desfazer()` filtra por `content_type__app_label="selection"` ao remover (o molde de academic não filtra e removeria homônimo de outro app — aqui há `view_application` só no selection, mas o filtro é barato e evita a pegadinha).
+- As duas permissões custom já existiam em `Meta.permissions` desde f0-application-document (`download_applicationdocument`) e f0-score-record-signature (`sign_examinationrecord`); nada a declarar.
+- `selection/admin.py`: os 12 models registrados em `AuditedModelAdmin`, com `list_display`/`list_filter`/`search_fields`/`list_select_related`/`raw_id_fields`. Inlines: etapas no edital, documentos na inscrição, assinaturas na ata, e-mails na convocação. `readonly_fields` para o que o domínio calcula — `content_hash` e `pdf` da ata, `signed_hash`/`token_hash` e os 3 carimbos do token, `protocol` da inscrição, `published_at`/`closed_at` do edital, `ranked_at`, e os `created_at`/`updated_at`.
+- 17 testes (64 casos com os parametrizados) em `selection/tests/test_papeis.py`, incluindo os dois "conjunto exato" (Comissão e Coordenação), o "Discente e Candidato não recebem nada do app" e um teste de Admin que varre `app_config.get_models()` exigindo registro **e** herança de `AuditedModelAdmin`.
+- `make ready` verde, 870 testes; `makemigrations --check` limpo; `make migrate` aplicou a 0006 no canteiro.
+- Files: backend/apps/selection/migrations/0006_papeis_da_selecao.py, backend/apps/selection/admin.py, backend/apps/selection/tests/test_papeis.py
+- **Learnings for future iterations:**
+  - `models.py` não precisou mudar (o `files` do prd previa): as permissões custom já estavam declaradas. Confira `Meta.permissions` antes de editar.
+  - `_codenames()` do teste **filtra por `content_type__app_label`** — sem isso, `view_application` etc. se misturariam com permissões de outros apps e o assert de conjunto exato quebraria.
+  - `AuditedModelAdmin` (`apps/core/admin.py`) é obrigatório para todo ModelAdmin de dado de negócio; `admin.TabularInline` **não** herda dele, mas escrita por inline passa pelo `save_model` do pai, então o AuditLog sai com o alvo pai.
+  - Usar `__doc__ = QUEBRA_VIDRO` em vez de repetir a docstring nas 12 classes: `ruff` aceita e o Admin não usa docstring para nada.
+  - O grupo novo se chama **"Comissão de Seleção"** (com acento e espaços) — é o nome exato que `require_perm`/seed e as próximas stories devem usar.
+---
