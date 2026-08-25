@@ -407,23 +407,42 @@ class SelectionProcess(models.Model):
     ) -> tuple[str, str]:
         """Assunto e corpo do e-mail de convocação para uma inscrição × etapa.
 
-        `application` é duck typing de propósito: precisa só de `full_name`
-        e `protocol`. Placeholder desconhecido fica literal no texto
-        (`_PlaceholderTolerante`) — erro de digitação no template não
-        derruba o envio do lote inteiro.
+        Usa o template **corrente** do edital; o lote já disparado
+        renderiza pelas cópias que guardou (`Convocation.render_for`).
         """
-        valores = _PlaceholderTolerante(
-            nome=application.full_name,
-            protocolo=application.protocol,
-            etapa=stage.name,
-            data_hora=_formatar_data_hora(stage.session_at),
-            local=stage.location,
-            edital=self.title,
+        return renderizar_convocacao(
+            subject=self.convocation_subject,
+            body=self.convocation_body,
+            application=application,
+            stage=stage,
+            process_title=self.title,
         )
-        return (
-            self.convocation_subject.format_map(valores),
-            self.convocation_body.format_map(valores),
-        )
+
+
+def renderizar_convocacao(
+    *,
+    subject: str,
+    body: str,
+    application: Any,
+    stage: "SelectionStage",
+    process_title: str,
+) -> tuple[str, str]:
+    """Assunto e corpo do e-mail de convocação para uma inscrição × etapa.
+
+    `application` é duck typing de propósito: precisa só de `full_name` e
+    `protocol`. Placeholder desconhecido fica literal no texto
+    (`_PlaceholderTolerante`) — erro de digitação no template não derruba
+    o envio do lote inteiro.
+    """
+    valores = _PlaceholderTolerante(
+        nome=application.full_name,
+        protocolo=application.protocol,
+        etapa=stage.name,
+        data_hora=_formatar_data_hora(stage.session_at),
+        local=stage.location,
+        edital=process_title,
+    )
+    return (subject.format_map(valores), body.format_map(valores))
 
 
 def _formatar_data_hora(instante: datetime | None) -> str:
@@ -1985,4 +2004,447 @@ class RecordSignature(models.Model):
         if duplicatas.exists():
             raise DomainError(
                 "Este signatário já consta na ata.", code="duplicate_signature"
+            )
+
+
+# ---------------------------------------------------------------------------
+# VacancyReallocation (realocação de vaga)
+# ---------------------------------------------------------------------------
+
+
+class VacancyReallocationQuerySet(models.QuerySet["VacancyReallocation"]):
+    def for_program(self, program: Any) -> "VacancyReallocationQuerySet":
+        return self.filter(program=program)
+
+    def for_process(self, process: Any) -> "VacancyReallocationQuerySet":
+        return self.filter(process=process)
+
+
+class VacancyReallocation(models.Model):
+    """Movimento de vaga de uma linha da grade para outra, por decisão da
+    comissão ou por retificação do edital.
+
+    Existe porque a grade de vagas congela na publicação
+    (`SelectionProcess.ensure_editable`): depois disso o candidato já se
+    inscreveu contra aquele conteúdo, e mudar `Vacancy.quantity` na mão
+    apagaria a vaga original sem deixar rastro. Cada realocação é uma
+    linha imutável, com o número do ofício ou da ata que a autorizou.
+
+    Duas espécies (`ReallocationKind`):
+
+    - `level_transfer` — sobrou vaga de mestrado e falta de doutorado no
+      **mesmo alvo**: mesmo projeto/linha, níveis diferentes.
+    - `notice_rectification` — o edital saiu com a grade errada e foi
+      retificado: **mesmo nível**, alvo pode mudar.
+
+    Assunção documentada (plano, "Assunções"; o humano confirma no
+    merge): a realocação **preserva a categoria de cota** — vaga de cota
+    racial não vira ampla concorrência por decisão da comissão.
+
+    Imutável: `save()` recusa alteração. Errou? Registre a realocação
+    inversa, que é como a comissão desfaz no mundo real.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="selection_reallocations",
+        verbose_name="programa",
+    )
+    process = models.ForeignKey(
+        SelectionProcess,
+        on_delete=models.PROTECT,
+        related_name="reallocations",
+        verbose_name="edital",
+    )
+    kind = models.CharField("espécie", max_length=30, choices=ReallocationKind)
+    from_vacancy = models.ForeignKey(
+        Vacancy,
+        on_delete=models.PROTECT,
+        related_name="reallocations_out",
+        verbose_name="vaga de origem",
+    )
+    to_vacancy = models.ForeignKey(
+        Vacancy,
+        on_delete=models.PROTECT,
+        related_name="reallocations_in",
+        verbose_name="vaga de destino",
+    )
+    quantity = models.PositiveSmallIntegerField("quantidade")
+    reason = models.TextField("motivo")
+    decided_on = models.DateField("decidida em")
+    decided_by_note = models.CharField(
+        "ofício ou ata da decisão",
+        max_length=200,
+        help_text="Número do ofício ou da ata da comissão que autorizou a realocação.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = VacancyReallocationQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "realocação de vaga"
+        verbose_name_plural = "realocações de vaga"
+        ordering = ["-decided_on", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=1),
+                name="vacancyreallocation_quantity_at_least_one",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(from_vacancy=models.F("to_vacancy")),
+                name="vacancyreallocation_distinct_vacancies",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.quantity} vaga(s) de {self.from_vacancy_id} para "
+            f"{self.to_vacancy_id} ({self.get_kind_display()})"
+        )
+
+    # -- imutabilidade -----------------------------------------------------
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Linha de histórico não se edita."""
+        if not self._state.adding:
+            raise InvalidStateTransition(
+                "Uma realocação de vaga não pode ser alterada; registre a "
+                "realocação inversa.",
+                code="reallocation_is_immutable",
+            )
+        super().save(*args, **kwargs)
+
+    # -- efeito ------------------------------------------------------------
+
+    def apply_to_vacancies(self) -> None:
+        """Move a quantidade entre as duas vagas, **sem salvar**.
+
+        Quem salva (e quem trava as linhas com `select_for_update`) é o
+        service `reallocate_vacancy`; aqui fica só a aritmética, para que
+        ela seja testável em memória. Origem zerada continua existindo:
+        `Vacancy.quantity` aceita 0 justamente para guardar o rastro.
+        """
+        origem, destino = self.from_vacancy, self.to_vacancy
+        if self.quantity > origem.quantity:
+            raise DomainError(
+                "A vaga de origem não tem essa quantidade disponível.",
+                code="insufficient_vacancies",
+            )
+        origem.quantity -= self.quantity
+        destino.quantity += self.quantity
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """As duas vagas são do mesmo edital publicado, a cota é
+        preservada e o par nível × alvo respeita a espécie."""
+        super().clean()
+        origem = getattr(self, "from_vacancy", None)
+        destino = getattr(self, "to_vacancy", None)
+        if origem is None or destino is None:
+            return
+        self._exigir_mesmo_edital(origem, destino)
+        self._exigir_edital_publicado()
+        if origem.quota_category != destino.quota_category:
+            raise DomainError(
+                "A realocação preserva a categoria de cota: origem e destino "
+                "precisam ter a mesma.",
+                code="quota_category_must_be_preserved",
+            )
+        self._exigir_alvo_da_especie(origem, destino)
+        if self.quantity is not None and self.quantity > origem.quantity:
+            raise DomainError(
+                "A vaga de origem não tem essa quantidade disponível.",
+                code="insufficient_vacancies",
+            )
+
+    def _exigir_mesmo_edital(self, origem: Vacancy, destino: Vacancy) -> None:
+        editais = {origem.process_id, destino.process_id}
+        if self.process_id is not None:
+            editais.add(self.process_id)
+        if len(editais) > 1:
+            raise DomainError(
+                "Origem, destino e realocação precisam ser do mesmo edital.",
+                code="process_mismatch",
+            )
+
+    def _exigir_edital_publicado(self) -> None:
+        """Em rascunho a grade ainda é editável — corrigir a vaga é o
+        caminho, e a realocação inventaria um ofício que não existe."""
+        edital = getattr(self, "process", None)
+        if edital is not None and edital.is_draft:
+            raise DomainError(
+                "Com o edital em rascunho, corrija a grade de vagas em vez "
+                "de realocar.",
+                code="process_still_draft",
+            )
+
+    def _exigir_alvo_da_especie(self, origem: Vacancy, destino: Vacancy) -> None:
+        mesmo_alvo = (origem.project_id, origem.research_line_id) == (
+            destino.project_id,
+            destino.research_line_id,
+        )
+        if self.kind == ReallocationKind.LEVEL_TRANSFER:
+            if not mesmo_alvo or origem.level == destino.level:
+                raise DomainError(
+                    "A transferência entre níveis é no mesmo alvo, entre "
+                    "níveis diferentes.",
+                    code="same_target_required",
+                )
+        elif origem.level != destino.level:
+            raise DomainError(
+                "A retificação do edital move vagas dentro do mesmo nível.",
+                code="same_level_required",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Convocation / ConvocationEmail (convocação de etapa)
+# ---------------------------------------------------------------------------
+
+
+class Convocation(models.Model):
+    """Lote de e-mails de convocação de uma etapa, disparado pela secretaria.
+
+    `subject` e `body_template` são **cópias** do template do edital no
+    instante do envio: quem editar o edital depois não reescreve o que o
+    candidato recebeu. O texto já renderizado por candidato fica em
+    `ConvocationEmail`, pelo mesmo motivo.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="selection_convocations",
+        verbose_name="programa",
+    )
+    process = models.ForeignKey(
+        SelectionProcess,
+        on_delete=models.PROTECT,
+        related_name="convocations",
+        verbose_name="edital",
+    )
+    stage = models.ForeignKey(
+        SelectionStage,
+        on_delete=models.PROTECT,
+        related_name="convocations",
+        verbose_name="etapa",
+    )
+    subject = models.CharField("assunto", max_length=200)
+    body_template = models.TextField("corpo (template)")
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="selection_convocations",
+        null=True,
+        blank=True,
+        verbose_name="enviada por",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "convocação"
+        verbose_name_plural = "convocações"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"Convocação da etapa {self.stage_id}"
+
+    @classmethod
+    def from_process(
+        cls, process: SelectionProcess, stage: SelectionStage, **extra: Any
+    ) -> "Convocation":
+        """Lote com o template do edital já copiado."""
+        return cls(
+            program_id=process.program_id,
+            process=process,
+            stage=stage,
+            subject=process.convocation_subject,
+            body_template=process.convocation_body,
+            **extra,
+        )
+
+    def render_for(self, application: Any) -> tuple[str, str]:
+        """Assunto e corpo desta convocação para um candidato, a partir
+        das cópias do lote — não do template atual do edital."""
+        return renderizar_convocacao(
+            subject=self.subject,
+            body=self.body_template,
+            application=application,
+            stage=self.stage,
+            process_title=self.process.title,
+        )
+
+    def email_for(self, application: Any) -> "ConvocationEmail":
+        """E-mail pendente, com o texto já renderizado e congelado."""
+        assunto, corpo = self.render_for(application)
+        return ConvocationEmail(
+            convocation=self,
+            application=application,
+            to_email=application.email,
+            rendered_subject=assunto,
+            rendered_body=corpo,
+        )
+
+    def clean(self) -> None:
+        """A etapa é do edital do lote, e o edital tem template."""
+        super().clean()
+        etapa = getattr(self, "stage", None)
+        if (
+            etapa is not None
+            and self.process_id is not None
+            and etapa.process_id != self.process_id
+        ):
+            raise DomainError(
+                "A etapa não pertence ao edital desta convocação.",
+                code="stage_mismatch",
+            )
+        if not (self.subject or "").strip() or not (self.body_template or "").strip():
+            raise DomainError(
+                "O edital não tem assunto e corpo de convocação preenchidos.",
+                code="convocation_template_missing",
+            )
+
+
+class ConvocationEmailQuerySet(models.QuerySet["ConvocationEmail"]):
+    def pending(self) -> "ConvocationEmailQuerySet":
+        return self.filter(status=EmailDeliveryStatus.PENDING)
+
+    def sent(self) -> "ConvocationEmailQuerySet":
+        return self.filter(status=EmailDeliveryStatus.SENT)
+
+    def failed(self) -> "ConvocationEmailQuerySet":
+        return self.filter(status=EmailDeliveryStatus.FAILED)
+
+    def to_send(self) -> "ConvocationEmailQuerySet":
+        """O que o reenvio pega: pendente ou falhado, nunca o que já saiu
+        — reenviar um e-mail entregue é spam para o candidato."""
+        return self.exclude(status=EmailDeliveryStatus.SENT)
+
+
+class ConvocationEmail(models.Model):
+    """Um e-mail de convocação para um candidato, com o resultado do envio.
+
+    Filho de agregado (CASCADE em `convocation`): chega ao programa pelo
+    lote. Guarda o texto renderizado, o número de tentativas e o erro da
+    última falha — sem fila nem agendador (ADR-009), o reenvio é a
+    secretaria clicando de novo.
+    """
+
+    convocation = models.ForeignKey(
+        Convocation,
+        on_delete=models.CASCADE,
+        related_name="emails",
+        verbose_name="convocação",
+    )
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.PROTECT,
+        related_name="convocation_emails",
+        verbose_name="inscrição",
+    )
+    to_email = models.EmailField("destinatário")
+    rendered_subject = models.CharField("assunto enviado", max_length=200)
+    rendered_body = models.TextField("corpo enviado")
+    status = models.CharField(
+        "situação",
+        max_length=20,
+        choices=EmailDeliveryStatus,
+        default=EmailDeliveryStatus.PENDING,
+    )
+    error = models.TextField("erro", blank=True)
+    attempts = models.PositiveSmallIntegerField("tentativas", default=0)
+    sent_at = models.DateTimeField("enviado em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ConvocationEmailQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "e-mail de convocação"
+        verbose_name_plural = "e-mails de convocação"
+        ordering = ["convocation", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["convocation", "application"],
+                name="unique_email_por_convocacao_e_inscricao",
+            ),
+            # Carimbo e situação andam juntos: "enviado" sem instante é um
+            # envio que ninguém sabe quando aconteceu.
+            models.CheckConstraint(
+                condition=models.Q(
+                    status=EmailDeliveryStatus.SENT, sent_at__isnull=False
+                )
+                | (
+                    ~models.Q(status=EmailDeliveryStatus.SENT)
+                    & models.Q(sent_at__isnull=True)
+                ),
+                name="convocationemail_sent_at_matches_status",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.to_email} ({self.get_status_display()})"
+
+    @property
+    def is_sent(self) -> bool:
+        return self.status == EmailDeliveryStatus.SENT
+
+    # -- transições (não salvam) -------------------------------------------
+
+    def _exigir_nao_enviado(self) -> None:
+        if self.is_sent:
+            raise InvalidStateTransition(
+                "Este e-mail já foi enviado.", code="email_already_sent"
+            )
+
+    def mark_sent(self, at: datetime) -> None:
+        """Envio deu certo: conta a tentativa e limpa o erro anterior."""
+        self._exigir_nao_enviado()
+        self.attempts += 1
+        self.status = EmailDeliveryStatus.SENT
+        self.sent_at = at
+        self.error = ""
+
+    def mark_failed(self, error: str) -> None:
+        """Envio falhou: conta a tentativa e guarda o motivo.
+
+        O service chama isto dentro de um `except` por candidato — uma
+        caixa postal inválida não pode derrubar o lote inteiro.
+        """
+        self._exigir_nao_enviado()
+        self.attempts += 1
+        self.status = EmailDeliveryStatus.FAILED
+        self.error = error
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """A inscrição é do edital do lote e só entra uma vez nele
+        (espelho da UniqueConstraint)."""
+        super().clean()
+        inscricao = getattr(self, "application", None)
+        lote = getattr(self, "convocation", None)
+        if (
+            inscricao is not None
+            and lote is not None
+            and lote.process_id is not None
+            and inscricao.process_id != lote.process_id
+        ):
+            raise DomainError(
+                "A inscrição não pertence ao edital desta convocação.",
+                code="application_from_other_process",
+            )
+        if self.convocation_id is None:
+            return
+        duplicatas = ConvocationEmail.objects.filter(
+            convocation_id=self.convocation_id, application_id=self.application_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Esta inscrição já está nesta convocação.",
+                code="duplicate_convocation_email",
             )

@@ -96,3 +96,20 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `issue_token` zera `token_sent_at`: quem envia o e-mail (f3-record-services) grava o carimbo depois do envio.
   - `RecordSignature.clean()` chama `ata.expected_signers()` (query na banca) — em teste em memória atribua `record` com `board` já montado.
 ---
+## 2026-08-25 - f0-reallocation-convocation
+- `VacancyReallocation`: `program`/`process`/`from_vacancy`/`to_vacancy` PROTECT (`reallocations_out`/`_in`), `kind`, `quantity`, `reason`, `decided_on` (DateField), `decided_by_note`. **Imutável**: `save()` recusa update (`_state.adding` falso → `InvalidStateTransition` `reallocation_is_immutable`); desfazer é registrar a realocação inversa. Checks `quantity >= 1` e `from_vacancy != to_vacancy`.
+- `clean()` da realocação, na ordem: `process_mismatch` (as duas vagas e o registro no mesmo edital) → `process_still_draft` (em rascunho corrige-se a grade, não se realoca) → `quota_category_must_be_preserved` (assunção do plano, marcada na docstring) → `same_target_required` (level_transfer: mesmo alvo, níveis diferentes) / `same_level_required` (notice_rectification) → `insufficient_vacancies`.
+- `apply_to_vacancies()` move a quantidade entre as duas vagas **sem salvar** (a aritmética fica testável em memória; quem salva e trava com `select_for_update` é o `reallocate_vacancy` de f5). Origem pode zerar — `Vacancy.quantity` aceita 0 de propósito.
+- `Convocation`: `program`/`process`/`stage` PROTECT, `subject`/`body_template` (cópias do template do edital), `sent_by` SET_NULL. `from_process(process, stage, **extra)` copia o template; `render_for(application)` renderiza **pelas cópias**; `email_for(application)` devolve o `ConvocationEmail` pendente já renderizado. `clean()` → `stage_mismatch`, `convocation_template_missing`.
+- `ConvocationEmail`: CASCADE em `convocation` (`emails`), `application` PROTECT, texto renderizado, `status`/`error`/`attempts`/`sent_at`. Unique `(convocation, application)` + check "`sent` ⇔ `sent_at` preenchido". `mark_sent(at)`/`mark_failed(error)` incrementam `attempts` e recusam e-mail já enviado (`email_already_sent`); QuerySet `pending/sent/failed/to_send()` (`to_send` exclui o enviado — reenviar entregue é spam).
+- Refatoração pequena: a renderização virou o helper de módulo `renderizar_convocacao(subject=, body=, application=, stage=, process_title=)`; `SelectionProcess.render_convocation` e `Convocation.render_for` delegam a ele (mesmo comportamento, inclusive `_PlaceholderTolerante`).
+- Migration `selection/0005_vacancyreallocation_convocation_convocationemail.py` lida antes do commit; `makemigrations --check` limpo.
+- 33 testes em `apps/selection/tests/test_reallocation_convocation.py` (26 em memória, 7 com banco: imutabilidade, os dois checks da realocação, unique e check do e-mail, `to_send`). `make ready` verde, 806 testes.
+- Files: backend/apps/selection/models.py, backend/apps/selection/migrations/0005_vacancyreallocation_convocation_convocationemail.py, backend/apps/selection/tests/test_reallocation_convocation.py
+- **Learnings for future iterations:**
+  - FK **recusa duck typing**: `ConvocationEmail.application = <objeto qualquer>` levanta `ValueError` na hora da atribuição. Em teste em memória use `Application(process_id=..., ...)`; o duck typing só vale onde não há FK (`render_for`, `renderizar_convocacao`).
+  - `save()` sobrescrito para imutabilidade usa `self._state.adding` — funciona com `objects.create()` e com `save()` repetido; quem precisar corrigir dado por migration terá que usar `queryset.update()`.
+  - `ReallocationKind` tem valor de 30 caracteres (`notice_rectification`): `max_length=30` no campo, não 20 como os outros choices do app.
+  - O texto renderizado usa `TIME_ZONE` do projeto: 17:30 UTC vira 14:30 no corpo do e-mail (mesma armadilha já anotada em `render_convocation`).
+  - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; não é de nenhuma delas e segue fora dos commits.
+---

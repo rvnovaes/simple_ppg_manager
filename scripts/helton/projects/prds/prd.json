@@ -168,7 +168,7 @@
         "f0-score-record-signature"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
