@@ -29,6 +29,7 @@ from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
 from .emails import enviar_convocacao, enviar_token_de_assinatura
 from .models import (
     CATEGORIAS_POR_TIPO,
+    DESFECHOS_CLASSIFICADOS,
     Application,
     ApplicationDocument,
     ApplicationDocumentKind,
@@ -1440,3 +1441,329 @@ def rank_supplementary(
             for posicao, candidato in enumerate(ordenados, start=1)
         )
     return resultados
+
+
+# ---------------------------------------------------------------------------
+# Classificação — o cálculo sobre o banco
+# ---------------------------------------------------------------------------
+#
+# `compute_ranking` é o tradutor entre o ORM e as funções puras acima: ele
+# monta os candidatos, lê as vagas, chama `rank_regular`/`rank_supplementary`
+# e grava o que voltou. Duas travas moram aqui:
+#
+#   1. **Ata da última etapa assinada.** Enquanto ela não existe para o
+#      (nível × alvo), quem é `approved` ainda pode mudar — a retificação
+#      da ata reprova quem foi aprovado. Classificar antes disso publicaria
+#      uma lista que a banca ainda pode desmentir.
+#   2. **`enrolled` tranca a chave.** Recalcular é livre e idempotente até
+#      alguém virar aluno; depois disso a classificação virou matrícula, e
+#      mexer no `final_rank` de quem já entrou reescreveria a história. O
+#      caminho para corrigir passa por realocação de vaga, com ofício.
+
+
+@dataclass(frozen=True, slots=True)
+class Ranking:
+    """A classificação de um (nível × alvo), como a tela a mostra.
+
+    `applications` vem ordenada e com `tie_unresolved` já grudado em cada
+    inscrição (atributo de instância, não campo do banco — empate se
+    deduz da nota e dos desempates, não se guarda).
+    """
+
+    process: SelectionProcess
+    level: str
+    project: Any
+    research_line: Any
+    seats: dict[str, int]
+    applications: list[Application]
+    locked: bool
+    computed_at: datetime | None
+
+
+def _etapa_final(process: SelectionProcess) -> SelectionStage:
+    ultima = process.stages.order_by("-order").first()
+    if ultima is None:
+        raise DomainError(
+            "O edital não tem etapa nenhuma; não há o que classificar.",
+            code="process_without_stages",
+        )
+    return ultima
+
+
+def _exigir_ata_final_assinada(
+    *, process: SelectionProcess, level: str, project: Any, research_line: Any
+) -> None:
+    """A classificação depende da última etapa fechada por ata assinada.
+
+    Sem ela, `approved` é resultado provisório: a banca ainda pode
+    retificar a ata e derrubar quem passou.
+    """
+    assinada = ExaminationRecord.objects.filter(
+        process=process,
+        stage=_etapa_final(process),
+        level=level,
+        project=project,
+        research_line=research_line,
+        status=RecordStatus.SIGNED,
+    ).exists()
+    if not assinada:
+        raise DomainError(
+            "A ata da última etapa deste nível e alvo ainda não está "
+            "assinada; a classificação só sai depois dela.",
+            code="final_record_not_signed",
+        )
+
+
+def _matriculado_na_chave(
+    *, process: SelectionProcess, level: str, project: Any, research_line: Any
+) -> bool:
+    return (
+        Application.objects.for_process(process)
+        .for_target(level, project, research_line)
+        .filter(status=ApplicationStatus.ENROLLED)
+        .exists()
+    )
+
+
+def _vagas_por_categoria(
+    *, process: SelectionProcess, level: str, project: Any, research_line: Any
+) -> dict[str, int]:
+    """As vagas do alvo, categoria a categoria.
+
+    `Vacancy.quantity` já é o número líquido: a realocação escreve nas
+    duas linhas que ela move, então aqui não há nada a descontar.
+    """
+    return {
+        vaga.quota_category: vaga.quantity
+        for vaga in Vacancy.objects.filter(
+            process=process,
+            level=level,
+            project=project,
+            research_line=research_line,
+        )
+    }
+
+
+def _desempates_por_inscricao(
+    *, process: SelectionProcess, inscricoes: list[Application]
+) -> dict[int, tuple[Decimal, ...]]:
+    """As notas de desempate de cada inscrição, na ordem do `tiebreak_rank`.
+
+    Etapa sem nota lançada para o candidato entra como zero: ele não pode
+    ganhar o desempate por uma nota que não existe. Na prática isso não
+    acontece com aprovado (a ata da etapa exige nota de todo mundo vivo),
+    mas a conta não pode depender disso.
+    """
+    etapas = list(
+        process.stages.filter(tiebreak_rank__isnull=False).order_by("tiebreak_rank")
+    )
+    if not etapas:
+        return {inscricao.pk: () for inscricao in inscricoes}
+    notas = {
+        (linha.application_id, linha.stage_id): linha.score
+        for linha in StageScore.objects.filter(
+            application__in=inscricoes, stage__in=etapas
+        )
+    }
+    return {
+        inscricao.pk: tuple(
+            notas.get((inscricao.pk, etapa.pk)) or Decimal(0) for etapa in etapas
+        )
+        for inscricao in inscricoes
+    }
+
+
+def _candidatos(
+    *, process: SelectionProcess, inscricoes: list[Application]
+) -> list[RankingCandidate]:
+    desempates = _desempates_por_inscricao(process=process, inscricoes=inscricoes)
+    return [
+        RankingCandidate(
+            application_id=inscricao.pk,
+            quota_category=inscricao.quota_category,
+            final_score=inscricao.final_score or Decimal(0),
+            tiebreak_scores=desempates[inscricao.pk],
+            birth_date=inscricao.birth_date,
+        )
+        for inscricao in inscricoes
+    ]
+
+
+def _classificar(
+    *, process: SelectionProcess, candidatos: list[RankingCandidate], vagas: dict
+) -> list[RankingResult]:
+    """Chama a função pura que o tipo do edital manda chamar."""
+    if process.kind == SelectionKind.REGULAR:
+        return rank_regular(
+            candidatos,
+            open_seats=vagas.get(QuotaCategory.OPEN, 0),
+            racial_seats=vagas.get(QuotaCategory.RACIAL, 0),
+        )
+    return rank_supplementary(
+        candidatos,
+        seats_by_category={
+            categoria: quantidade
+            for categoria, quantidade in vagas.items()
+            if categoria != QuotaCategory.OPEN
+        },
+    )
+
+
+def _ordenar_para_a_tela(
+    process: SelectionProcess, inscricoes: Iterable[Application]
+) -> list[Application]:
+    """No Regular a ordem é a geral; no Suplementar, categoria e depois posição.
+
+    A diferença não é estética: no Suplementar o `rank` é a posição
+    **dentro da categoria**, então listar por `final_rank` misturaria
+    quatro primeiros lugares em cima da tabela.
+    """
+    if process.kind == SelectionKind.REGULAR:
+        return sorted(inscricoes, key=lambda i: (i.final_rank or 0, i.pk))
+    return sorted(inscricoes, key=lambda i: (i.quota_category, i.final_rank or 0, i.pk))
+
+
+def _montar_ranking(
+    *,
+    process: SelectionProcess,
+    level: str,
+    project: Any,
+    research_line: Any,
+    inscricoes: list[Application],
+) -> Ranking:
+    """Empacota o resultado com o empate recalculado a partir das notas."""
+    _, empatados = _ordenar(_candidatos(process=process, inscricoes=inscricoes))
+    for inscricao in inscricoes:
+        inscricao.tie_unresolved = inscricao.pk in empatados  # type: ignore[attr-defined]
+    carimbos = [i.ranked_at for i in inscricoes if i.ranked_at is not None]
+    return Ranking(
+        process=process,
+        level=level,
+        project=project,
+        research_line=research_line,
+        seats=_vagas_por_categoria(
+            process=process,
+            level=level,
+            project=project,
+            research_line=research_line,
+        ),
+        applications=_ordenar_para_a_tela(process, inscricoes),
+        locked=_matriculado_na_chave(
+            process=process,
+            level=level,
+            project=project,
+            research_line=research_line,
+        ),
+        computed_at=max(carimbos, default=None),
+    )
+
+
+def ranking_of(
+    *,
+    process: SelectionProcess,
+    level: str,
+    project: Any = None,
+    research_line: Any = None,
+) -> Ranking:
+    """A classificação já calculada do (nível × alvo) — leitura, sem escrita.
+
+    Quem aparece é quem tem `ranked_at`: o aprovado classificado e também
+    quem já virou aluno, porque a lista publicada não pode perder o
+    primeiro colocado no dia em que ele se matricula.
+    """
+    process.ensure_target(project, research_line)
+    inscricoes = list(
+        Application.objects.for_process(process)
+        .for_target(level, project, research_line)
+        .filter(ranked_at__isnull=False)
+        .select_related("project", "research_line")
+    )
+    return _montar_ranking(
+        process=process,
+        level=level,
+        project=project,
+        research_line=research_line,
+        inscricoes=inscricoes,
+    )
+
+
+@transaction.atomic
+def compute_ranking(
+    *,
+    process: SelectionProcess,
+    level: str,
+    project: Any = None,
+    research_line: Any = None,
+    request: HttpRequest | None = None,
+) -> Ranking:
+    """Calcula e grava a classificação de um (nível × alvo).
+
+    Recalcular é o fluxo normal — depois de uma retificação de ata, de
+    uma realocação de vaga ou de uma desistência a lista muda, e a
+    secretaria roda de novo. Por isso a operação é idempotente: ela
+    reescreve `final_rank`/`final_outcome`/`ranked_at` de todos os
+    aprovados da chave a cada chamada, sem guardar histórico de posição.
+
+    A porta se fecha no primeiro `enrolled`: dali em diante a
+    classificação já produziu matrícula e não se reescreve mais.
+    """
+    process.ensure_target(project, research_line)
+    if _matriculado_na_chave(
+        process=process, level=level, project=project, research_line=research_line
+    ):
+        raise InvalidStateTransition(
+            "Já há candidato matriculado neste nível e alvo; a classificação "
+            "não pode mais ser recalculada.",
+            code="ranking_locked",
+        )
+    _exigir_ata_final_assinada(
+        process=process, level=level, project=project, research_line=research_line
+    )
+
+    inscricoes = list(
+        Application.objects.for_process(process)
+        .for_target(level, project, research_line)
+        .approved()
+        .select_related("project", "research_line")
+    )
+    vagas = _vagas_por_categoria(
+        process=process, level=level, project=project, research_line=research_line
+    )
+    resultados = _classificar(
+        process=process,
+        candidatos=_candidatos(process=process, inscricoes=inscricoes),
+        vagas=vagas,
+    )
+
+    agora = timezone.now()
+    por_id = {inscricao.pk: inscricao for inscricao in inscricoes}
+    classificados = 0
+    for resultado in resultados:
+        inscricao = por_id[resultado.application_id]
+        inscricao.final_rank = resultado.rank
+        inscricao.final_outcome = resultado.outcome
+        inscricao.ranked_at = agora
+        inscricao.save(
+            update_fields=["final_rank", "final_outcome", "ranked_at", "updated_at"]
+        )
+        if resultado.outcome in DESFECHOS_CLASSIFICADOS:
+            classificados += 1
+
+    audit.record(
+        "selection.ranking.compute",
+        request=request,
+        target=process,
+        level=level,
+        project_id=None if project is None else project.pk,
+        research_line_id=None if research_line is None else research_line.pk,
+        candidates=len(inscricoes),
+        classified=classificados,
+        seats=sum(vagas.values()),
+    )
+    return _montar_ranking(
+        process=process,
+        level=level,
+        project=project,
+        research_line=research_line,
+        inscricoes=inscricoes,
+    )

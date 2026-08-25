@@ -24,6 +24,7 @@ Started: ter. 25 ago 2026 11:00:21 -03
 - **E-mail em lote: escreve na transação, envia fora dela.** O `@transaction.atomic` cria o lote e as linhas `pending`; o envio vem depois, um destinatário por vez, com `except (OSError, smtplib.SMTPException)` gravando `mark_failed` na própria linha. Falha de SMTP nunca vira 500 nem desfaz o que já saiu.
 - **`DomainError` sai como 400, não 422.** O exception handler central do Ninja mapeia `DomainError`/`InvalidStateTransition` para 400 com `{"detail", "code"}`; teste que espera 422 falha.
 - **Listagem que reusa schema de detalhe: separe o resumo.** Quando a lista traz muitos objetos e o schema de detalhe carrega um campo pesado (o `content` da ata), crie a base sem ele (`RecordSummaryOut`) e faça o detalhe herdar (`ExaminationRecordOut(RecordSummaryOut)`). Os `resolve_*` são herdados; nada é duplicado.
+- **Query string de teste é `dict[str, str]`**: passar `int` em `client.get(url, {"project_id": pk})` roda no pytest mas o `make ready` quebra no mypy (`Client.get` só aceita valores de texto). Converta com `str()` num helper.
 - **`new Map()` em `$derived` não passa no lint do front**: `svelte/prefer-svelte-reactivity` manda usar `SvelteMap`. Para agrupamento puro (sem reatividade sobre o próprio mapa), o caminho mais curto é `Record<string, T[]>` + um array que guarda a ordem.
 ---
 ## 2026-08-25 - f0-app-selection
@@ -548,4 +549,22 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `CATEGORIAS_POR_TIPO[SelectionKind.REGULAR]` = `{open, racial}` e `[SUPPLEMENTARY]` = as quatro ações afirmativas: use a constante em vez de repetir a lista.
   - Erro de chamador nestas funções é `ValueError`, não `DomainError` — `DomainError` é para o que a tela mostra ao usuário; aqui só chega bug de quem montou a entrada. O `compute_ranking` é que traduz o que for regra de negócio.
   - `rank` no Suplementar é por categoria; a tela de resultado não pode assumir posição única por edital quando `kind=supplementary`.
+---
+## 2026-08-25 - f5-compute-ranking-api
+- `compute_ranking(*, process, level, project, research_line, request)` em `apps/selection/services.py`, sob o cabeçalho "Classificação — o cálculo sobre o banco": `ensure_target` → trava `ranking_locked` (409, `InvalidStateTransition`, se há `enrolled` na chave) → `final_record_not_signed` (400, ata `signed` da **última** etapa do nível × alvo) → monta `RankingCandidate` a partir de `approved()` → `_classificar` chama `rank_regular`/`rank_supplementary` conforme `process.kind` → grava `final_rank`/`final_outcome`/`ranked_at` (`update_fields`) → `audit.record("selection.ranking.compute", ...)`.
+- Helpers privados reaproveitáveis: `_etapa_final`, `_exigir_ata_final_assinada`, `_matriculado_na_chave`, `_vagas_por_categoria` (Vacancy já é líquida de realocação), `_desempates_por_inscricao` (etapas com `tiebreak_rank`, na ordem; nota ausente vira `Decimal(0)`), `_ordenar_para_a_tela` (Regular = ordem geral; Suplementar = categoria e depois posição, porque lá o `rank` é por categoria).
+- `ranking_of(...)` — leitura pura, sem escrita: devolve quem tem `ranked_at` (inclusive `enrolled`, que não some da lista publicada). Ambas devolvem a dataclass `Ranking(process, level, project, research_line, seats, applications, locked, computed_at)`.
+- `tie_unresolved` **não é campo do banco**: `_montar_ranking` recalcula o empate com `_ordenar()` e gruda o atributo na instância de `Application`; o schema lê por `getattr`.
+- Schemas: `RankingIn` (level + alvo XOR), `RankingSeatOut`, `RankedApplicationOut` (posição, nota, desfecho com rótulo, `tie_unresolved`, `student_id`) e `RankingOut` (grade de vagas, `total_seats`, `locked`, `computed_at`, lista).
+- Rotas: `POST /processes/{id}/ranking` (`selection.change_application`) e `GET /processes/{id}/ranking?level=&project_id=&research_line_id=` (`selection.view_application`). O alvo passa por `_alvo(program, ...)`, então id de outro programa é 404 antes de qualquer conta.
+- 19 testes em `apps/selection/tests/test_api_classificacao.py`: gravação + auditoria, cotista na ampla liberando a reserva, desempate por etapa e empate total, idempotência, nota nova mudando a posição, sem ata final → `final_record_not_signed`, ata da etapa 1 não serve, `ranking_locked`, `target_mismatch`, Suplementar por categoria, GET antes do cálculo (lista vazia + grade), GET com matriculado (`locked: true`), outro alvo/não-aprovada fora, 404 de edital e de alvo alheios, 403 do docente, 401 sem sessão e 403 sem CSRF.
+- `make gen-api` regenerado e commitado (`openapi.json` +406 linhas, `schema.d.ts` +189). `make ready` verde: 1197 testes.
+- Files: backend/apps/selection/services.py, backend/apps/selection/router.py, backend/apps/selection/schemas.py, backend/apps/selection/tests/test_api_classificacao.py, frontend/src/lib/api/openapi.json, frontend/src/lib/api/schema.d.ts
+- **Learnings for future iterations:**
+  - **`ExaminationRecord.board` é NOT NULL** — teste que grava ata assinada "na marra" precisa de uma `Board` da chave; o conftest só tem `banca_regular` (mestrado × projeto do edital regular). Para o Suplementar, monte a banca com `research_line=`.
+  - **Aluno regular exige quatro campos** (`student_regular_requires_degree_fields`): `level`, `project`, `admission_date` e `deadline`. `Student.objects.create` sem eles estoura `IntegrityError`, não `ValidationError`.
+  - **Query string de teste tem que ser `dict[str, str]`**: `{"project_id": pk}` (int) passa no pytest mas o mypy recusa o `Client.get`. Helper que converte para `str` resolve — foi o único erro do `make ready` nesta story.
+  - `f5-reallocate-api` e `f5-convert-to-student` chamam esta chave: `reallocate_vacancy` zera o rank dos `approved` afetados (e o recálculo depois só roda se ninguém estiver `enrolled`), e `convert_to_student` é o que fecha a porta com o primeiro `enrolled`.
+  - A tela `selecao/resultado` (f5) já pode contar com `locked` para desabilitar o botão de recalcular e com `tie_unresolved` para marcar quem o edital não desempatou.
+  - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
 ---

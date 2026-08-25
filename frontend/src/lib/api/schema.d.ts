@@ -1921,6 +1921,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/processes/{process_id}/ranking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ranking
+         * @description A classificação já calculada do nível × alvo.
+         *
+         *     Sem cálculo nenhum: chave ainda não classificada devolve a grade de
+         *     vagas e a lista vazia, que é o que a tela mostra antes do primeiro
+         *     clique em "calcular".
+         */
+        get: operations["apps_selection_router_get_ranking"];
+        put?: never;
+        /**
+         * Compute Ranking Endpoint
+         * @description Calcula (ou recalcula) a classificação de um nível × alvo.
+         *
+         *     Rodar de novo é o fluxo previsto — depois de retificação de ata ou de
+         *     realocação de vaga a lista muda. A trava é o primeiro matriculado da
+         *     chave (`ranking_locked`), e antes dela a exigência é a ata da última
+         *     etapa assinada (`final_record_not_signed`).
+         */
+        post: operations["apps_selection_router_compute_ranking_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4567,6 +4600,109 @@ export interface components {
          * @enum {string}
          */
         EmailDeliveryStatus: "pending" | "sent" | "failed";
+        /**
+         * RankedApplicationOut
+         * @description Um candidato na lista de classificação.
+         *
+         *     `tie_unresolved` não é campo do banco: é recalculado da nota e das
+         *     notas de desempate a cada leitura, e marca quem o edital não conseguiu
+         *     desempatar — a posição entre eles saiu do número da inscrição, que não
+         *     é critério nenhum. Quem vê isto na tela precisa decidir fora do
+         *     sistema.
+         */
+        RankedApplicationOut: {
+            /** Id */
+            id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Final Score */
+            final_score: string | null;
+            /** Final Rank */
+            final_rank: number | null;
+            /** Final Outcome */
+            final_outcome: string;
+            /** Final Outcome Label */
+            final_outcome_label: string;
+            /** Ranked At */
+            ranked_at: string | null;
+            /** Tie Unresolved */
+            tie_unresolved: boolean;
+            /** Student Id */
+            student_id: number | null;
+        };
+        /**
+         * RankingOut
+         * @description A classificação de um (nível × alvo): vagas, lista e a trava.
+         *
+         *     `locked` é o que desabilita o botão de recalcular na tela: com alguém
+         *     já matriculado na chave, a lista virou matrícula e não se reescreve
+         *     (`ranking_locked`). `computed_at` é o carimbo do último cálculo — nulo
+         *     quando a chave ainda não foi classificada.
+         */
+        RankingOut: {
+            /** Process Id */
+            process_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            /** Seats */
+            seats: components["schemas"]["RankingSeatOut"][];
+            /** Total Seats */
+            total_seats: number;
+            /** Locked */
+            locked: boolean;
+            /** Computed At */
+            computed_at: string | null;
+            /** Applications */
+            applications: components["schemas"]["RankedApplicationOut"][];
+        };
+        /**
+         * RankingSeatOut
+         * @description Uma linha da grade de vagas do alvo, como a tela do resultado a mostra.
+         */
+        RankingSeatOut: {
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Quantity */
+            quantity: number;
+        };
+        /**
+         * RankingIn
+         * @description O recorte a classificar: um nível e um alvo.
+         *
+         *     A classificação nunca é do edital inteiro — quem disputa entre si é
+         *     quem concorre ao mesmo nível e ao mesmo alvo, porque é dele a grade de
+         *     vagas. O alvo é XOR e amarrado ao tipo do edital (`ensure_target`).
+         */
+        RankingIn: {
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -7189,6 +7325,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConvocationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_ranking: {
+        parameters: {
+            query: {
+                /** @description Mesmos valores de `Student.Level` — a conversão em aluno copia direto. */
+                level: "masters" | "doctorate";
+                project_id?: number | null;
+                research_line_id?: number | null;
+            };
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankingOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_compute_ranking_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RankingIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankingOut"];
                 };
             };
         };

@@ -64,6 +64,8 @@ from .schemas import (
     PublicProcessOut,
     PublicSignatureOut,
     PublicSignatureReceiptOut,
+    RankingIn,
+    RankingOut,
     RecordFreezeIn,
     RecordSignatureOut,
     RecordSignIn,
@@ -91,10 +93,12 @@ from .services import (
     LIMITE_DE_LEITURA_DE_TOKEN,
     LIMITE_DE_LEITURA_PUBLICA,
     assinatura_por_token,
+    compute_ranking,
     edital_com_inscricao_aberta,
     freeze_record,
     generate_record,
     publish_process,
+    ranking_of,
     refresh_record,
     reopen_record,
     resend_convocation_emails,
@@ -1680,3 +1684,58 @@ def resend_convocation_endpoint(request: HttpRequest, convocation_id: int):
     require_perm(request, "selection.add_convocation")
     lote = _lote_do_programa(request, convocation_id)
     return resend_convocation_emails(convocation=lote, request=request)
+
+
+# ---------------------------------------------------------------------------
+# Classificação (secretaria)
+# ---------------------------------------------------------------------------
+#
+# Calcular é escrever em inscrição (`change_application`): o cálculo grava
+# posição e desfecho em cada aprovado da chave. Ler é `view_application`,
+# como qualquer outra consulta da lista de inscritos.
+#
+# As duas rotas pedem o mesmo recorte — nível × alvo —, uma no corpo e a
+# outra na query, porque é ele que define quem disputa com quem.
+
+
+@router.post("/processes/{int:process_id}/ranking", response=RankingOut)
+def compute_ranking_endpoint(request: HttpRequest, process_id: int, payload: RankingIn):
+    """Calcula (ou recalcula) a classificação de um nível × alvo.
+
+    Rodar de novo é o fluxo previsto — depois de retificação de ata ou de
+    realocação de vaga a lista muda. A trava é o primeiro matriculado da
+    chave (`ranking_locked`), e antes dela a exigência é a ata da última
+    etapa assinada (`final_record_not_signed`).
+    """
+    require_perm(request, "selection.change_application")
+    program: Program = current_program(request)
+    edital = _edital_do_programa(request, process_id)
+    projeto, linha = _alvo(program, payload.project_id, payload.research_line_id)
+    return compute_ranking(
+        process=edital,
+        level=payload.level,
+        project=projeto,
+        research_line=linha,
+        request=request,
+    )
+
+
+@router.get("/processes/{int:process_id}/ranking", response=RankingOut)
+def get_ranking(
+    request: HttpRequest,
+    process_id: int,
+    level: SelectionLevel,
+    project_id: int | None = None,
+    research_line_id: int | None = None,
+):
+    """A classificação já calculada do nível × alvo.
+
+    Sem cálculo nenhum: chave ainda não classificada devolve a grade de
+    vagas e a lista vazia, que é o que a tela mostra antes do primeiro
+    clique em "calcular".
+    """
+    require_perm(request, "selection.view_application")
+    program: Program = current_program(request)
+    edital = _edital_do_programa(request, process_id)
+    projeto, linha = _alvo(program, project_id, research_line_id)
+    return ranking_of(process=edital, level=level, project=projeto, research_line=linha)

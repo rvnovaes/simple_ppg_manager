@@ -766,7 +766,7 @@
         "f3-sign-close-stage"
       ],
       "priority": 31,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

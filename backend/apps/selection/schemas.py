@@ -1319,3 +1319,143 @@ class ConvocableApplicationOut(Schema):
     def resolve_target_label(obj: Application) -> str:
         alvo = obj.project or obj.research_line
         return str(alvo) if alvo is not None else ""
+
+
+# ---------------------------------------------------------------------------
+# Classificação
+# ---------------------------------------------------------------------------
+
+
+class RankingIn(Schema):
+    """O recorte a classificar: um nível e um alvo.
+
+    A classificação nunca é do edital inteiro — quem disputa entre si é
+    quem concorre ao mesmo nível e ao mesmo alvo, porque é dele a grade de
+    vagas. O alvo é XOR e amarrado ao tipo do edital (`ensure_target`).
+    """
+
+    level: SelectionLevel
+    project_id: int | None = None
+    research_line_id: int | None = None
+
+
+class RankingSeatOut(Schema):
+    """Uma linha da grade de vagas do alvo, como a tela do resultado a mostra."""
+
+    quota_category: QuotaCategory
+    quota_category_label: str
+    quantity: int
+
+
+class RankedApplicationOut(Schema):
+    """Um candidato na lista de classificação.
+
+    `tie_unresolved` não é campo do banco: é recalculado da nota e das
+    notas de desempate a cada leitura, e marca quem o edital não conseguiu
+    desempatar — a posição entre eles saiu do número da inscrição, que não
+    é critério nenhum. Quem vê isto na tela precisa decidir fora do
+    sistema.
+    """
+
+    id: int
+    protocol: str
+    full_name: str
+    email: str
+    level: SelectionLevel
+    level_label: str
+    target_label: str
+    quota_category: QuotaCategory
+    quota_category_label: str
+    status: ApplicationStatus
+    status_label: str
+    final_score: decimal.Decimal | None
+    final_rank: int | None
+    final_outcome: str
+    final_outcome_label: str
+    ranked_at: datetime.datetime | None
+    tie_unresolved: bool
+    student_id: int | None
+
+    @staticmethod
+    def resolve_level_label(obj: Application) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_quota_category_label(obj: Application) -> str:
+        return obj.get_quota_category_display()
+
+    @staticmethod
+    def resolve_status_label(obj: Application) -> str:
+        return obj.get_status_display()
+
+    @staticmethod
+    def resolve_final_outcome_label(obj: Application) -> str:
+        return obj.get_final_outcome_display() if obj.final_outcome else ""
+
+    @staticmethod
+    def resolve_target_label(obj: Application) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""
+
+    @staticmethod
+    def resolve_tie_unresolved(obj: Application) -> bool:
+        return bool(getattr(obj, "tie_unresolved", False))
+
+
+class RankingOut(Schema):
+    """A classificação de um (nível × alvo): vagas, lista e a trava.
+
+    `locked` é o que desabilita o botão de recalcular na tela: com alguém
+    já matriculado na chave, a lista virou matrícula e não se reescreve
+    (`ranking_locked`). `computed_at` é o carimbo do último cálculo — nulo
+    quando a chave ainda não foi classificada.
+    """
+
+    process_id: int
+    level: SelectionLevel
+    level_label: str
+    project_id: int | None
+    research_line_id: int | None
+    target_label: str
+    seats: list[RankingSeatOut]
+    total_seats: int
+    locked: bool
+    computed_at: datetime.datetime | None
+    applications: list[RankedApplicationOut]
+
+    @staticmethod
+    def resolve_process_id(obj: Any) -> int:
+        return obj.process.pk
+
+    @staticmethod
+    def resolve_level_label(obj: Any) -> str:
+        return dict(SelectionLevel.choices).get(obj.level, obj.level)
+
+    @staticmethod
+    def resolve_project_id(obj: Any) -> int | None:
+        return None if obj.project is None else obj.project.pk
+
+    @staticmethod
+    def resolve_research_line_id(obj: Any) -> int | None:
+        return None if obj.research_line is None else obj.research_line.pk
+
+    @staticmethod
+    def resolve_target_label(obj: Any) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""
+
+    @staticmethod
+    def resolve_seats(obj: Any) -> list[dict[str, Any]]:
+        rotulos = dict(QuotaCategory.choices)
+        return [
+            {
+                "quota_category": categoria,
+                "quota_category_label": rotulos.get(categoria, categoria),
+                "quantity": quantidade,
+            }
+            for categoria, quantidade in sorted(obj.seats.items())
+        ]
+
+    @staticmethod
+    def resolve_total_seats(obj: Any) -> int:
+        return sum(obj.seats.values())

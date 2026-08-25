@@ -5246,6 +5246,137 @@
           }
         ]
       }
+    },
+    "/selection/processes/{process_id}/ranking": {
+      "post": {
+        "operationId": "apps_selection_router_compute_ranking_endpoint",
+        "summary": "Compute Ranking Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankingOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Calcula (ou recalcula) a classificação de um nível × alvo.\n\nRodar de novo é o fluxo previsto — depois de retificação de ata ou de\nrealocação de vaga a lista muda. A trava é o primeiro matriculado da\nchave (`ranking_locked`), e antes dela a exigência é a ata da última\netapa assinada (`final_record_not_signed`).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RankingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "apps_selection_router_get_ranking",
+        "summary": "Get Ranking",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto.",
+              "enum": [
+                "masters",
+                "doctorate"
+              ],
+              "title": "SelectionLevel",
+              "type": "string"
+            },
+            "required": true,
+            "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto."
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankingOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A classificação já calculada do nível × alvo.\n\nSem cálculo nenhum: chave ainda não classificada devolve a grade de\nvagas e a lista vazia, que é o que a tela mostra antes do primeiro\nclique em \"calcular\".",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -11124,6 +11255,281 @@
         ],
         "title": "EmailDeliveryStatus",
         "type": "string"
+      },
+      "RankedApplicationOut": {
+        "description": "Um candidato na lista de classificação.\n\n`tie_unresolved` não é campo do banco: é recalculado da nota e das\nnotas de desempate a cada leitura, e marca quem o edital não conseguiu\ndesempatar — a posição entre eles saiu do número da inscrição, que não\né critério nenhum. Quem vê isto na tela precisa decidir fora do\nsistema.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "final_score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Score"
+          },
+          "final_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Rank"
+          },
+          "final_outcome": {
+            "title": "Final Outcome",
+            "type": "string"
+          },
+          "final_outcome_label": {
+            "title": "Final Outcome Label",
+            "type": "string"
+          },
+          "ranked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ranked At"
+          },
+          "tie_unresolved": {
+            "title": "Tie Unresolved",
+            "type": "boolean"
+          },
+          "student_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          }
+        },
+        "required": [
+          "id",
+          "protocol",
+          "full_name",
+          "email",
+          "level",
+          "level_label",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "final_score",
+          "final_rank",
+          "final_outcome",
+          "final_outcome_label",
+          "ranked_at",
+          "tie_unresolved",
+          "student_id"
+        ],
+        "title": "RankedApplicationOut",
+        "type": "object"
+      },
+      "RankingOut": {
+        "description": "A classificação de um (nível × alvo): vagas, lista e a trava.\n\n`locked` é o que desabilita o botão de recalcular na tela: com alguém\njá matriculado na chave, a lista virou matrícula e não se reescreve\n(`ranking_locked`). `computed_at` é o carimbo do último cálculo — nulo\nquando a chave ainda não foi classificada.",
+        "properties": {
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "seats": {
+            "items": {
+              "$ref": "#/components/schemas/RankingSeatOut"
+            },
+            "title": "Seats",
+            "type": "array"
+          },
+          "total_seats": {
+            "title": "Total Seats",
+            "type": "integer"
+          },
+          "locked": {
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/RankedApplicationOut"
+            },
+            "title": "Applications",
+            "type": "array"
+          }
+        },
+        "required": [
+          "process_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "seats",
+          "total_seats",
+          "locked",
+          "computed_at",
+          "applications"
+        ],
+        "title": "RankingOut",
+        "type": "object"
+      },
+      "RankingSeatOut": {
+        "description": "Uma linha da grade de vagas do alvo, como a tela do resultado a mostra.",
+        "properties": {
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quota_category",
+          "quota_category_label",
+          "quantity"
+        ],
+        "title": "RankingSeatOut",
+        "type": "object"
+      },
+      "RankingIn": {
+        "description": "O recorte a classificar: um nível e um alvo.\n\nA classificação nunca é do edital inteiro — quem disputa entre si é\nquem concorre ao mesmo nível e ao mesmo alvo, porque é dele a grade de\nvagas. O alvo é XOR e amarrado ao tipo do edital (`ensure_target`).",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "RankingIn",
+        "type": "object"
       }
     },
     "securitySchemes": {
