@@ -5465,6 +5465,54 @@
           }
         ]
       }
+    },
+    "/selection/applications/{application_id}/enroll": {
+      "post": {
+        "operationId": "apps_selection_router_enroll_application",
+        "summary": "Enroll Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Transforma o classificado em aluno regular, sem recadastro.\n\nO projeto vem no payload mesmo quando a inscrição já tem um: no\nSuplementar ela só tem linha de pesquisa, e é agora que a secretaria\nescolhe o projeto dentro dela. Quem confere se ele casa com o alvo é\no service (`project_target_mismatch`).\n\nEfeito colateral previsto: a classificação daquele nível × alvo trava\n(`ranking_locked`) — a lista virou matrícula e não se recalcula mais.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationEnrollIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -11737,6 +11785,88 @@
           "decided_by_note"
         ],
         "title": "VacancyReallocationIn",
+        "type": "object"
+      },
+      "EnrollmentOut": {
+        "description": "O vínculo recém-criado e a inscrição que virou ele.\n\nOs dois juntos porque a tela precisa dos dois: o aluno para o link de\n`/alunos` e a inscrição já em `enrolled` para trocar a linha da lista\nde classificação sem recarregar tudo.\n\n`deadline` sai preenchido sem ter entrado: o prazo regimental é\ncalculado no `Student.save()` a partir do ingresso e do nível.",
+        "properties": {
+          "student_id": {
+            "title": "Student Id",
+            "type": "integer"
+          },
+          "person_id": {
+            "title": "Person Id",
+            "type": "integer"
+          },
+          "registration_number": {
+            "title": "Registration Number",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "admission_date": {
+            "format": "date",
+            "title": "Admission Date",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "application": {
+            "$ref": "#/components/schemas/ApplicationDetailOut"
+          }
+        },
+        "required": [
+          "student_id",
+          "person_id",
+          "registration_number",
+          "level",
+          "project_id",
+          "admission_date",
+          "deadline",
+          "application"
+        ],
+        "title": "EnrollmentOut",
+        "type": "object"
+      },
+      "ApplicationEnrollIn": {
+        "description": "O que a secretaria digita para transformar o classificado em aluno.\n\n`registration_number` vem de fora: quem emite matrícula é o sistema da\nUFMG. `project_id` é obrigatório mesmo no Regular, em que a inscrição\njá traz o projeto — o vínculo do aluno não herda por acidente um campo\nque a CheckConstraint do `Student` exige (armadilha 16 do plano), e no\nSuplementar a inscrição só tem linha de pesquisa.",
+        "properties": {
+          "registration_number": {
+            "title": "Registration Number",
+            "type": "string"
+          },
+          "admission_date": {
+            "format": "date",
+            "title": "Admission Date",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "registration_number",
+          "admission_date",
+          "project_id"
+        ],
+        "title": "ApplicationEnrollIn",
         "type": "object"
       }
     },

@@ -17,14 +17,19 @@ from decimal import Decimal
 from functools import partial
 from typing import Any
 
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.http import Http404, HttpRequest
 from django.utils import timezone
 from ninja import UploadedFile
 
+from apps.academic.models import Student
+from apps.accounts.services import assign_role_group
 from apps.core import audit
 from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
+from apps.people.models import Person
+from apps.people.services import create_person_with_user
 
 from .emails import enviar_convocacao, enviar_token_de_assinatura
 from .models import (
@@ -1895,3 +1900,169 @@ def reallocate_vacancy(
         rankings_invalidated=invalidadas,
     )
     return realocacao
+
+
+# ---------------------------------------------------------------------------
+# Conversão em aluno (secretaria)
+# ---------------------------------------------------------------------------
+#
+# É aqui que o processo seletivo termina e o vínculo acadêmico começa. A
+# operação escreve em cinco models (Person, User, Group, Student e
+# Application, mais o AuditLog) e por isso é service, não router (ADR-002):
+# inscrição marcada como `enrolled` sem o `Student` correspondente seria um
+# aluno que não existe em lugar nenhum — e a CheckConstraint
+# `application_enrolled_requires_student` nem deixaria gravar.
+#
+# O candidato não tem conta (a inscrição é pública e sem login), então a
+# `Person` costuma nascer agora. Quando já existe — mesmo e-mail no mesmo
+# programa, tipicamente quem já cursou isolada — ela é reaproveitada: criar
+# outra esbarraria na unique `unique_email_por_programa`, e duas pessoas
+# para o mesmo ser humano é exatamente o que a chave existe para impedir.
+
+
+def _exigir_projeto_do_alvo(application: Application, project: Any) -> None:
+    """O projeto do vínculo tem que casar com o alvo da inscrição.
+
+    No Regular a inscrição já é por projeto, e o do vínculo é aquele — a
+    secretaria não remaneja ninguém de projeto no ato da matrícula, isso
+    seria burlar a grade de vagas contra a qual ele foi classificado.
+
+    No Suplementar a inscrição só tem linha de pesquisa (é assim que o
+    edital funciona), e o projeto é escolhido agora **dentro** da linha.
+    """
+    if application.project_id is not None:
+        if project.pk != application.project_id:
+            raise DomainError(
+                "O projeto do vínculo precisa ser o mesmo da inscrição.",
+                code="project_target_mismatch",
+            )
+        return
+    if project.research_line_id != application.research_line_id:
+        raise DomainError(
+            "O projeto precisa pertencer à linha de pesquisa da inscrição.",
+            code="project_target_mismatch",
+        )
+
+
+def _pessoa_da_inscricao(
+    application: Application, request: HttpRequest | None
+) -> Person:
+    """A `Person` do candidato no programa: a que já existe ou uma nova.
+
+    A chave é `(program, primary_email)` — a mesma da unique do model. O
+    e-mail é normalizado antes da consulta porque quem digitou foi o
+    candidato, no formulário público.
+    """
+    email = application.email.strip().lower()
+    pessoa = Person.objects.filter(
+        program_id=application.program_id, primary_email=email
+    ).first()
+    if pessoa is not None:
+        return pessoa
+    return create_person_with_user(
+        program=application.program,
+        full_name=application.full_name,
+        email=email,
+        phone_number=application.phone_number,
+        request=request,
+    )
+
+
+@transaction.atomic
+def convert_to_student(
+    *,
+    application: Application,
+    registration_number: str,
+    admission_date: date,
+    project: Any,
+    request: HttpRequest | None = None,
+) -> Student:
+    """Transforma a inscrição classificada em vínculo de aluno regular.
+
+    A matrícula vem digitada pela secretaria: quem emite o número é o
+    sistema da UFMG, não este (mesmo desenho de
+    `enroll_isolated_request`). O prazo regimental não vem no payload — o
+    `Student.save()` o calcula a partir do ingresso e do nível.
+
+    Estar classificado é condição de `Application.enroll`
+    (`not_classified`, 409): aprovado fora do número de vagas não vira
+    aluno. Aprovado nos dois editais do ano também não força escolha
+    nenhuma — a secretaria converte um, e a outra inscrição fica
+    `approved` sem `student` (assunção registrada no plano).
+    """
+    registration_number = registration_number.strip()
+    if not registration_number:
+        raise DomainError(
+            "Informe o número de matrícula emitido pela UFMG.",
+            code="registration_number_required",
+        )
+    if project is None:
+        # Regular exige projeto por CheckConstraint
+        # (`student_regular_requires_degree_fields`), e no Suplementar a
+        # inscrição não tem projeto nenhum para copiar.
+        raise DomainError(
+            "Escolha o projeto coletivo do vínculo.",
+            code="project_required",
+        )
+    _exigir_projeto_do_alvo(application, project)
+
+    # Trava a inscrição antes de qualquer escrita: dois cliques
+    # simultâneos em "matricular" criariam dois `Student` com a mesma
+    # pessoa, e só o segundo `enroll` reclamaria — tarde demais.
+    # `order_by()` limpa a ordenação padrão, que ordena pelo edital.
+    inscricao = (
+        Application.objects.select_for_update().order_by().get(pk=application.pk)
+    )
+
+    pessoa = _pessoa_da_inscricao(inscricao, request)
+    aluno = Student(
+        program=inscricao.program,
+        person=pessoa,
+        registration_number=registration_number,
+        modality=Student.Modality.REGULAR,
+        status=Student.Status.ACTIVE,
+        level=inscricao.level,
+        project=project,
+        admission_date=admission_date,
+    )
+    # O prazo regimental é default do `Student.save()`, mas o `full_clean()`
+    # roda **antes** dele e já valida as CheckConstraint — sem preencher
+    # aqui, `student_regular_requires_degree_fields` reprovaria um aluno
+    # que o save deixaria válido um instante depois.
+    aluno.deadline = aluno.default_deadline()
+    # `full_clean()` e não só `clean()`: a matrícula é única no banco e o
+    # `max_length` é do campo — sem a validação de campo, número repetido
+    # sairia como IntegrityError 500. O try/except é a tradução da
+    # ValidationError do Django para a `DomainError` do projeto, que o
+    # handler central do Ninja vira 400 com `code` estável.
+    try:
+        aluno.full_clean()
+    except ValidationError as erro:
+        raise DomainError("; ".join(erro.messages), code="invalid_student") from erro
+    aluno.save()
+
+    inscricao.enroll(aluno)
+    inscricao.save(update_fields=["status", "student", "updated_at"])
+    # A instância do chamador precisa enxergar o que acabou de acontecer:
+    # é ela que o router serializa na resposta.
+    application.status = inscricao.status
+    application.student = aluno
+
+    # Pessoa sem conta (candidato que nunca logou e cuja conta nasceu sem
+    # senha utilizável) mesmo assim entra no papel: o acesso é liberado
+    # quando alguém define a senha, e o papel já tem que estar lá.
+    user = pessoa.user
+    if user is not None:
+        assign_role_group(user, group_name="Discente", request=request)
+
+    audit.record(
+        "selection.application.enroll",
+        request=request,
+        target=inscricao,
+        protocol=inscricao.protocol,
+        process_id=inscricao.process_id,
+        person_id=pessoa.pk,
+        student_id=aluno.pk,
+        registration_number=registration_number,
+    )
+    return aluno

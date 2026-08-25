@@ -1983,6 +1983,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/applications/{application_id}/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll Application
+         * @description Transforma o classificado em aluno regular, sem recadastro.
+         *
+         *     O projeto vem no payload mesmo quando a inscrição já tem um: no
+         *     Suplementar ela só tem linha de pesquisa, e é agora que a secretaria
+         *     escolhe o projeto dentro dela. Quem confere se ele casa com o alvo é
+         *     o service (`project_target_mismatch`).
+         *
+         *     Efeito colateral previsto: a classificação daquele nível × alvo trava
+         *     (`ranking_locked`) — a lista virou matrícula e não se recalcula mais.
+         */
+        post: operations["apps_selection_router_enroll_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4808,6 +4836,58 @@ export interface components {
             /** Decided By Note */
             decided_by_note: string;
         };
+        /**
+         * EnrollmentOut
+         * @description O vínculo recém-criado e a inscrição que virou ele.
+         *
+         *     Os dois juntos porque a tela precisa dos dois: o aluno para o link de
+         *     `/alunos` e a inscrição já em `enrolled` para trocar a linha da lista
+         *     de classificação sem recarregar tudo.
+         *
+         *     `deadline` sai preenchido sem ter entrado: o prazo regimental é
+         *     calculado no `Student.save()` a partir do ingresso e do nível.
+         */
+        EnrollmentOut: {
+            /** Student Id */
+            student_id: number;
+            /** Person Id */
+            person_id: number;
+            /** Registration Number */
+            registration_number: string;
+            /** Level */
+            level: string;
+            /** Project Id */
+            project_id: number;
+            /**
+             * Admission Date
+             * Format: date
+             */
+            admission_date: string;
+            /** Deadline */
+            deadline: string | null;
+            application: components["schemas"]["ApplicationDetailOut"];
+        };
+        /**
+         * ApplicationEnrollIn
+         * @description O que a secretaria digita para transformar o classificado em aluno.
+         *
+         *     `registration_number` vem de fora: quem emite matrícula é o sistema da
+         *     UFMG. `project_id` é obrigatório mesmo no Regular, em que a inscrição
+         *     já traz o projeto — o vínculo do aluno não herda por acidente um campo
+         *     que a CheckConstraint do `Student` exige (armadilha 16 do plano), e no
+         *     Suplementar a inscrição só tem linha de pesquisa.
+         */
+        ApplicationEnrollIn: {
+            /** Registration Number */
+            registration_number: string;
+            /**
+             * Admission Date
+             * Format: date
+             */
+            admission_date: string;
+            /** Project Id */
+            project_id: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -7531,6 +7611,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VacancyReallocationOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_enroll_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationEnrollIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentOut"];
                 };
             };
         };

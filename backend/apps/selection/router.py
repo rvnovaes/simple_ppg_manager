@@ -49,6 +49,7 @@ from .models import (
 from .schemas import (
     ApplicationDecisionIn,
     ApplicationDetailOut,
+    ApplicationEnrollIn,
     ApplicationIn,
     ApplicationOut,
     ApplicationReceiptOut,
@@ -59,6 +60,7 @@ from .schemas import (
     ConvocableApplicationOut,
     ConvocationDetailOut,
     ConvocationOut,
+    EnrollmentOut,
     ExaminationRecordOut,
     MyBoardOut,
     PublicProcessOut,
@@ -96,6 +98,7 @@ from .services import (
     LIMITE_DE_LEITURA_PUBLICA,
     assinatura_por_token,
     compute_ranking,
+    convert_to_student,
     edital_com_inscricao_aberta,
     freeze_record,
     generate_record,
@@ -1820,3 +1823,45 @@ def create_reallocation(
             request=request,
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Conversão em aluno (secretaria)
+# ---------------------------------------------------------------------------
+#
+# O fim do processo seletivo e o começo do vínculo acadêmico. Duas
+# permissões explícitas, e as duas juntas: `selection.change_application`
+# porque a inscrição muda de estado, e `academic.add_student` porque
+# nasce um aluno — quem não pode cadastrar aluno pela tela de alunos
+# também não pode criar um por esta porta.
+
+
+@router.post("/applications/{int:application_id}/enroll", response={201: EnrollmentOut})
+def enroll_application(
+    request: HttpRequest, application_id: int, payload: ApplicationEnrollIn
+):
+    """Transforma o classificado em aluno regular, sem recadastro.
+
+    O projeto vem no payload mesmo quando a inscrição já tem um: no
+    Suplementar ela só tem linha de pesquisa, e é agora que a secretaria
+    escolhe o projeto dentro dela. Quem confere se ele casa com o alvo é
+    o service (`project_target_mismatch`).
+
+    Efeito colateral previsto: a classificação daquele nível × alvo trava
+    (`ranking_locked`) — a lista virou matrícula e não se recalcula mais.
+    """
+    require_perm(request, "selection.change_application")
+    require_perm(request, "academic.add_student")
+    program: Program = current_program(request)
+    inscricao = _inscricao_do_programa(request, application_id)
+    projeto = get_object_or_404(
+        CollectiveProject.objects.for_program(program), pk=payload.project_id
+    )
+    aluno = convert_to_student(
+        application=inscricao,
+        registration_number=payload.registration_number,
+        admission_date=payload.admission_date,
+        project=projeto,
+        request=request,
+    )
+    return Status(201, {"student": aluno, "application": inscricao})

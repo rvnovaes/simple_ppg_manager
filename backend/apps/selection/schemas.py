@@ -1517,3 +1517,72 @@ class VacancyReallocationOut(Schema):
     @staticmethod
     def resolve_kind_label(obj: VacancyReallocation) -> str:
         return obj.get_kind_display()
+
+
+# ---------------------------------------------------------------------------
+# Conversão em aluno (secretaria)
+# ---------------------------------------------------------------------------
+
+
+class ApplicationEnrollIn(Schema):
+    """O que a secretaria digita para transformar o classificado em aluno.
+
+    `registration_number` vem de fora: quem emite matrícula é o sistema da
+    UFMG. `project_id` é obrigatório mesmo no Regular, em que a inscrição
+    já traz o projeto — o vínculo do aluno não herda por acidente um campo
+    que a CheckConstraint do `Student` exige (armadilha 16 do plano), e no
+    Suplementar a inscrição só tem linha de pesquisa.
+    """
+
+    registration_number: str
+    admission_date: datetime.date
+    project_id: int
+
+
+class EnrollmentOut(Schema):
+    """O vínculo recém-criado e a inscrição que virou ele.
+
+    Os dois juntos porque a tela precisa dos dois: o aluno para o link de
+    `/alunos` e a inscrição já em `enrolled` para trocar a linha da lista
+    de classificação sem recarregar tudo.
+
+    `deadline` sai preenchido sem ter entrado: o prazo regimental é
+    calculado no `Student.save()` a partir do ingresso e do nível.
+    """
+
+    student_id: int
+    person_id: int
+    registration_number: str
+    level: str
+    project_id: int
+    admission_date: datetime.date
+    deadline: datetime.date | None
+    application: ApplicationDetailOut
+
+    @staticmethod
+    def resolve_student_id(obj: dict[str, Any]) -> int:
+        return int(obj["student"].pk)
+
+    @staticmethod
+    def resolve_person_id(obj: dict[str, Any]) -> int:
+        return int(obj["student"].person_id)
+
+    @staticmethod
+    def resolve_registration_number(obj: dict[str, Any]) -> str:
+        return str(obj["student"].registration_number or "")
+
+    @staticmethod
+    def resolve_level(obj: dict[str, Any]) -> str:
+        return str(obj["student"].level or "")
+
+    @staticmethod
+    def resolve_project_id(obj: dict[str, Any]) -> int:
+        return int(obj["student"].project_id)
+
+    @staticmethod
+    def resolve_admission_date(obj: dict[str, Any]) -> Any:
+        return obj["student"].admission_date
+
+    @staticmethod
+    def resolve_deadline(obj: dict[str, Any]) -> Any:
+        return obj["student"].deadline
