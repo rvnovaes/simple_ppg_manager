@@ -319,6 +319,13 @@ não só no README).
 - Toda chamada de API via `lib/api/client.ts` tipado; `fetch` cru é
   proibido nas telas.
 - `schema.d.ts` é gerado; PR que o edita à mão é recusado.
+- Navegação interna sempre por `resolve()` de `$app/paths` — o lint
+  `svelte/no-navigation-without-resolve` recusa `href` literal, e a rota
+  tipada do SvelteKit só conhece o que já existe em `src/routes/`. Link
+  para tela ainda não escrita exige criar a rota (nem que seja um
+  `+page.svelte` marcador). URL de `/api/` e de `/media/` **não** é rota da
+  SPA: ali `resolve()` não se aplica e o `eslint-disable` local da regra é
+  o padrão do projeto.
 - Formulários: validação de UX no front, mas a validação que vale é a do
   schema Ninja no backend. Nunca confiar só no front.
 
