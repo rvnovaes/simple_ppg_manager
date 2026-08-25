@@ -28,6 +28,8 @@ Started: ter. 25 ago 2026 11:00:21 -03
 - **Query string de teste é `dict[str, str]`**: passar `int` em `client.get(url, {"project_id": pk})` roda no pytest mas o `make ready` quebra no mypy (`Client.get` só aceita valores de texto). Converta com `str()` num helper.
 - **Query opcional que é XOR vai por spread, nunca com `null`**: `...(porProjeto ? { project_id: alvo } : { research_line_id: alvo })`. Chave com `null` vira `campo=` na URL, e string vazia não é `None` para o Ninja.
 - **`POST /auth/login` recebe `username`** (com o e-mail dentro), não `email`: o payload errado volta 422 — vale para todo script de verificação pelo Nginx.
+- **`make seed` no host quebra com `PermissionError` em `backend/media/`** depois que o container escreveu ali (ele roda como root): `docker compose exec -T backend chown -R 1000:1000 /app/media`.
+- **`seed_demo` é a carga de demonstração e tem teste** (`apps/core/tests/test_seed_demo.py`, banco limpo): quem adicionar `clean()` ou constraint num model de negócio vai vê-lo falhar antes da tela — a carga é uma transação só.
 - **`new Map()` em `$derived` não passa no lint do front**: `svelte/prefer-svelte-reactivity` manda usar `SvelteMap`. Para agrupamento puro (sem reatividade sobre o próprio mapa), o caminho mais curto é `Record<string, T[]>` + um array que guarda a ordem.
 ---
 ## 2026-08-25 - f0-app-selection
@@ -622,4 +624,25 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `Application` exige `submitted_at` (NOT NULL, sem default): script de canteiro que cria inscrição na mão precisa preenchê-lo.
   - `RankedApplicationOut` **não traz `project_id`/`research_line_id`** do candidato — mas não precisa: o alvo do recorte é o que a própria tela escolheu, e é ele que preenche o `project_id` do Regular na conversão.
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
+---
+
+## 2026-08-25 - f6-seed-demo
+- `seed_demo` ganhou a seção "Processo seletivo" (`_selecao` e sete helpers), chamada dentro da mesma transação das outras cargas, **por programa** — rodar com `--acronym PPGA --email-domain ppga.test` semeia o segundo tenant inteiro, seleção incluída.
+- **Dois editais publicados por programa** (`_edital`): Regular (Resumo expandido tb1 → Prova oral tb2 → Entrevista) e Suplementar (Memorial tb1 → Prova oral tb2 → Análise documental), com `session_at`/`location` em todas as etapas, template de convocação preenchido e grade de vagas (5 linhas no Regular, 4 no Suplementar). Publicar é `publish_process`, e não `status=published` na mão: é ele que cobra etapa, vaga e template.
+- **Quatro bancas** (`_bancas`), uma por chave avaliada. Dois docentes novos: `nubia.prates@ppgd.test` (permanente, presidente) e **Otávio Bastos** (`Teacher.Category.EXTERNAL`, PUC Minas) — o externo nasce com `Person` **sem conta**, que é justamente por que ele assina por token. Na banca que assina a ata ele é suplente; na do doutorado, titular.
+- **Dez inscrições por programa**, uma em cada `ApplicationStatus`, com os anexos que `required_document_kinds()` exige e as notas da etapa 1. `eliminated` **não** é semeado: Sofia Tavares nasce homologada com 62,00 e cai quando a ata é assinada — é `_close_stage` fazendo o trabalho, e o teste cobra isso.
+- **Convocação da etapa 1** do Regular (`send_convocations`) antes da ata, que é a ordem real; e **ata assinada com PDF** (`generate_record` → `freeze_record` → `sign_record` de cada signatário). Signatário externo: a carga reemite o token com `issue_token` e o consome por `sign_record_with_token`, porque o texto do token do congelamento não fica no banco.
+- **Matrícula**: `convert_to_student` converte a classificada em 1º do doutorado; a 2ª fica `approved` para a tela de resultado ter o botão com o que trabalhar.
+- `--email-backend` novo, **console por padrão**: a carga dispara convocação de verdade e o SMTP do canteiro nem sempre está de pé quando o comando roda no host. String vazia respeita o `EMAIL_BACKEND` do ambiente (é assim que a mensagem cai no Mailpit).
+- **`CONTAS-DEMO.txt` passou a existir**: `_gravar_contas` escreve um bloco por programa em `BASE_DIR.parent` (raiz do repo, gitignored na linha 214). O bloco é identificado pela sigla e só ele é substituído — carregar o segundo tenant não apaga o primeiro. A lista de contas virou `_contas()`, usada pela saída do comando e pelo arquivo.
+- **Teste novo** `apps/core/tests/test_seed_demo.py` (3 casos, banco limpo): carga completa e idempotente nos dois programas (duas passadas de cada, os 6 status presentes, 2 editais × 3 etapas, 4 bancas, ata `signed` com PDF e hash conferido, lote de convocação com destinatários); a eliminação vindo da ata; e o `CONTAS-DEMO.txt` com um bloco por programa. A fixture `raiz_temporaria` troca `settings.BASE_DIR` para o teste não reescrever o arquivo de quem está com o canteiro de pé.
+- `make ready` verde: 1232 testes, ruff/mypy limpos, svelte-check 0 erros. `make seed` roda duas vezes sem erro no host e no container; sem migration e sem `make gen-api` (nada de rota mudou).
+- Files: backend/apps/core/management/commands/seed_demo.py, backend/apps/core/tests/test_seed_demo.py, scripts/helton/projects/prds/{prd.json,progress.txt}
+- **Learnings for future iterations:**
+  - **O banco deste canteiro já tinha um `SelectionProcess` PS2027 Regular do PPGD**, semeado à mão pelas stories f3–f5. Como `_edital` é `get_or_create` por (programa, tipo, ano), a carga **adotou** aquele edital — com a banca antiga, que tem examinador externo titular. Foi o que revelou o caso do token. Para ver a carga como ela nasce, olhe o **PPGA**, que é tenant limpo; ou confie no teste, que roda em banco vazio.
+  - **`make seed` no host quebra com `PermissionError` em `backend/media/`** quando o container já escreveu ali (ele roda como root). Conserto: `docker compose exec -T backend chown -R 1000:1000 /app/media`. Mesma família da armadilha do `.svelte-kit`.
+  - **Assinatura de ata na carga não pode assumir login**: `sign_record` recusa signatário `token` com `not_the_signer` (a mensagem vem de `ensure_can_sign_by_login`, não do "você não é signatário"). Quem automatiza assinatura precisa ramificar por `assinatura.uses_token`.
+  - `Path(settings.BASE_DIR).parent` é a raiz do repo no host, mas dentro do container é `/` (o mount é só `backend/` em `/app`). O `CONTAS-DEMO.txt` do container cai em `/CONTAS-DEMO.txt` — o caminho documentado é o do host.
+  - CPF de carga sai do helper `_cpf(semente)` (mod-11 sobre `100000000 + semente*137`): `Application.clean()` roda `cpf_valido`, então número inventado à mão derruba a carga inteira.
+  - Contar `get_or_create` de FileField: `ApplicationDocument.file.save(..., save=False)` seguido de `.save()` é o mesmo molde de `RequestDocument` — reusar, não reinventar.
 ---

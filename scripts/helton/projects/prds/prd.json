@@ -866,7 +866,7 @@
         "f5-tela-resultado"
       ],
       "priority": 35,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
