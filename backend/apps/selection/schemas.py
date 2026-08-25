@@ -24,6 +24,7 @@ from .models import (
     EmailDeliveryStatus,
     ExaminationRecord,
     QuotaCategory,
+    ReallocationKind,
     RecordSignature,
     RecordStatus,
     SelectionKind,
@@ -32,6 +33,7 @@ from .models import (
     SelectionProcessStatus,
     SignatureMethod,
     Vacancy,
+    VacancyReallocation,
 )
 
 
@@ -1459,3 +1461,59 @@ class RankingOut(Schema):
     @staticmethod
     def resolve_total_seats(obj: Any) -> int:
         return sum(obj.seats.values())
+
+
+# ---------------------------------------------------------------------------
+# Realocação de vaga
+# ---------------------------------------------------------------------------
+
+
+class VacancyReallocationIn(Schema):
+    """A decisão da comissão que move vaga de uma linha da grade para outra.
+
+    Sem `program_id` e sem `process_id`: o programa é o da sessão e o
+    edital vem da URL. `decided_by_note` é o número do ofício ou da ata —
+    sem ele a realocação seria um número mudando no banco sem autoria.
+
+    A espécie decide o que pode mudar: `level_transfer` é o mesmo alvo
+    entre níveis diferentes, `notice_rectification` é o mesmo nível com
+    alvo diferente. A categoria de cota é sempre preservada.
+    """
+
+    kind: ReallocationKind
+    from_vacancy_id: int
+    to_vacancy_id: int
+    quantity: int
+    reason: str
+    decided_on: datetime.date
+    decided_by_note: str
+
+
+class VacancyReallocationOut(Schema):
+    """A realocação como o histórico da tela de resultado a mostra.
+
+    As duas vagas viajam inteiras (`VacancyOut`), com rótulo e nome do
+    alvo já resolvidos: a linha do histórico precisa dizer "1 vaga de
+    ampla, mestrado → doutorado" sem a tela cruzar ids.
+
+    `quantity` da vaga é o saldo **de agora**, não o do dia da decisão:
+    realocação não guarda foto da grade, e uma segunda realocação sobre a
+    mesma linha muda o número que aparece aqui.
+    """
+
+    id: int
+    program_id: int
+    process_id: int
+    kind: ReallocationKind
+    kind_label: str
+    from_vacancy: VacancyOut
+    to_vacancy: VacancyOut
+    quantity: int
+    reason: str
+    decided_on: datetime.date
+    decided_by_note: str
+    created_at: datetime.datetime
+
+    @staticmethod
+    def resolve_kind_label(obj: VacancyReallocation) -> str:
+        return obj.get_kind_display()

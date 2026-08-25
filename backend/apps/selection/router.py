@@ -81,6 +81,8 @@ from .schemas import (
     VacancyIn,
     VacancyOut,
     VacancyPatch,
+    VacancyReallocationIn,
+    VacancyReallocationOut,
 )
 from .services import (
     JANELA_DE_ASSINATURA_EM_SEGUNDOS,
@@ -99,6 +101,7 @@ from .services import (
     generate_record,
     publish_process,
     ranking_of,
+    reallocate_vacancy,
     refresh_record,
     reopen_record,
     resend_convocation_emails,
@@ -1739,3 +1742,81 @@ def get_ranking(
     edital = _edital_do_programa(request, process_id)
     projeto, linha = _alvo(program, project_id, research_line_id)
     return ranking_of(process=edital, level=level, project=projeto, research_line=linha)
+
+
+# ---------------------------------------------------------------------------
+# Realocação de vaga (comissão)
+# ---------------------------------------------------------------------------
+#
+# Realocar é o único poder do processo seletivo que a secretaria **não**
+# tem: mover vaga entre alvos depois do edital publicado é decisão
+# colegiada, e por isso a escrita cobra `selection.add_vacancyreallocation`
+# — permissão que só o grupo "Comissão de Seleção" carrega
+# (`0006_papeis_da_selecao`).
+#
+# A leitura é `view_vacancyreallocation`, que secretaria e coordenação
+# também têm: o histórico aparece na tela de resultado, operada pela
+# secretaria, e esconder dela o ofício que mudou a grade não protege nada.
+
+
+def _vaga_do_edital(edital: SelectionProcess, vacancy_id: int) -> Vacancy:
+    """A vaga desta requisição, escopada no edital (que já veio escopado
+    no programa) — vaga de outro edital é 404, nunca 403."""
+    return get_object_or_404(edital.vacancies, pk=vacancy_id)
+
+
+def _realocacoes(edital: SelectionProcess):
+    """As realocações do edital com as duas vagas prontas para o schema.
+
+    Sem o `select_related` do alvo, cada linha do histórico custaria mais
+    duas consultas só para escrever o nome do projeto.
+    """
+    return edital.reallocations.select_related(
+        "from_vacancy",
+        "from_vacancy__project",
+        "from_vacancy__research_line",
+        "to_vacancy",
+        "to_vacancy__project",
+        "to_vacancy__research_line",
+    )
+
+
+@router.get(
+    "/processes/{int:process_id}/reallocations/",
+    response=list[VacancyReallocationOut],
+)
+def list_reallocations(request: HttpRequest, process_id: int):
+    """O histórico de realocações do edital, da mais recente para a mais antiga."""
+    require_perm(request, "selection.view_vacancyreallocation")
+    return list(_realocacoes(_edital_do_programa(request, process_id)))
+
+
+@router.post(
+    "/processes/{int:process_id}/reallocations/",
+    response={201: VacancyReallocationOut},
+)
+def create_reallocation(
+    request: HttpRequest, process_id: int, payload: VacancyReallocationIn
+):
+    """Registra a decisão da comissão e move a vaga.
+
+    Efeito colateral previsto: a classificação já calculada dos alvos
+    envolvidos é zerada — as posições saíram de uma grade que acabou de
+    mudar. A secretaria recalcula (`POST processes/{id}/ranking`) antes de
+    publicar a lista de novo.
+    """
+    require_perm(request, "selection.add_vacancyreallocation")
+    edital = _edital_do_programa(request, process_id)
+    return Status(
+        201,
+        reallocate_vacancy(
+            from_vacancy=_vaga_do_edital(edital, payload.from_vacancy_id),
+            to_vacancy=_vaga_do_edital(edital, payload.to_vacancy_id),
+            quantity=payload.quantity,
+            kind=payload.kind,
+            reason=payload.reason,
+            decided_on=payload.decided_on,
+            note=payload.decided_by_note,
+            request=request,
+        ),
+    )

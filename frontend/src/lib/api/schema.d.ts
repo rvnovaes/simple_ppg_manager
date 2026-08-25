@@ -1954,6 +1954,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/processes/{process_id}/reallocations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reallocations
+         * @description O histórico de realocações do edital, da mais recente para a mais antiga.
+         */
+        get: operations["apps_selection_router_list_reallocations"];
+        put?: never;
+        /**
+         * Create Reallocation
+         * @description Registra a decisão da comissão e move a vaga.
+         *
+         *     Efeito colateral previsto: a classificação já calculada dos alvos
+         *     envolvidos é zerada — as posições saíram de uma grade que acabou de
+         *     mudar. A secretaria recalcula (`POST processes/{id}/ranking`) antes de
+         *     publicar a lista de novo.
+         */
+        post: operations["apps_selection_router_create_reallocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4703,6 +4732,82 @@ export interface components {
             /** Research Line Id */
             research_line_id?: number | null;
         };
+        /**
+         * ReallocationKind
+         * @enum {string}
+         */
+        ReallocationKind: "level_transfer" | "notice_rectification";
+        /**
+         * VacancyReallocationOut
+         * @description A realocação como o histórico da tela de resultado a mostra.
+         *
+         *     As duas vagas viajam inteiras (`VacancyOut`), com rótulo e nome do
+         *     alvo já resolvidos: a linha do histórico precisa dizer "1 vaga de
+         *     ampla, mestrado → doutorado" sem a tela cruzar ids.
+         *
+         *     `quantity` da vaga é o saldo **de agora**, não o do dia da decisão:
+         *     realocação não guarda foto da grade, e uma segunda realocação sobre a
+         *     mesma linha muda o número que aparece aqui.
+         */
+        VacancyReallocationOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            kind: components["schemas"]["ReallocationKind"];
+            /** Kind Label */
+            kind_label: string;
+            from_vacancy: components["schemas"]["VacancyOut"];
+            to_vacancy: components["schemas"]["VacancyOut"];
+            /** Quantity */
+            quantity: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Decided On
+             * Format: date
+             */
+            decided_on: string;
+            /** Decided By Note */
+            decided_by_note: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * VacancyReallocationIn
+         * @description A decisão da comissão que move vaga de uma linha da grade para outra.
+         *
+         *     Sem `program_id` e sem `process_id`: o programa é o da sessão e o
+         *     edital vem da URL. `decided_by_note` é o número do ofício ou da ata —
+         *     sem ele a realocação seria um número mudando no banco sem autoria.
+         *
+         *     A espécie decide o que pode mudar: `level_transfer` é o mesmo alvo
+         *     entre níveis diferentes, `notice_rectification` é o mesmo nível com
+         *     alvo diferente. A categoria de cota é sempre preservada.
+         */
+        VacancyReallocationIn: {
+            kind: components["schemas"]["ReallocationKind"];
+            /** From Vacancy Id */
+            from_vacancy_id: number;
+            /** To Vacancy Id */
+            to_vacancy_id: number;
+            /** Quantity */
+            quantity: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Decided On
+             * Format: date
+             */
+            decided_on: string;
+            /** Decided By Note */
+            decided_by_note: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -7378,6 +7483,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RankingOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_reallocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyReallocationOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_reallocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VacancyReallocationIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyReallocationOut"];
                 };
             };
         };

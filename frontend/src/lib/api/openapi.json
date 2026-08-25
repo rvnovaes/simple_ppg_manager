@@ -5377,6 +5377,94 @@
           }
         ]
       }
+    },
+    "/selection/processes/{process_id}/reallocations/": {
+      "get": {
+        "operationId": "apps_selection_router_list_reallocations",
+        "summary": "List Reallocations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VacancyReallocationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "O histórico de realocações do edital, da mais recente para a mais antiga.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_reallocation",
+        "summary": "Create Reallocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacancyReallocationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Registra a decisão da comissão e move a vaga.\n\nEfeito colateral previsto: a classificação já calculada dos alvos\nenvolvidos é zerada — as posições saíram de uma grade que acabou de\nmudar. A secretaria recalcula (`POST processes/{id}/ranking`) antes de\npublicar a lista de novo.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacancyReallocationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -11529,6 +11617,126 @@
           "level"
         ],
         "title": "RankingIn",
+        "type": "object"
+      },
+      "ReallocationKind": {
+        "enum": [
+          "level_transfer",
+          "notice_rectification"
+        ],
+        "title": "ReallocationKind",
+        "type": "string"
+      },
+      "VacancyReallocationOut": {
+        "description": "A realocação como o histórico da tela de resultado a mostra.\n\nAs duas vagas viajam inteiras (`VacancyOut`), com rótulo e nome do\nalvo já resolvidos: a linha do histórico precisa dizer \"1 vaga de\nampla, mestrado → doutorado\" sem a tela cruzar ids.\n\n`quantity` da vaga é o saldo **de agora**, não o do dia da decisão:\nrealocação não guarda foto da grade, e uma segunda realocação sobre a\nmesma linha muda o número que aparece aqui.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ReallocationKind"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "from_vacancy": {
+            "$ref": "#/components/schemas/VacancyOut"
+          },
+          "to_vacancy": {
+            "$ref": "#/components/schemas/VacancyOut"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "decided_on": {
+            "format": "date",
+            "title": "Decided On",
+            "type": "string"
+          },
+          "decided_by_note": {
+            "title": "Decided By Note",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "kind",
+          "kind_label",
+          "from_vacancy",
+          "to_vacancy",
+          "quantity",
+          "reason",
+          "decided_on",
+          "decided_by_note",
+          "created_at"
+        ],
+        "title": "VacancyReallocationOut",
+        "type": "object"
+      },
+      "VacancyReallocationIn": {
+        "description": "A decisão da comissão que move vaga de uma linha da grade para outra.\n\nSem `program_id` e sem `process_id`: o programa é o da sessão e o\nedital vem da URL. `decided_by_note` é o número do ofício ou da ata —\nsem ele a realocação seria um número mudando no banco sem autoria.\n\nA espécie decide o que pode mudar: `level_transfer` é o mesmo alvo\nentre níveis diferentes, `notice_rectification` é o mesmo nível com\nalvo diferente. A categoria de cota é sempre preservada.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ReallocationKind"
+          },
+          "from_vacancy_id": {
+            "title": "From Vacancy Id",
+            "type": "integer"
+          },
+          "to_vacancy_id": {
+            "title": "To Vacancy Id",
+            "type": "integer"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "decided_on": {
+            "format": "date",
+            "title": "Decided On",
+            "type": "string"
+          },
+          "decided_by_note": {
+            "title": "Decided By Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "from_vacancy_id",
+          "to_vacancy_id",
+          "quantity",
+          "reason",
+          "decided_on",
+          "decided_by_note"
+        ],
+        "title": "VacancyReallocationIn",
         "type": "object"
       }
     },

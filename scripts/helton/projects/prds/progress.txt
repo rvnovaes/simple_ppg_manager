@@ -16,6 +16,7 @@ Started: ter. 25 ago 2026 11:00:21 -03
 - `docker compose exec backend python` é o Python do **sistema**, não o do projeto: o venv está em `/opt/venv`. Para conferir dependência dentro do container use `uv run python` (ou `/opt/venv/bin/python`).
 - Dependência nova (`uv add`) só entra no container com **rebuild**: `docker compose up -d --build backend` (+ `restart nginx`).
 - `select_for_update()` **não convive com `select_related` de FK nulável**: o Postgres recusa `FOR UPDATE` sobre o lado nulável de um outer join (`NotSupportedError`). Trave primeiro, leia as relações depois.
+- **`select_for_update()` também quebra com `Meta.ordering` sobre FK nulável**: a ordenação gera o mesmo outer join e o Postgres recusa (`FOR UPDATE cannot be applied to the nullable side of an outer join`). Limpe com `.order_by()` na query que trava.
 - `docker compose restart backend` **quebra o Nginx** (502): o `upstream django` resolve `backend:8000` uma vez, e o container reiniciado ganha IP novo. Reinicie o nginx junto (`docker compose restart nginx`).
 - Rota pública nova: `auth=None` + `# público` justificado + `enforce_rate_limit` + `csrf_protect` explícito na escrita, e o tenant sai do objeto que a chave encontrou (edital aberto, token) — nunca de `program_id` do chamador; a auditoria leva `program=` explícito.
 - **`openapi-fetch`: leia `error` por desestruturação, nunca por `resp.error`.** Rota que só documenta o 200 tipa `error` como `never`, e dentro do `if (resp.error)` o objeto colapsa para `never` (`svelte-check` acusa "Property 'error' does not exist on type 'never'"). Use `const { data, error, response } = await api.GET(...)` e teste `data === undefined`.
@@ -567,4 +568,20 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `f5-reallocate-api` e `f5-convert-to-student` chamam esta chave: `reallocate_vacancy` zera o rank dos `approved` afetados (e o recálculo depois só roda se ninguém estiver `enrolled`), e `convert_to_student` é o que fecha a porta com o primeiro `enrolled`.
   - A tela `selecao/resultado` (f5) já pode contar com `locked` para desabilitar o botão de recalcular e com `tie_unresolved` para marcar quem o edital não desempatou.
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
+---
+
+## 2026-08-25 - f5-reallocate-api
+- `reallocate_vacancy(*, from_vacancy, to_vacancy, quantity, kind, reason, decided_on, note, request)` em `services.py`: trava as duas vagas com `select_for_update`, monta a `VacancyReallocation`, chama `clean()` + `apply_to_vacancies()`, salva as duas vagas e a linha imutável, invalida a classificação e audita `selection.vacancy.reallocate` (payload com `rankings_invalidated`).
+- `_invalidar_classificacao(*vagas)`: zera `final_rank`/`final_outcome`/`ranked_at` dos **aprovados** de cada (edital, nível, alvo) tocado, deduplicado. `enrolled` não é tocado — quem virou aluno não perde a posição.
+- Trava nova no service: origem == destino vira `DomainError(code="same_vacancy")`. Sem ela a `CheckConstraint` `vacancyreallocation_distinct_vacancies` devolveria 500.
+- Schemas `VacancyReallocationIn`/`VacancyReallocationOut` (as duas vagas viajam como `VacancyOut`, com rótulo e alvo resolvidos) e rotas `GET`/`POST /processes/{id}/reallocations/`.
+- **Desvio consciente do PRD**: o `GET` cobra `selection.view_vacancyreallocation` e não `add_`. A tela `selecao/resultado` (f5) é da secretaria, que tem `view_` pela `0006_papeis_da_selecao`; cobrar `add_` no `GET` esconderia dela o ofício que mudou a própria grade que ela opera. O `POST` segue literal: só `add_vacancyreallocation` (Comissão de Seleção) — secretaria recebe 403, como manda o critério de aceite.
+- 15 testes em `tests/test_api_realocacao.py`: transferência entre níveis, retificação entre alvos do mesmo nível, rank zerado (com alvo de fora intacto e matriculado preservado), saldo insuficiente, cota diferente, alvo diferente no `level_transfer`, mesma vaga, edital em rascunho, listagem pela secretaria, 403/404/401/CSRF.
+- `make ready` verde, 1212 testes; `make gen-api` regenerado e commitado.
+- Files: backend/apps/selection/{services,router,schemas}.py, backend/apps/selection/tests/test_api_realocacao.py, frontend/src/lib/api/{openapi.json,schema.d.ts}, scripts/helton/projects/prds/{prd.json,progress.txt}
+- **Learnings for future iterations:**
+  - `Vacancy.Meta.ordering` inclui `project` e `research_line`: qualquer `select_for_update()` sobre `Vacancy` precisa de `.order_by()` para não bater no `FOR UPDATE cannot be applied to the nullable side of an outer join`.
+  - `Application` com `status=enrolled` não se cria na mão: a `CheckConstraint` `application_enrolled_requires_student` exige o aluno. Crie `approved` e chame `enroll(aluno)`.
+  - No edital regular **toda** vaga precisa de `project` (`ensure_target`); no suplementar, de `research_line` e de categoria fora de ampla/racial.
+  - `f5-convert-to-student` vai precisar do inverso desta invalidação: a matrícula tranca a chave (`ranking_locked`), e a realocação depois disso continua zerando quem ainda é `approved`.
 ---

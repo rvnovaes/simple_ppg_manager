@@ -47,6 +47,7 @@ from .models import (
     SelectionStage,
     StageScore,
     Vacancy,
+    VacancyReallocation,
     gerar_protocolo,
 )
 from .pdf import render_record_pdf
@@ -1767,3 +1768,130 @@ def compute_ranking(
         research_line=research_line,
         inscricoes=inscricoes,
     )
+
+
+# ---------------------------------------------------------------------------
+# Realocação de vaga (comissão)
+# ---------------------------------------------------------------------------
+#
+# Depois de publicado o edital, a grade congela (`ensure_editable`): o
+# candidato já se inscreveu contra aquele conteúdo. Mover vaga dali em
+# diante é decisão da comissão, com ofício ou ata, e deixa duas marcas —
+# a linha imutável de `VacancyReallocation` e o novo `quantity` das duas
+# vagas envolvidas.
+#
+# O efeito colateral que ninguém pode esquecer é o **rank invalidado**:
+# quem já estava classificado naquele nível × alvo foi classificado contra
+# um número de vagas que mudou agora. Zerar `final_rank`/`final_outcome`/
+# `ranked_at` dos aprovados obriga a secretaria a recalcular
+# (`compute_ranking`) antes de publicar a lista de novo, em vez de deixar
+# na tela uma classificação silenciosamente desatualizada.
+
+
+def _invalidar_classificacao(*vagas: Vacancy) -> int:
+    """Zera a classificação dos aprovados dos alvos que a realocação mexeu.
+
+    Só `approved` entra: quem já é `enrolled` virou aluno e não perde a
+    posição por causa de uma realocação (e a chave com matriculado nem
+    recalcula — `compute_ranking` recusa com `ranking_locked`).
+    """
+    invalidadas = 0
+    vistos: set[tuple[Any, ...]] = set()
+    for vaga in vagas:
+        chave = (vaga.process_id, vaga.level, vaga.project_id, vaga.research_line_id)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        invalidadas += (
+            Application.objects.filter(
+                process_id=vaga.process_id,
+                level=vaga.level,
+                project_id=vaga.project_id,
+                research_line_id=vaga.research_line_id,
+                ranked_at__isnull=False,
+            )
+            .approved()
+            .update(
+                final_rank=None,
+                final_outcome="",
+                ranked_at=None,
+                updated_at=timezone.now(),
+            )
+        )
+    return invalidadas
+
+
+@transaction.atomic
+def reallocate_vacancy(
+    *,
+    from_vacancy: Vacancy,
+    to_vacancy: Vacancy,
+    quantity: int,
+    kind: str,
+    reason: str,
+    decided_on: date,
+    note: str,
+    request: HttpRequest | None = None,
+) -> VacancyReallocation:
+    """Move `quantity` vagas de uma linha da grade para outra.
+
+    As duas vagas são travadas com `select_for_update` antes de qualquer
+    conta: duas realocações simultâneas sobre a mesma origem poderiam
+    debitar duas vezes o mesmo saldo e deixar `quantity` negativo (o que a
+    coluna nem aceita — seria um 500).
+
+    As regras da espécie (mesmo alvo e níveis diferentes no
+    `level_transfer`, mesmo nível na `notice_rectification`), a
+    preservação da categoria de cota e o saldo disponível moram no
+    `clean()` do model; aqui fica a travessia: travar, aplicar, gravar,
+    invalidar o rank e auditar.
+    """
+    if from_vacancy.pk == to_vacancy.pk:
+        # A CheckConstraint do banco também recusa, mas como IntegrityError
+        # (500). Aqui vira 400 com código, que é o que a tela sabe mostrar.
+        raise DomainError(
+            "A vaga de origem e a de destino precisam ser diferentes.",
+            code="same_vacancy",
+        )
+    # `order_by()` limpa a ordenação padrão de `Vacancy`, que ordena por
+    # projeto e linha: o join do alvo nulável faz o Postgres recusar o
+    # `FOR UPDATE` ("cannot be applied to the nullable side of an outer
+    # join"). A ordem aqui não importa — as duas vagas viram um dicionário.
+    travadas = {
+        vaga.pk: vaga
+        for vaga in Vacancy.objects.select_for_update()
+        .filter(pk__in=[from_vacancy.pk, to_vacancy.pk])
+        .order_by()
+    }
+    origem, destino = travadas[from_vacancy.pk], travadas[to_vacancy.pk]
+
+    realocacao = VacancyReallocation(
+        program_id=origem.program_id,
+        process=origem.process,
+        kind=kind,
+        from_vacancy=origem,
+        to_vacancy=destino,
+        quantity=quantity,
+        reason=reason,
+        decided_on=decided_on,
+        decided_by_note=note,
+    )
+    realocacao.clean()
+    realocacao.apply_to_vacancies()
+    origem.save(update_fields=["quantity", "updated_at"])
+    destino.save(update_fields=["quantity", "updated_at"])
+    realocacao.save()
+
+    invalidadas = _invalidar_classificacao(origem, destino)
+    audit.record(
+        "selection.vacancy.reallocate",
+        request=request,
+        target=realocacao,
+        process_id=origem.process_id,
+        kind=kind,
+        from_vacancy_id=origem.pk,
+        to_vacancy_id=destino.pk,
+        quantity=quantity,
+        rankings_invalidated=invalidadas,
+    )
+    return realocacao
