@@ -15,6 +15,7 @@ from apps.academic.models import Teacher
 
 from .models import (
     Application,
+    ApplicationDocument,
     ApplicationStatus,
     Board,
     QuotaCategory,
@@ -594,3 +595,133 @@ class ApplicationStatusOut(Schema):
     @staticmethod
     def resolve_process_title(obj: Application) -> str:
         return obj.process.title
+
+
+# ---------------------------------------------------------------------------
+# Inscrições (secretaria)
+# ---------------------------------------------------------------------------
+
+
+class ApplicationDocumentOut(Schema):
+    """Um anexo da inscrição, sem o caminho do arquivo.
+
+    Nem `file` nem `file.url` entram aqui, pelo mesmo motivo de
+    `academic.RequestDocumentOut`: o MEDIA é servido pelo Nginx sem passar
+    pelo Django, então publicar a URL entregaria o documento de identidade
+    do candidato a quem descobrisse o endereço — e sem `AuditLog`. O único
+    caminho para o conteúdo é a rota de download, que exige
+    `download_applicationdocument` e registra a leitura.
+    """
+
+    id: int
+    kind: str
+    kind_label: str
+    filename: str
+    size: int
+    uploaded_at: datetime.datetime
+
+    @staticmethod
+    def resolve_kind_label(obj: ApplicationDocument) -> str:
+        return obj.get_kind_display()
+
+    @staticmethod
+    def resolve_filename(obj: ApplicationDocument) -> str:
+        """Só o nome, sem o diretório: o caminho é detalhe do storage e
+        expõe o id do edital e da inscrição sem necessidade."""
+        return Path(obj.file.name or "").name
+
+    @staticmethod
+    def resolve_size(obj: ApplicationDocument) -> int:
+        """Arquivo sumido do storage vale 0, e não erro 500: a lista
+        precisa continuar mostrando que o anexo existe para a secretaria
+        poder cobrar o reenvio."""
+        try:
+            return obj.file.size
+        except (FileNotFoundError, ValueError):
+            return 0
+
+
+class ApplicationOut(Schema):
+    """A inscrição como a lista da secretaria a vê.
+
+    O CPF viaja inteiro: quem lê esta rota é a secretaria, que confere a
+    inscrição contra o documento anexado, e a busca da tela é por nome,
+    protocolo ou CPF. A rota pública de protocolo (`ApplicationStatusOut`)
+    continua sem nada disso.
+    """
+
+    id: int
+    program_id: int
+    process_id: int
+    process_title: str
+    protocol: str
+    full_name: str
+    email: str
+    cpf: str
+    phone_number: str
+    level: SelectionLevel
+    level_label: str
+    project_id: int | None
+    research_line_id: int | None
+    target_label: str
+    quota_category: QuotaCategory
+    quota_category_label: str
+    status: ApplicationStatus
+    status_label: str
+    decision_note: str
+    decided_at: datetime.datetime | None
+    submitted_at: datetime.datetime
+
+    @staticmethod
+    def resolve_process_title(obj: Application) -> str:
+        return obj.process.title
+
+    @staticmethod
+    def resolve_level_label(obj: Application) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_quota_category_label(obj: Application) -> str:
+        return obj.get_quota_category_display()
+
+    @staticmethod
+    def resolve_status_label(obj: Application) -> str:
+        return obj.get_status_display()
+
+    @staticmethod
+    def resolve_target_label(obj: Application) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""
+
+
+class ApplicationDetailOut(ApplicationOut):
+    """O detalhe da inscrição: a lista mais os anexos.
+
+    `missing_documents` sai resolvido porque quem homologa precisa saber,
+    na mesma tela, se o candidato mandou tudo o que o edital e a cota dele
+    exigem — a conta é do model (`required_document_kinds`), não da tela.
+    """
+
+    birth_date: datetime.date
+    documents: list[ApplicationDocumentOut]
+    missing_documents: list[str]
+
+    @staticmethod
+    def resolve_documents(obj: Application) -> Any:
+        return obj.documents.all()
+
+    @staticmethod
+    def resolve_missing_documents(obj: Application) -> list[str]:
+        return obj.missing_documents()
+
+
+class ApplicationDecisionIn(Schema):
+    """A justificativa da decisão da secretaria.
+
+    Uma entrada para as duas rotas: na homologação a nota é opcional
+    (registra a conferência, quando há algo a dizer) e no indeferimento é
+    obrigatória — quem cobra é `Application.reject`, com
+    `rejection_requires_note`, e não o schema: a regra é do domínio.
+    """
+
+    note: str = ""

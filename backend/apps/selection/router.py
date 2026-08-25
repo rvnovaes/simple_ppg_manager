@@ -5,9 +5,11 @@ depois, chamada ao model/service, schema de saída explícito. Zero regra de
 negócio aqui.
 """
 
+from pathlib import Path
+
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import HttpRequest
+from django.http import FileResponse, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
@@ -24,7 +26,9 @@ from apps.programs.models import CollectiveProject, Program, ResearchLine
 
 from .models import (
     Application,
+    ApplicationDocument,
     ApplicationDocumentKind,
+    ApplicationStatus,
     Board,
     QuotaCategory,
     RecordStatus,
@@ -36,7 +40,10 @@ from .models import (
     Vacancy,
 )
 from .schemas import (
+    ApplicationDecisionIn,
+    ApplicationDetailOut,
     ApplicationIn,
+    ApplicationOut,
     ApplicationReceiptOut,
     ApplicationStatusOut,
     BoardIn,
@@ -62,6 +69,7 @@ from .services import (
     LIMITE_DE_LEITURA_PUBLICA,
     edital_com_inscricao_aberta,
     publish_process,
+    so_digitos,
     submit_application,
 )
 
@@ -762,4 +770,181 @@ def get_public_application(request: HttpRequest, protocol: str):
     return get_object_or_404(
         Application.objects.select_related("process"),
         protocol=protocol.strip().upper(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Inscrições (secretaria)
+# ---------------------------------------------------------------------------
+#
+# A inscrição chega pelo formulário público e é conferida aqui: a
+# secretaria lista, abre os anexos e homologa ou indefere. Um model só em
+# cada escrita, então tudo fica no router (Seção 3) — a regra de transição
+# é do `Application` (`homologate`/`reject`), que devolve 409 quando a
+# inscrição já foi decidida.
+
+
+def _inscricoes(program: Program):
+    """As inscrições do programa, com o que `ApplicationOut` expande."""
+    return Application.objects.for_program(program).select_related(
+        "process", "project", "research_line"
+    )
+
+
+@router.get("/applications/", response=list[ApplicationOut])
+@paginate
+def list_applications(
+    request: HttpRequest,
+    process_id: int | None = None,
+    status: ApplicationStatus | None = None,
+    level: SelectionLevel | None = None,
+    quota_category: QuotaCategory | None = None,
+    project_id: int | None = None,
+    research_line_id: int | None = None,
+    search: str | None = None,
+):
+    """As inscrições do programa, com os filtros da tela de conferência."""
+    require_perm(request, "selection.view_application")
+    inscricoes = _inscricoes(current_program(request))
+    # Filtros de conveniência. Nenhum é escopo de tenant — esse já entrou
+    # em `_inscricoes` e não é opcional.
+    filtros = {
+        "process_id": process_id,
+        "status": status,
+        "level": level,
+        "quota_category": quota_category,
+        "project_id": project_id,
+        "research_line_id": research_line_id,
+    }
+    inscricoes = inscricoes.filter(
+        **{campo: valor for campo, valor in filtros.items() if valor is not None}
+    )
+    if search:
+        # Uma caixa só: nome, protocolo ou CPF. O CPF é gravado só com
+        # dígitos, então o que a secretaria digitar com ponto e traço é
+        # normalizado antes de comparar (`529.982.247-25` acha `52998224725`).
+        alvo = Q(full_name__icontains=search) | Q(protocol__icontains=search)
+        digitos = so_digitos(search)
+        if digitos:
+            alvo |= Q(cpf__contains=digitos)
+        inscricoes = inscricoes.filter(alvo)
+    return inscricoes
+
+
+def _inscricao_do_programa(request: HttpRequest, application_id: int) -> Application:
+    """A inscrição desta requisição, já escopada (404 para a de outro
+    programa, nunca 403 — ver `_edital_do_programa`)."""
+    return get_object_or_404(
+        _inscricoes(current_program(request)).prefetch_related("documents"),
+        pk=application_id,
+    )
+
+
+@router.get("/applications/{int:application_id}/", response=ApplicationDetailOut)
+def get_application(request: HttpRequest, application_id: int):
+    """O detalhe com os anexos — a lista deles, não o conteúdo: abrir o
+    arquivo é a rota de download, com permissão própria."""
+    require_perm(request, "selection.view_application")
+    return _inscricao_do_programa(request, application_id)
+
+
+def _decidir(
+    request: HttpRequest,
+    application_id: int,
+    evento: str,
+    decidir,
+) -> Application:
+    """O que homologar e indeferir têm em comum: permissão, escopo,
+    transição do model, gravação e auditoria dentro da mesma transação."""
+    require_perm(request, "selection.change_application")
+    inscricao = _inscricao_do_programa(request, application_id)
+    with transaction.atomic():
+        decidir(inscricao)
+        inscricao.save(
+            update_fields=["status", "decision_note", "decided_at", "updated_at"]
+        )
+        audit.record(
+            evento,
+            request=request,
+            target=inscricao,
+            protocol=inscricao.protocol,
+            process_id=inscricao.process_id,
+        )
+    return inscricao
+
+
+@router.post(
+    "/applications/{int:application_id}/homologate", response=ApplicationDetailOut
+)
+def homologate_application(
+    request: HttpRequest, application_id: int, payload: ApplicationDecisionIn
+):
+    """Homologa a inscrição: a partir daqui o candidato disputa as etapas.
+
+    A nota é opcional — homologar é o caminho normal, e não precisa de
+    justificativa.
+    """
+    return _decidir(
+        request,
+        application_id,
+        "selection.application.homologate",
+        lambda inscricao: inscricao.homologate(at=timezone.now(), note=payload.note),
+    )
+
+
+@router.post("/applications/{int:application_id}/reject", response=ApplicationDetailOut)
+def reject_application(
+    request: HttpRequest, application_id: int, payload: ApplicationDecisionIn
+):
+    """Indefere a inscrição — com justificativa obrigatória.
+
+    Quem cobra a nota é `Application.reject` (400 `rejection_requires_note`)
+    e não o schema: o candidato tem direito de saber por que ficou de fora,
+    e essa é regra do domínio, não validação de formulário.
+    """
+    return _decidir(
+        request,
+        application_id,
+        "selection.application.reject",
+        lambda inscricao: inscricao.reject(at=timezone.now(), note=payload.note),
+    )
+
+
+@router.get("/applications/documents/{int:document_id}/download")
+def download_application_document(request: HttpRequest, document_id: int):
+    """Entrega o anexo — pelo Django, nunca por URL direta do MEDIA.
+
+    Duas permissões, e as duas juntas: `view_application` para chegar até
+    a inscrição e `download_applicationdocument` para abrir o arquivo.
+    Coordenação e Docente enxergam a inscrição e mesmo assim levam 403
+    aqui — identidade, diploma e comprovante de pagamento não são insumo
+    de classificação. Só a Secretaria tem a segunda (migration 0006).
+
+    Diferente do download de `academic`, não há caminho por posse: o
+    candidato do processo seletivo não tem conta, e o que ele consulta
+    pelo protocolo é a situação, não o conteúdo que ele mesmo mandou.
+    """
+    require_perm(request, "selection.view_application")
+    require_perm(request, "selection.download_applicationdocument")
+    program: Program = current_program(request)
+    documento = get_object_or_404(
+        ApplicationDocument.objects.filter(
+            application__in=Application.objects.for_program(program)
+        ).select_related("application"),
+        pk=document_id,
+    )
+    with transaction.atomic():
+        # Auditar leitura é exceção no projeto e aqui é obrigatório: é o
+        # documento pessoal de alguém que sequer tem conta no sistema.
+        audit.record(
+            "selection.application.document_download",
+            request=request,
+            target=documento.application,
+            document_id=documento.pk,
+            kind=documento.kind,
+        )
+    return FileResponse(
+        documento.file.open("rb"),
+        as_attachment=True,
+        filename=Path(documento.file.name or "").name,
     )

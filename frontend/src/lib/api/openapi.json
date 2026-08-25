@@ -4007,6 +4007,331 @@
           "selection"
         ]
       }
+    },
+    "/selection/applications/": {
+      "get": {
+        "operationId": "apps_selection_router_list_applications",
+        "summary": "List Applications",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "process_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Process Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ApplicationStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "quota_category",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuotaCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedApplicationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "As inscrições do programa, com os filtros da tela de conferência.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/{application_id}/": {
+      "get": {
+        "operationId": "apps_selection_router_get_application",
+        "summary": "Get Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "O detalhe com os anexos — a lista deles, não o conteúdo: abrir o\narquivo é a rota de download, com permissão própria.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/{application_id}/homologate": {
+      "post": {
+        "operationId": "apps_selection_router_homologate_application",
+        "summary": "Homologate Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Homologa a inscrição: a partir daqui o candidato disputa as etapas.\n\nA nota é opcional — homologar é o caminho normal, e não precisa de\njustificativa.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/{application_id}/reject": {
+      "post": {
+        "operationId": "apps_selection_router_reject_application",
+        "summary": "Reject Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Indefere a inscrição — com justificativa obrigatória.\n\nQuem cobra a nota é `Application.reject` (400 `rejection_requires_note`)\ne não o schema: o candidato tem direito de saber por que ficou de fora,\ne essa é regra do domínio, não validação de formulário.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/documents/{document_id}/download": {
+      "get": {
+        "operationId": "apps_selection_router_download_application_document",
+        "summary": "Download Application Document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Entrega o anexo — pelo Django, nunca por URL direta do MEDIA.\n\nDuas permissões, e as duas juntas: `view_application` para chegar até\na inscrição e `download_applicationdocument` para abrir o arquivo.\nCoordenação e Docente enxergam a inscrição e mesmo assim levam 403\naqui — identidade, diploma e comprovante de pagamento não são insumo\nde classificação. Só a Secretaria tem a segunda (migration 0006).\n\nDiferente do download de `academic`, não há caminho por posse: o\ncandidato do processo seletivo não tem conta, e o que ele consulta\npelo protocolo é a situação, não o conteúdo que ele mesmo mandou.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -8248,6 +8573,369 @@
           "process_title"
         ],
         "title": "ApplicationStatusOut",
+        "type": "object"
+      },
+      "ApplicationOut": {
+        "description": "A inscrição como a lista da secretaria a vê.\n\nO CPF viaja inteiro: quem lê esta rota é a secretaria, que confere a\ninscrição contra o documento anexado, e a busca da tela é por nome,\nprotocolo ou CPF. A rota pública de protocolo (`ApplicationStatusOut`)\ncontinua sem nada disso.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "cpf": {
+            "title": "Cpf",
+            "type": "string"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "protocol",
+          "full_name",
+          "email",
+          "cpf",
+          "phone_number",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "decision_note",
+          "decided_at",
+          "submitted_at"
+        ],
+        "title": "ApplicationOut",
+        "type": "object"
+      },
+      "PagedApplicationOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedApplicationOut",
+        "type": "object"
+      },
+      "ApplicationDetailOut": {
+        "description": "O detalhe da inscrição: a lista mais os anexos.\n\n`missing_documents` sai resolvido porque quem homologa precisa saber,\nna mesma tela, se o candidato mandou tudo o que o edital e a cota dele\nexigem — a conta é do model (`required_document_kinds`), não da tela.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "cpf": {
+            "title": "Cpf",
+            "type": "string"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "birth_date": {
+            "format": "date",
+            "title": "Birth Date",
+            "type": "string"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationDocumentOut"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "missing_documents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Documents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "protocol",
+          "full_name",
+          "email",
+          "cpf",
+          "phone_number",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "decision_note",
+          "decided_at",
+          "submitted_at",
+          "birth_date",
+          "documents",
+          "missing_documents"
+        ],
+        "title": "ApplicationDetailOut",
+        "type": "object"
+      },
+      "ApplicationDocumentOut": {
+        "description": "Um anexo da inscrição, sem o caminho do arquivo.\n\nNem `file` nem `file.url` entram aqui, pelo mesmo motivo de\n`academic.RequestDocumentOut`: o MEDIA é servido pelo Nginx sem passar\npelo Django, então publicar a URL entregaria o documento de identidade\ndo candidato a quem descobrisse o endereço — e sem `AuditLog`. O único\ncaminho para o conteúdo é a rota de download, que exige\n`download_applicationdocument` e registra a leitura.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "title": "Uploaded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "kind_label",
+          "filename",
+          "size",
+          "uploaded_at"
+        ],
+        "title": "ApplicationDocumentOut",
+        "type": "object"
+      },
+      "ApplicationDecisionIn": {
+        "description": "A justificativa da decisão da secretaria.\n\nUma entrada para as duas rotas: na homologação a nota é opcional\n(registra a conferência, quando há algo a dizer) e no indeferimento é\nobrigatória — quem cobra é `Application.reject`, com\n`rejection_requires_note`, e não o schema: a regra é do domínio.",
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "ApplicationDecisionIn",
         "type": "object"
       }
     },

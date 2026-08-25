@@ -1379,6 +1379,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/applications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Applications
+         * @description As inscrições do programa, com os filtros da tela de conferência.
+         */
+        get: operations["apps_selection_router_list_applications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/{application_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Application
+         * @description O detalhe com os anexos — a lista deles, não o conteúdo: abrir o
+         *     arquivo é a rota de download, com permissão própria.
+         */
+        get: operations["apps_selection_router_get_application"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/{application_id}/homologate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Homologate Application
+         * @description Homologa a inscrição: a partir daqui o candidato disputa as etapas.
+         *
+         *     A nota é opcional — homologar é o caminho normal, e não precisa de
+         *     justificativa.
+         */
+        post: operations["apps_selection_router_homologate_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/{application_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Application
+         * @description Indefere a inscrição — com justificativa obrigatória.
+         *
+         *     Quem cobra a nota é `Application.reject` (400 `rejection_requires_note`)
+         *     e não o schema: o candidato tem direito de saber por que ficou de fora,
+         *     e essa é regra do domínio, não validação de formulário.
+         */
+        post: operations["apps_selection_router_reject_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/documents/{document_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Application Document
+         * @description Entrega o anexo — pelo Django, nunca por URL direta do MEDIA.
+         *
+         *     Duas permissões, e as duas juntas: `view_application` para chegar até
+         *     a inscrição e `download_applicationdocument` para abrir o arquivo.
+         *     Coordenação e Docente enxergam a inscrição e mesmo assim levam 403
+         *     aqui — identidade, diploma e comprovante de pagamento não são insumo
+         *     de classificação. Só a Secretaria tem a segunda (migration 0006).
+         *
+         *     Diferente do download de `academic`, não há caminho por posse: o
+         *     candidato do processo seletivo não tem conta, e o que ele consulta
+         *     pelo protocolo é a situação, não o conteúdo que ele mesmo mandou.
+         */
+        get: operations["apps_selection_router_download_application_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3274,6 +3392,171 @@ export interface components {
             submitted_at: string;
             /** Process Title */
             process_title: string;
+        };
+        /**
+         * ApplicationOut
+         * @description A inscrição como a lista da secretaria a vê.
+         *
+         *     O CPF viaja inteiro: quem lê esta rota é a secretaria, que confere a
+         *     inscrição contra o documento anexado, e a busca da tela é por nome,
+         *     protocolo ou CPF. A rota pública de protocolo (`ApplicationStatusOut`)
+         *     continua sem nada disso.
+         */
+        ApplicationOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /** Cpf */
+            cpf: string;
+            /** Phone Number */
+            phone_number: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+        };
+        /** PagedApplicationOut */
+        PagedApplicationOut: {
+            /** Items */
+            items: components["schemas"]["ApplicationOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * ApplicationDetailOut
+         * @description O detalhe da inscrição: a lista mais os anexos.
+         *
+         *     `missing_documents` sai resolvido porque quem homologa precisa saber,
+         *     na mesma tela, se o candidato mandou tudo o que o edital e a cota dele
+         *     exigem — a conta é do model (`required_document_kinds`), não da tela.
+         */
+        ApplicationDetailOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /** Cpf */
+            cpf: string;
+            /** Phone Number */
+            phone_number: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /**
+             * Birth Date
+             * Format: date
+             */
+            birth_date: string;
+            /** Documents */
+            documents: components["schemas"]["ApplicationDocumentOut"][];
+            /** Missing Documents */
+            missing_documents: string[];
+        };
+        /**
+         * ApplicationDocumentOut
+         * @description Um anexo da inscrição, sem o caminho do arquivo.
+         *
+         *     Nem `file` nem `file.url` entram aqui, pelo mesmo motivo de
+         *     `academic.RequestDocumentOut`: o MEDIA é servido pelo Nginx sem passar
+         *     pelo Django, então publicar a URL entregaria o documento de identidade
+         *     do candidato a quem descobrisse o endereço — e sem `AuditLog`. O único
+         *     caminho para o conteúdo é a rota de download, que exige
+         *     `download_applicationdocument` e registra a leitura.
+         */
+        ApplicationDocumentOut: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Kind Label */
+            kind_label: string;
+            /** Filename */
+            filename: string;
+            /** Size */
+            size: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
+         * ApplicationDecisionIn
+         * @description A justificativa da decisão da secretaria.
+         *
+         *     Uma entrada para as duas rotas: na homologação a nota é opcional
+         *     (registra a conferência, quando há algo a dizer) e no indeferimento é
+         *     obrigatória — quem cobra é `Application.reject`, com
+         *     `rejection_requires_note`, e não o schema: a regra é do domínio.
+         */
+        ApplicationDecisionIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
     };
     responses: never;
@@ -5328,6 +5611,130 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApplicationStatusOut"];
                 };
+            };
+        };
+    };
+    apps_selection_router_list_applications: {
+        parameters: {
+            query?: {
+                process_id?: number | null;
+                status?: components["schemas"]["ApplicationStatus"] | null;
+                level?: components["schemas"]["SelectionLevel"] | null;
+                quota_category?: components["schemas"]["QuotaCategory"] | null;
+                project_id?: number | null;
+                research_line_id?: number | null;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedApplicationOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_homologate_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_reject_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_download_application_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
