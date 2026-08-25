@@ -60,3 +60,22 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - Os `clean()` deste app checam `ensure_target` ANTES da query de duplicata, então teste de alvo incompatível roda em memória com `process=SelectionProcess(pk=1, ...)`.
   - Teste de `IntegrityError` dentro de `django_db` precisa de `with transaction.atomic()` para não sujar a transação do teste.
 ---
+## 2026-08-25 11:38 - f0-application-document
+- `Application` (`program`/`process` PROTECT, `protocol` unique, `cpf` 11 dígitos, alvo XOR, cota, `status`, decisão, `eliminated_at_stage`, `final_score/rank/outcome`, `student` OneToOne `academic.Student` PROTECT `related_name="selection_application"`, `submitted_at` sem auto_now — é dado de negócio). Unique `(process, cpf)`; checks `final_score` 0–100 ou null, `eliminated ⇒ eliminated_at_stage`, `enrolled ⇒ student`.
+- QuerySet `for_program/for_process/alive()/approved()/for_target(level, project, research_line)/convocable_for(stage)` (stub = vivas do edital da etapa; f4 refina).
+- `clean()` → `invalid_cpf` (`cpf_valido`, mod-11 de módulo, barra sequência repetida), `invalid_birth_date` (hoje ou futuro), `ensure_target`, `ensure_quota_category`, `duplicate_application`. `required_document_kinds()` e `missing_documents(present=None)` — com `present` não consulta o banco (para o lote do POST).
+- Transições sem salvar: `homologate(at, note="")`, `reject(at, note)` → `rejection_requires_note`, `eliminate(stage)` → `stage_mismatch`, `approve(score)` → `invalid_score`, `reinstate()`, `enroll(student)` → `not_classified` (409). `_exigir_status(*esperados)` gera `application_not_<status esperado>` (409).
+- `gerar_protocolo(process)` → `PS{ano}{R|S}-{8 hex maiúsculos}` via `secrets.token_hex(4)`. `DESFECHOS_CLASSIFICADOS` constante.
+- `ApplicationDocument` (CASCADE `documents`, unique `(application, kind)`, `upload_to=caminho_do_documento_de_inscricao`, `Meta.permissions` `download_applicationdocument`, `validate_upload` classmethod com as constantes de `academic`, `clean()` → `duplicate_document`).
+- Migration `selection/0003_application.py` lida (3 checks + XOR + 2 uniques + permissão custom).
+- Conftest: fixture `inscricao` (homologada, mestrado × `projeto`, ampla, CPF 52998224725, no `edital_regular`).
+- 66 testes em `selection/tests/test_application.py` (76 casos coletados com os parametrizados; 11 com banco). `make ready` verde, 714 testes; `makemigrations --check` limpo.
+- Files: backend/apps/selection/models.py, backend/apps/selection/migrations/0003_application.py, backend/apps/selection/tests/conftest.py, backend/apps/selection/tests/test_application.py
+- **Learnings for future iterations:**
+  - `homologate`/`reject` recebem `at` (como `publish(at)`) — o plano só citava `note`; o router passa `timezone.now()`. Quem chamar precisa lembrar do argumento.
+  - Não dá para atribuir `object()` a FK em memória (Django valida a instância): use `Student(pk=1)`.
+  - Em teste em memória, `Application(process=None, ...)` faz o `clean()` parar depois de CPF e nascimento — é o jeito de testar só esses dois.
+  - `ruff` B905: `zip()` exige `strict=`. `ruff format` reformata sozinho no `make lint`; ler o diff antes do commit.
+  - Cuidado com `cd backend && ...` quando o cwd já é `backend`: o `cd` falha e a cadeia inteira é pulada em silêncio.
+  - CPFs válidos para teste: 52998224725, 11144477735, 12345678909.
+---

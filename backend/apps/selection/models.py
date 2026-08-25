@@ -17,13 +17,19 @@ Convenções válidas para todos os models deste app (não repetidas por model):
   colidem (precedente: `AdjustmentStatus` em `apps/academic/models.py`).
 """
 
-from datetime import datetime
+import secrets
+from collections.abc import Iterable
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from django.db import models
 from django.utils import timezone
 
+from apps.academic.models import (
+    EXTENSOES_DE_DOCUMENTO,
+    TAMANHO_MAXIMO_DO_DOCUMENTO,
+)
 from apps.core.exceptions import DomainError, InvalidStateTransition
 
 # ---------------------------------------------------------------------------
@@ -823,4 +829,409 @@ class Board(models.Model):
             raise DomainError(
                 "Já existe banca para este nível e este alvo neste edital.",
                 code="duplicate_board",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Application (inscrição)
+# ---------------------------------------------------------------------------
+
+
+def cpf_valido(cpf: str) -> bool:
+    """Onze dígitos e os dois verificadores do mod-11 conferindo.
+
+    Sequências repetidas (`11111111111`) passam no mod-11 e por isso são
+    barradas à parte — é o CPF "de teste" que todo formulário público
+    recebe. Não consulta a Receita: a validação diz que o número é bem
+    formado, não que pertence ao candidato.
+    """
+    if len(cpf) != 11 or not cpf.isdigit() or cpf == cpf[0] * 11:
+        return False
+    digitos = [int(d) for d in cpf]
+    for posicao in (9, 10):
+        soma = sum(
+            d * peso
+            for d, peso in zip(
+                digitos[:posicao], range(posicao + 1, 1, -1), strict=True
+            )
+        )
+        esperado = (soma * 10 % 11) % 10
+        if digitos[posicao] != esperado:
+            return False
+    return True
+
+
+def gerar_protocolo(process: SelectionProcess) -> str:
+    """`PS{ano}{R|S}-{8 hex maiúsculos}` — é o que o candidato anota e
+    digita na consulta pública. `secrets` porque o protocolo é o único
+    segredo entre o candidato e a inscrição dele; a unicidade é da coluna,
+    e quem gera tenta de novo na colisão (32 bits: rara, não impossível).
+    """
+    letra = "R" if process.kind == SelectionKind.REGULAR else "S"
+    return f"PS{process.year}{letra}-{secrets.token_hex(4).upper()}"
+
+
+DESFECHOS_CLASSIFICADOS = frozenset(
+    {RankingOutcome.CLASSIFIED_OPEN, RankingOutcome.CLASSIFIED_QUOTA}
+)
+
+
+class ApplicationQuerySet(models.QuerySet["Application"]):
+    def for_program(self, program: Any) -> "ApplicationQuerySet":
+        return self.filter(program=program)
+
+    def for_process(self, process: Any) -> "ApplicationQuerySet":
+        return self.filter(process=process)
+
+    def alive(self) -> "ApplicationQuerySet":
+        """Quem ainda disputa: homologada e não eliminada nem aprovada.
+
+        Promoção entre etapas não muda o status (deriva da ata assinada),
+        então "viva" é exatamente `homologated`.
+        """
+        return self.filter(status=ApplicationStatus.HOMOLOGATED)
+
+    def approved(self) -> "ApplicationQuerySet":
+        return self.filter(status=ApplicationStatus.APPROVED)
+
+    def for_target(
+        self, level: str, project: Any, research_line: Any
+    ) -> "ApplicationQuerySet":
+        """Mesmo nível e mesmo alvo — a unidade da banca, da ata e da
+        classificação. Um dos dois alvos é sempre `None` (XOR)."""
+        return self.filter(level=level, project=project, research_line=research_line)
+
+    def convocable_for(self, stage: "SelectionStage") -> "ApplicationQuerySet":
+        """Quem pode ser convocado para a etapa: as inscrições vivas do
+        edital. Versão simples — `f4-convocacoes-api` refina para exigir
+        aprovação na etapa anterior."""
+        return self.for_process(stage.process_id).alive()
+
+
+class Application(models.Model):
+    """Inscrição de um candidato em um edital, para um nível × alvo × cota.
+
+    Nasce pelo formulário público (`submit_application`), sem usuário:
+    o candidato não tem conta e o protocolo é a chave dele. Mesmo CPF
+    pode se inscrever no Regular e no Suplementar do mesmo ano — a unique
+    é por edital.
+
+    As transições não salvam (`InvalidStateTransition` = 409); o instante
+    da decisão vem de fora, como em `SelectionProcess.publish(at)`.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="selection_applications",
+        verbose_name="programa",
+    )
+    process = models.ForeignKey(
+        SelectionProcess,
+        on_delete=models.PROTECT,
+        related_name="applications",
+        verbose_name="edital",
+    )
+    protocol = models.CharField("protocolo", max_length=20, unique=True)
+    full_name = models.CharField("nome completo", max_length=200)
+    email = models.EmailField("e-mail")
+    cpf = models.CharField("CPF", max_length=11)
+    birth_date = models.DateField("data de nascimento")
+    phone_number = models.CharField("telefone", max_length=30, blank=True)
+    level = models.CharField("nível", max_length=20, choices=SelectionLevel)
+    project = models.ForeignKey(
+        "programs.CollectiveProject",
+        on_delete=models.PROTECT,
+        related_name="selection_applications",
+        null=True,
+        blank=True,
+        verbose_name="projeto coletivo",
+    )
+    research_line = models.ForeignKey(
+        "programs.ResearchLine",
+        on_delete=models.PROTECT,
+        related_name="selection_applications",
+        null=True,
+        blank=True,
+        verbose_name="linha de pesquisa",
+    )
+    quota_category = models.CharField(
+        "categoria de cota", max_length=20, choices=QuotaCategory
+    )
+    status = models.CharField(
+        "situação",
+        max_length=20,
+        choices=ApplicationStatus,
+        default=ApplicationStatus.SUBMITTED,
+    )
+    decision_note = models.TextField("nota da decisão", blank=True)
+    decided_at = models.DateTimeField("decidida em", null=True, blank=True)
+    eliminated_at_stage = models.ForeignKey(
+        SelectionStage,
+        on_delete=models.PROTECT,
+        related_name="eliminated_applications",
+        null=True,
+        blank=True,
+        verbose_name="eliminada na etapa",
+    )
+    final_score = models.DecimalField(
+        "nota final", max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    final_rank = models.PositiveIntegerField("classificação", null=True, blank=True)
+    final_outcome = models.CharField(
+        "resultado", max_length=20, choices=RankingOutcome, blank=True
+    )
+    ranked_at = models.DateTimeField("classificada em", null=True, blank=True)
+    student = models.OneToOneField(
+        "academic.Student",
+        on_delete=models.PROTECT,
+        related_name="selection_application",
+        null=True,
+        blank=True,
+        verbose_name="aluno",
+    )
+    submitted_at = models.DateTimeField("inscrita em")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ApplicationQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "inscrição"
+        verbose_name_plural = "inscrições"
+        ordering = ["process", "full_name"]
+        constraints = [
+            xor_de_alvo("application"),
+            models.UniqueConstraint(
+                fields=["process", "cpf"],
+                name="unique_inscricao_por_edital_e_cpf",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(final_score__isnull=True)
+                | models.Q(final_score__gte=0, final_score__lte=100),
+                name="application_final_score_range",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(status=ApplicationStatus.ELIMINATED)
+                | models.Q(eliminated_at_stage__isnull=False),
+                name="application_eliminated_requires_stage",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(status=ApplicationStatus.ENROLLED)
+                | models.Q(student__isnull=False),
+                name="application_enrolled_requires_student",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.protocol} — {self.full_name}"
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """CPF bem formado, nascimento no passado, alvo e cota compatíveis
+        com o edital e um CPF por edital (espelho da UniqueConstraint)."""
+        super().clean()
+        if not cpf_valido(self.cpf or ""):
+            raise DomainError("O CPF informado não é válido.", code="invalid_cpf")
+        if self.birth_date is not None and self.birth_date >= date.today():
+            raise DomainError(
+                "A data de nascimento precisa estar no passado.",
+                code="invalid_birth_date",
+            )
+        if self.process_id is None:
+            return
+        self.process.ensure_target(self.project, self.research_line)
+        if self.quota_category:
+            self.process.ensure_quota_category(self.quota_category)
+        duplicatas = Application.objects.filter(
+            process_id=self.process_id, cpf=self.cpf
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Já existe inscrição com este CPF neste edital.",
+                code="duplicate_application",
+            )
+
+    # -- documentos -------------------------------------------------------
+
+    def required_document_kinds(self) -> list[str]:
+        """Os documentos que esta inscrição precisa ter, na ordem da tela.
+
+        Depende do tipo do edital (resumo expandido no Regular, memorial no
+        Suplementar) e da cota (comprovação fora da ampla concorrência).
+        """
+        exigidos = [
+            ApplicationDocumentKind.IDENTITY,
+            ApplicationDocumentKind.DIPLOMA,
+            ApplicationDocumentKind.LATTES,
+            ApplicationDocumentKind.PAYMENT_RECEIPT,
+        ]
+        if self.process.kind == SelectionKind.REGULAR:
+            exigidos.append(ApplicationDocumentKind.EXPANDED_ABSTRACT)
+        else:
+            exigidos.append(ApplicationDocumentKind.MEMORIAL)
+        if self.quota_category != QuotaCategory.OPEN:
+            exigidos.append(ApplicationDocumentKind.QUOTA_PROOF)
+        return [str(k) for k in exigidos]
+
+    def missing_documents(self, present: Iterable[str] | None = None) -> list[str]:
+        """Exigidos que faltam. `present` permite checar o lote do POST
+        antes de gravar qualquer arquivo; sem ele, consulta os anexos."""
+        if present is None:
+            present = self.documents.values_list("kind", flat=True)
+        existentes = set(present)
+        return [k for k in self.required_document_kinds() if k not in existentes]
+
+    # -- estado -----------------------------------------------------------
+
+    def _exigir_status(self, *esperados: str) -> None:
+        if self.status not in esperados:
+            rotulos = " ou ".join(ApplicationStatus(e).label.lower() for e in esperados)
+            raise InvalidStateTransition(
+                f"A inscrição precisa estar {rotulos}; está "
+                f"{self.get_status_display().lower()}.",
+                code=f"application_not_{esperados[0]}",
+            )
+
+    def homologate(self, at: datetime, note: str = "") -> None:
+        self._exigir_status(ApplicationStatus.SUBMITTED)
+        self.status = ApplicationStatus.HOMOLOGATED
+        self.decision_note = note
+        self.decided_at = at
+
+    def reject(self, at: datetime, note: str) -> None:
+        self._exigir_status(ApplicationStatus.SUBMITTED)
+        if not note.strip():
+            raise DomainError(
+                "Indeferir exige uma justificativa.", code="rejection_requires_note"
+            )
+        self.status = ApplicationStatus.REJECTED
+        self.decision_note = note
+        self.decided_at = at
+
+    def eliminate(self, stage: SelectionStage) -> None:
+        """Sistema, ao fechar a etapa: faltou ou ficou abaixo do corte."""
+        self._exigir_status(ApplicationStatus.HOMOLOGATED)
+        if stage.process_id != self.process_id:
+            raise DomainError(
+                "A etapa não pertence ao edital desta inscrição.",
+                code="stage_mismatch",
+            )
+        self.status = ApplicationStatus.ELIMINATED
+        self.eliminated_at_stage = stage
+
+    def approve(self, score: Decimal) -> None:
+        """Sistema, ao fechar a última etapa com nota no corte ou acima."""
+        self._exigir_status(ApplicationStatus.HOMOLOGATED)
+        if not Decimal(0) <= score <= NOTA_MAXIMA:
+            raise DomainError(
+                f"A nota final fica entre 0 e {NOTA_MAXIMA}.", code="invalid_score"
+            )
+        self.status = ApplicationStatus.APPROVED
+        self.final_score = score
+
+    def reinstate(self) -> None:
+        """Eliminada volta a viva. Fase 2: só a retificação de ata chama."""
+        self._exigir_status(ApplicationStatus.ELIMINATED)
+        self.status = ApplicationStatus.HOMOLOGATED
+        self.eliminated_at_stage = None
+
+    def enroll(self, student: Any) -> None:
+        """Aprovada e classificada vira aluno (`convert_to_student`)."""
+        self._exigir_status(ApplicationStatus.APPROVED)
+        if self.final_outcome not in DESFECHOS_CLASSIFICADOS:
+            raise InvalidStateTransition(
+                "Só uma inscrição classificada pode ser convertida em aluno.",
+                code="not_classified",
+            )
+        self.status = ApplicationStatus.ENROLLED
+        self.student = student
+
+
+# ---------------------------------------------------------------------------
+# ApplicationDocument (anexo da inscrição)
+# ---------------------------------------------------------------------------
+
+
+def caminho_do_documento_de_inscricao(
+    instance: "ApplicationDocument", filename: str
+) -> str:
+    """`selecao/edital-{id}/inscricao-{id}/{filename}` — mesmo prefixo do
+    PDF do edital e das atas (ver `caminho_do_edital`)."""
+    return (
+        f"selecao/edital-{instance.application.process_id}/"
+        f"inscricao-{instance.application_id}/{filename}"
+    )
+
+
+class ApplicationDocument(models.Model):
+    """Um documento anexado à inscrição, um por tipo.
+
+    Sem FK `program` (filho de agregado, como `RequestDocument` em
+    `academic`): quem é auditado é a inscrição. A permissão custom
+    `download_applicationdocument` separa "ver a lista" de "abrir o
+    arquivo" — a segunda expõe dado pessoal do candidato.
+    """
+
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="documents",
+        verbose_name="inscrição",
+    )
+    kind = models.CharField("tipo", max_length=20, choices=ApplicationDocumentKind)
+    file = models.FileField("arquivo", upload_to=caminho_do_documento_de_inscricao)
+    uploaded_at = models.DateTimeField("anexado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "documento da inscrição"
+        verbose_name_plural = "documentos da inscrição"
+        ordering = ["application", "kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "kind"],
+                name="unique_documento_por_inscricao_e_tipo",
+            ),
+        ]
+        permissions = [
+            ("download_applicationdocument", "Pode baixar documento da inscrição"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} — {self.application_id}"
+
+    @classmethod
+    def validate_upload(cls, *, filename: str, size: int) -> None:
+        """Formato e tamanho do que chega, com as mesmas constantes de
+        `academic.RequestDocument` (uma fonte para o que o programa aceita
+        como anexo). Método de classe: recusa antes de existir instância."""
+        if not filename or not filename.lower().endswith(EXTENSOES_DE_DOCUMENTO):
+            aceitas = ", ".join(EXTENSOES_DE_DOCUMENTO)
+            raise DomainError(
+                f"O documento precisa ser um arquivo {aceitas}.",
+                code="invalid_document",
+            )
+        if size > TAMANHO_MAXIMO_DO_DOCUMENTO:
+            limite = TAMANHO_MAXIMO_DO_DOCUMENTO // (1024 * 1024)
+            raise DomainError(
+                f"O documento tem no máximo {limite} MB.", code="invalid_document"
+            )
+
+    def clean(self) -> None:
+        """Um documento por tipo na inscrição (espelho da UniqueConstraint)."""
+        super().clean()
+        if self.application_id is None:
+            return
+        duplicatas = ApplicationDocument.objects.filter(
+            application_id=self.application_id, kind=self.kind
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "A inscrição já tem um documento deste tipo.",
+                code="duplicate_document",
             )

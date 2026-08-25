@@ -17,11 +17,14 @@ from apps.academic.models import Teacher
 from apps.people.models import Person
 from apps.programs.models import CollectiveProject, Program, ResearchLine
 from apps.selection.models import (
+    Application,
     Board,
+    QuotaCategory,
     SelectionKind,
     SelectionLevel,
     SelectionProcess,
     SelectionStage,
+    gerar_protocolo,
 )
 
 ABERTURA = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
@@ -165,3 +168,30 @@ def banca_regular(
     banca.clean()
     banca.save()
     return banca
+
+
+@pytest.fixture
+def inscricao(
+    program: Program,
+    edital_regular: SelectionProcess,
+    projeto: CollectiveProject,
+) -> Application:
+    """Inscrição homologada de mestrado × projeto, ampla concorrência, no
+    edital regular — o candidato "vivo" das etapas."""
+    candidata = Application(
+        program=program,
+        process=edital_regular,
+        protocol=gerar_protocolo(edital_regular),
+        full_name="Ana Lima",
+        email="ana@example.com",
+        cpf="52998224725",
+        birth_date=date(1995, 5, 20),
+        level=SelectionLevel.MASTERS,
+        project=projeto,
+        quota_category=QuotaCategory.OPEN,
+        submitted_at=datetime(2026, 2, 1, 10, 0, tzinfo=UTC),
+    )
+    candidata.clean()
+    candidata.homologate(at=datetime(2026, 2, 2, 10, 0, tzinfo=UTC))
+    candidata.save()
+    return candidata
