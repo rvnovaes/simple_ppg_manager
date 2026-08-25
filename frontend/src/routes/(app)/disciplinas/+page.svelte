@@ -15,6 +15,12 @@
 	let busca = $state('');
 	let filtroAtivas = $state<'' | 'sim' | 'nao'>('');
 
+	// Ordenação também em memória, pelo mesmo motivo: a lista inteira já veio.
+	// Ordenar no servidor exigiria parâmetro novo no contrato da API — troca
+	// que só se paga quando o catálogo passar de uma página.
+	let ordenarPor = $state<'code' | 'name' | 'is_active'>('code');
+	let direcao = $state<'asc' | 'desc'>('asc');
+
 	// Coordenação, docente e discente só leem: sem a permissão de escrita o
 	// formulário nem existe na tela (a checagem que vale é a do backend).
 	const podeCriar = $derived(sessao.pode('programs.add_discipline'));
@@ -22,19 +28,44 @@
 
 	const visiveis = $derived.by(() => {
 		const termo = busca.trim().toLocaleLowerCase('pt-BR');
-		return disciplinas.filter((d) => {
-			if (filtroAtivas === 'sim' && !d.is_active) return false;
-			if (filtroAtivas === 'nao' && d.is_active) return false;
-			if (termo === '') return true;
-			return (
-				d.code.toLocaleLowerCase('pt-BR').includes(termo) ||
-				d.name.toLocaleLowerCase('pt-BR').includes(termo)
-			);
-		});
+		return (
+			disciplinas
+				.filter((d) => {
+					if (filtroAtivas === 'sim' && !d.is_active) return false;
+					if (filtroAtivas === 'nao' && d.is_active) return false;
+					if (termo === '') return true;
+					return (
+						d.code.toLocaleLowerCase('pt-BR').includes(termo) ||
+						d.name.toLocaleLowerCase('pt-BR').includes(termo)
+					);
+				})
+				// filter() já devolveu array novo: ordenar aqui não mexe em
+				// `disciplinas`. É o único lugar que decide a ordem da tela.
+				.sort(comparar)
+		);
 	});
 
 	function porCodigo(a: Disciplina, b: Disciplina): number {
-		return a.code.localeCompare(b.code, 'pt-BR');
+		// numeric: true para DIR90 vir antes de DIR100. Sem isso a comparação
+		// é texto puro, o "1" decide contra o "9" e a ordem foge da esperada
+		// assim que os códigos deixarem de ter a mesma largura.
+		return a.code.localeCompare(b.code, 'pt-BR', { numeric: true });
+	}
+
+	function comparar(a: Disciplina, b: Disciplina): number {
+		let base: number;
+		if (ordenarPor === 'name') {
+			base = a.name.localeCompare(b.name, 'pt-BR');
+		} else if (ordenarPor === 'is_active') {
+			// Situação não tem ordem natural; aqui crescente = ativa primeiro,
+			// que é o que interessa ver no topo.
+			base = Number(b.is_active) - Number(a.is_active);
+		} else {
+			base = porCodigo(a, b);
+		}
+		// Empate desempata por código, sempre crescente: dois nomes iguais ou
+		// a coluna de situação inteira empatada deixariam a ordem indefinida.
+		return (direcao === 'desc' ? -base : base) || porCodigo(a, b);
 	}
 
 	async function carregar() {
@@ -44,7 +75,8 @@
 		if (error) {
 			erro = mensagemDeErro(error, 'Não foi possível carregar o catálogo de disciplinas.');
 		} else {
-			disciplinas = (data?.items ?? []).slice().sort(porCodigo);
+			// Sem ordenar aqui: quem ordena é `visiveis`, com o critério escolhido.
+			disciplinas = data?.items ?? [];
 		}
 		carregando = false;
 	}
@@ -94,9 +126,9 @@
 			erro = mensagemDeErro(error, 'Não foi possível salvar a disciplina.');
 			return;
 		}
-		disciplinas = (
-			alvo ? disciplinas.map((d) => (d.id === data.id ? data : d)) : [...disciplinas, data]
-		).sort(porCodigo);
+		disciplinas = alvo
+			? disciplinas.map((d) => (d.id === data.id ? data : d))
+			: [...disciplinas, data];
 		fecharForm();
 	}
 
@@ -152,7 +184,7 @@
 	</form>
 {/if}
 
-<div class="mt-8 grid gap-4 sm:grid-cols-[1fr_auto]">
+<div class="mt-8 grid gap-4 sm:grid-cols-[1fr_auto_auto_auto]">
 	<div>
 		<label class="etiqueta mb-2 block" for="disciplina-busca">Buscar por código ou nome</label>
 		<input id="disciplina-busca" class="campo" bind:value={busca} placeholder="DIR001, Direito…" />
@@ -163,6 +195,21 @@
 			<option value="">Todas</option>
 			<option value="sim">Ativas</option>
 			<option value="nao">Inativas</option>
+		</select>
+	</div>
+	<div>
+		<label class="etiqueta mb-2 block" for="disciplina-ordenar-por">Ordenar por</label>
+		<select id="disciplina-ordenar-por" class="campo" bind:value={ordenarPor}>
+			<option value="code">Código</option>
+			<option value="name">Nome</option>
+			<option value="is_active">Situação</option>
+		</select>
+	</div>
+	<div>
+		<label class="etiqueta mb-2 block" for="disciplina-direcao">Ordem</label>
+		<select id="disciplina-direcao" class="campo" bind:value={direcao}>
+			<option value="asc">Crescente</option>
+			<option value="desc">Decrescente</option>
 		</select>
 	</div>
 </div>
