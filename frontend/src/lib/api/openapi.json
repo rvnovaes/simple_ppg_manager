@@ -5024,6 +5024,57 @@
         ]
       }
     },
+    "/selection/processes/{process_id}/stages/{stage_id}/convocable": {
+      "get": {
+        "operationId": "apps_selection_router_list_convocable",
+        "summary": "List Convocable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConvocableApplicationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Quem esta etapa pode convocar — o que o botão de disparo vai mandar.\n\nA regra de quem é convocável mora no manager (`convocable_for`); esta\nrota só a expõe para a tela não ter de refazê-la. `already_convoked`\nmarca quem já recebeu e-mail nesta etapa em lote nenhum, que é\nexatamente o que `_abrir_lote` exclui — a soma dos não marcados é o\ntamanho do próximo lote.\n\nSem paginação, como a listagem de lotes: são os candidatos vivos de\numa etapa de um edital, e a tela mostra todos.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/selection/processes/{process_id}/stages/{stage_id}/convocations": {
       "get": {
         "operationId": "apps_selection_router_list_convocations",
@@ -5110,6 +5161,44 @@
           }
         },
         "description": "Dispara a convocação da etapa para quem ainda não foi chamado.\n\nReexecutar é seguro e é o fluxo previsto: quem já recebeu e-mail\nnesta etapa fica de fora, então a secretaria clica de novo depois de\nhomologar mais uma inscrição e só ela é convocada. Se não sobrou\nninguém, a resposta é 4xx (`no_convocable_applications`) — e não um\nlote vazio.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/convocations/{convocation_id}": {
+      "get": {
+        "operationId": "apps_selection_router_get_convocation",
+        "summary": "Get Convocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "convocation_id",
+            "schema": {
+              "title": "Convocation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvocationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Um lote com os destinatários — quem recebeu, quem falhou e por quê.\n\nA listagem por etapa devolve só a contagem; é aqui que a secretaria\nabre o lote para achar o endereço errado antes de mandar reenviar.",
         "tags": [
           "selection"
         ],
@@ -10745,6 +10834,72 @@
           }
         },
         "title": "ApplicationDecisionIn",
+        "type": "object"
+      },
+      "ConvocableApplicationOut": {
+        "description": "Um candidato que a etapa pode convocar, como a tela o mostra antes\nde disparar o lote.\n\nQuem decide o que é \"convocável\" é `Application.objects.convocable_for`\n— na etapa 1, quem está vivo; da 2 em diante, só as chaves cuja ata\nanterior está assinada. A tela nunca refaz essa conta: ela lê esta\nrota. `already_convoked` é o que o disparo vai pular (quem já recebeu\ne-mail nesta etapa, em lote nenhum), e existe para a secretaria saber\nde antemão quantos e-mails o botão manda.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "already_convoked": {
+            "title": "Already Convoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "protocol",
+          "full_name",
+          "email",
+          "level",
+          "level_label",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "already_convoked"
+        ],
+        "title": "ConvocableApplicationOut",
         "type": "object"
       },
       "ConvocationOut": {

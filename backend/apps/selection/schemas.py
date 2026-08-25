@@ -1276,3 +1276,46 @@ class ConvocationDetailOut(ConvocationOut):
     @staticmethod
     def resolve_emails(obj: Convocation) -> Any:
         return obj.emails.all()
+
+
+class ConvocableApplicationOut(Schema):
+    """Um candidato que a etapa pode convocar, como a tela o mostra antes
+    de disparar o lote.
+
+    Quem decide o que é "convocável" é `Application.objects.convocable_for`
+    — na etapa 1, quem está vivo; da 2 em diante, só as chaves cuja ata
+    anterior está assinada. A tela nunca refaz essa conta: ela lê esta
+    rota. `already_convoked` é o que o disparo vai pular (quem já recebeu
+    e-mail nesta etapa, em lote nenhum), e existe para a secretaria saber
+    de antemão quantos e-mails o botão manda.
+    """
+
+    id: int
+    protocol: str
+    full_name: str
+    email: str
+    level: SelectionLevel
+    level_label: str
+    target_label: str
+    quota_category: QuotaCategory
+    quota_category_label: str
+    status: ApplicationStatus
+    status_label: str
+    already_convoked: bool
+
+    @staticmethod
+    def resolve_level_label(obj: Application) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_quota_category_label(obj: Application) -> str:
+        return obj.get_quota_category_display()
+
+    @staticmethod
+    def resolve_status_label(obj: Application) -> str:
+        return obj.get_status_display()
+
+    @staticmethod
+    def resolve_target_label(obj: Application) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""

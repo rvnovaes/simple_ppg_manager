@@ -8,7 +8,7 @@ negócio aqui.
 from pathlib import Path
 
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -33,6 +33,7 @@ from .models import (
     ApplicationStatus,
     Board,
     Convocation,
+    ConvocationEmail,
     ExaminationRecord,
     QuotaCategory,
     RecordSignature,
@@ -55,6 +56,7 @@ from .schemas import (
     BoardIn,
     BoardOut,
     BoardPatch,
+    ConvocableApplicationOut,
     ConvocationDetailOut,
     ConvocationOut,
     ExaminationRecordOut,
@@ -1586,6 +1588,36 @@ def _lotes_da_etapa(edital: SelectionProcess, etapa: SelectionStage):
 
 
 @router.get(
+    "/processes/{int:process_id}/stages/{int:stage_id}/convocable",
+    response=list[ConvocableApplicationOut],
+)
+def list_convocable(request: HttpRequest, process_id: int, stage_id: int):
+    """Quem esta etapa pode convocar — o que o botão de disparo vai mandar.
+
+    A regra de quem é convocável mora no manager (`convocable_for`); esta
+    rota só a expõe para a tela não ter de refazê-la. `already_convoked`
+    marca quem já recebeu e-mail nesta etapa em lote nenhum, que é
+    exatamente o que `_abrir_lote` exclui — a soma dos não marcados é o
+    tamanho do próximo lote.
+
+    Sem paginação, como a listagem de lotes: são os candidatos vivos de
+    uma etapa de um edital, e a tela mostra todos.
+    """
+    require_perm(request, "selection.view_convocation")
+    edital = _edital_do_programa(request, process_id)
+    etapa = _etapa_do_edital(edital, stage_id)
+    ja_convocado = ConvocationEmail.objects.filter(
+        convocation__stage=etapa, application=OuterRef("pk")
+    )
+    return (
+        Application.objects.convocable_for(etapa)
+        .select_related("project", "research_line")
+        .annotate(already_convoked=Exists(ja_convocado))
+        .order_by("full_name", "pk")
+    )
+
+
+@router.get(
     "/processes/{int:process_id}/stages/{int:stage_id}/convocations",
     response=list[ConvocationOut],
 )
@@ -1620,14 +1652,31 @@ def send_convocations_endpoint(request: HttpRequest, process_id: int, stage_id: 
     return Status(201, send_convocations(process=edital, stage=etapa, request=request))
 
 
-@router.post("/convocations/{int:convocation_id}/resend", response=ConvocationDetailOut)
-def resend_convocation_endpoint(request: HttpRequest, convocation_id: int):
-    """Reenvia os e-mails que falharam neste lote — só eles."""
-    require_perm(request, "selection.add_convocation")
-    lote = get_object_or_404(
+def _lote_do_programa(request: HttpRequest, convocation_id: int) -> Convocation:
+    """O lote desta requisição, já escopado (404 para o de outro
+    programa, nunca 403 — ver `_edital_do_programa`)."""
+    return get_object_or_404(
         Convocation.objects.filter(program=current_program(request)).select_related(
             "stage", "process", "sent_by"
         ),
         pk=convocation_id,
     )
+
+
+@router.get("/convocations/{int:convocation_id}", response=ConvocationDetailOut)
+def get_convocation(request: HttpRequest, convocation_id: int):
+    """Um lote com os destinatários — quem recebeu, quem falhou e por quê.
+
+    A listagem por etapa devolve só a contagem; é aqui que a secretaria
+    abre o lote para achar o endereço errado antes de mandar reenviar.
+    """
+    require_perm(request, "selection.view_convocation")
+    return _lote_do_programa(request, convocation_id)
+
+
+@router.post("/convocations/{int:convocation_id}/resend", response=ConvocationDetailOut)
+def resend_convocation_endpoint(request: HttpRequest, convocation_id: int):
+    """Reenvia os e-mails que falharam neste lote — só eles."""
+    require_perm(request, "selection.add_convocation")
+    lote = _lote_do_programa(request, convocation_id)
     return resend_convocation_emails(convocation=lote, request=request)

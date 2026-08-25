@@ -54,8 +54,16 @@ def convocacoes_de(process_id: int, stage_id: int) -> str:
     return f"/api/v1/selection/processes/{process_id}/stages/{stage_id}/convocations"
 
 
+def convocaveis_de(process_id: int, stage_id: int) -> str:
+    return f"/api/v1/selection/processes/{process_id}/stages/{stage_id}/convocable"
+
+
 def reenvio_de(convocation_id: int) -> str:
     return f"/api/v1/selection/convocations/{convocation_id}/resend"
+
+
+def lote_de(convocation_id: int) -> str:
+    return f"/api/v1/selection/convocations/{convocation_id}"
 
 
 @pytest.fixture
@@ -393,6 +401,135 @@ def test_listagem_traz_os_lotes_da_etapa_com_a_contagem(
     # O lote guarda o template copiado, não o texto renderizado: quem
     # rende por candidato é `ConvocationEmail.rendered_subject`.
     assert lotes[0]["subject"] == edital_regular.convocation_subject
+
+
+# --- quem a etapa pode convocar ---------------------------------------------
+
+
+def test_convocaveis_marcam_quem_ja_recebeu_o_e_mail(
+    client_da_secretaria: Client,
+    edital_regular: SelectionProcess,
+    etapa: SelectionStage,
+    inscricao: Application,
+    outra_inscricao: Application,
+):
+    client_da_secretaria.post(convocacoes_de(edital_regular.pk, etapa.pk))
+
+    resposta = client_da_secretaria.get(convocaveis_de(edital_regular.pk, etapa.pk))
+
+    assert resposta.status_code == 200, resposta.content
+    por_id = {c["id"]: c for c in resposta.json()}
+    assert set(por_id) == {inscricao.pk, outra_inscricao.pk}
+    assert por_id[inscricao.pk]["already_convoked"] is True
+    assert por_id[outra_inscricao.pk]["already_convoked"] is True
+    assert por_id[inscricao.pk]["protocol"] == inscricao.protocol
+    assert por_id[inscricao.pk]["email"] == inscricao.email
+
+
+def test_convocaveis_nao_incluem_quem_nao_foi_homologado(
+    client_da_secretaria: Client,
+    edital_regular: SelectionProcess,
+    etapa: SelectionStage,
+    inscricao: Application,
+    program: Program,
+    projeto: CollectiveProject,
+):
+    criar_inscricao(
+        program,
+        edital_regular,
+        "Célia Nunes",
+        "12345678909",
+        projeto,
+        status=ApplicationStatus.SUBMITTED,
+    )
+
+    resposta = client_da_secretaria.get(convocaveis_de(edital_regular.pk, etapa.pk))
+
+    assert [c["id"] for c in resposta.json()] == [inscricao.pk]
+    assert resposta.json()[0]["already_convoked"] is False
+
+
+def test_convocaveis_da_segunda_etapa_sao_vazios_sem_ata_assinada(
+    client_da_secretaria: Client,
+    edital_regular: SelectionProcess,
+    banca_regular: Board,
+    inscricao: Application,
+):
+    segunda = edital_regular.stages.get(order=2)
+
+    sem_ata = client_da_secretaria.get(convocaveis_de(edital_regular.pk, segunda.pk))
+    assert sem_ata.json() == []
+
+    ata_assinada(
+        banca_regular,
+        edital_regular.stages.get(order=1),
+        [{"application_id": inscricao.pk, "full_name": inscricao.full_name}],
+    )
+    com_ata = client_da_secretaria.get(convocaveis_de(edital_regular.pk, segunda.pk))
+
+    assert [c["id"] for c in com_ata.json()] == [inscricao.pk]
+
+
+def test_convocaveis_de_edital_de_outro_programa_e_404(
+    client_da_secretaria: Client,
+    edital_suplementar: SelectionProcess,
+):
+    outro = Program.objects.create(name="Outro programa", acronym="PPGY")
+    alheio = SelectionProcess.objects.create(
+        program=outro,
+        kind=edital_suplementar.kind,
+        year=2027,
+        title="Edital de outro programa",
+        submission_opens_at=edital_suplementar.submission_opens_at,
+        submission_closes_at=edital_suplementar.submission_closes_at,
+        convocation_subject="Assunto",
+        convocation_body="Corpo",
+    )
+    etapa_alheia = SelectionStage.objects.create(process=alheio, name="Etapa", order=1)
+
+    resposta = client_da_secretaria.get(convocaveis_de(alheio.pk, etapa_alheia.pk))
+
+    assert resposta.status_code == 404, resposta.content
+
+
+def test_convocaveis_sem_sessao_e_401(
+    client: Client, edital_regular: SelectionProcess, etapa: SelectionStage
+):
+    resposta = client.get(convocaveis_de(edital_regular.pk, etapa.pk))
+
+    assert resposta.status_code == 401, resposta.content
+
+
+def test_detalhe_do_lote_lista_os_destinatarios(
+    client_da_secretaria: Client,
+    edital_regular: SelectionProcess,
+    etapa: SelectionStage,
+    inscricao: Application,
+):
+    lote = client_da_secretaria.post(convocacoes_de(edital_regular.pk, etapa.pk)).json()
+
+    resposta = client_da_secretaria.get(lote_de(lote["id"]))
+
+    assert resposta.status_code == 200, resposta.content
+    emails = resposta.json()["emails"]
+    assert [e["application_id"] for e in emails] == [inscricao.pk]
+    assert emails[0]["status"] == EmailDeliveryStatus.SENT
+    assert emails[0]["to_email"] == inscricao.email
+
+
+def test_detalhe_de_lote_de_outro_programa_e_404(
+    client_da_secretaria: Client,
+    edital_regular: SelectionProcess,
+    etapa: SelectionStage,
+    inscricao: Application,
+):
+    lote = client_da_secretaria.post(convocacoes_de(edital_regular.pk, etapa.pk)).json()
+    outro = Program.objects.create(name="Outro programa", acronym="PPGZ")
+    Person.objects.filter(user__username="secretaria").update(program=outro)
+
+    resposta = client_da_secretaria.get(lote_de(lote["id"]))
+
+    assert resposta.status_code == 404, resposta.content
 
 
 # --- tenant, permissão, sessão e CSRF ---------------------------------------

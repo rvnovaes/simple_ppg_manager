@@ -1816,6 +1816,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/processes/{process_id}/stages/{stage_id}/convocable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Convocable
+         * @description Quem esta etapa pode convocar — o que o botão de disparo vai mandar.
+         *
+         *     A regra de quem é convocável mora no manager (`convocable_for`); esta
+         *     rota só a expõe para a tela não ter de refazê-la. `already_convoked`
+         *     marca quem já recebeu e-mail nesta etapa em lote nenhum, que é
+         *     exatamente o que `_abrir_lote` exclui — a soma dos não marcados é o
+         *     tamanho do próximo lote.
+         *
+         *     Sem paginação, como a listagem de lotes: são os candidatos vivos de
+         *     uma etapa de um edital, e a tela mostra todos.
+         */
+        get: operations["apps_selection_router_list_convocable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/selection/processes/{process_id}/stages/{stage_id}/convocations": {
         parameters: {
             query?: never;
@@ -1843,6 +1872,29 @@ export interface paths {
          *     lote vazio.
          */
         post: operations["apps_selection_router_send_convocations_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/convocations/{convocation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Convocation
+         * @description Um lote com os destinatários — quem recebeu, quem falhou e por quê.
+         *
+         *     A listagem por etapa devolve só a contagem; é aqui que a secretaria
+         *     abre o lote para achar o endereço errado antes de mandar reenviar.
+         */
+        get: operations["apps_selection_router_get_convocation"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4367,6 +4419,41 @@ export interface components {
              * @default
              */
             note: string;
+        };
+        /**
+         * ConvocableApplicationOut
+         * @description Um candidato que a etapa pode convocar, como a tela o mostra antes
+         *     de disparar o lote.
+         *
+         *     Quem decide o que é "convocável" é `Application.objects.convocable_for`
+         *     — na etapa 1, quem está vivo; da 2 em diante, só as chaves cuja ata
+         *     anterior está assinada. A tela nunca refaz essa conta: ela lê esta
+         *     rota. `already_convoked` é o que o disparo vai pular (quem já recebeu
+         *     e-mail nesta etapa, em lote nenhum), e existe para a secretaria saber
+         *     de antemão quantos e-mails o botão manda.
+         */
+        ConvocableApplicationOut: {
+            /** Id */
+            id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Already Convoked */
+            already_convoked: boolean;
         };
         /**
          * ConvocationOut
@@ -6993,6 +7080,29 @@ export interface operations {
             };
         };
     };
+    apps_selection_router_list_convocable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocableApplicationOut"][];
+                };
+            };
+        };
+    };
     apps_selection_router_list_convocations: {
         parameters: {
             query?: never;
@@ -7030,6 +7140,28 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_convocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                convocation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
