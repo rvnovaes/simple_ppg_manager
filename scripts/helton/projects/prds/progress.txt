@@ -18,3 +18,16 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - Stack desta worktree (`db`, `backend`) já estava de pé; o pytest usa o Postgres em `DB_PORT` do `.env`.
   - Ao substituir os stubs de fixture, mantenha os nomes `edital_regular`/`edital_suplementar`/`externo` — são o contrato que as próximas stories vão usar.
 ---
+## 2026-08-25 - f0-teacher-external
+- `Teacher.Category.EXTERNAL = "external", "Externo (banca)"` com comentário de que NÃO é categoria CAPES (existe só para compor banca de seleção).
+- `Teacher.clean()` exige `home_institution` (não vazia após `strip()`) quando `category == EXTERNAL`, levantando `DomainError(code="home_institution_required")`; a checagem vem antes do lookup de `person`, então vale mesmo sem pessoa.
+- Migration `academic/0012_categoria_externa.py` (só `AlterField` de choices, lida antes do commit); `makemigrations --check` limpo.
+- 5 testes em memória em `academic/tests/test_models.py` (externo sem instituição falha; com instituição passa; parametrizado para as 3 categorias CAPES não exigirem).
+- Stub `externo` do `selection/tests/conftest.py` virou fixture real (Teacher EXTERNAL com `home_institution="USP"`).
+- `make ready` verde, 567 testes.
+- Files: backend/apps/academic/models.py, backend/apps/academic/migrations/0012_categoria_externa.py, backend/apps/academic/tests/test_models.py, backend/apps/selection/tests/conftest.py
+- **Learnings for future iterations:**
+  - `verbose_name` de `Teacher.category` continua "categoria CAPES" — a story mandou não mexer em mais nada de `academic`; se a tela de professores (f1-tela-bancas) mostrar esse rótulo, avaliar se confunde com o EXTERNAL.
+  - `Teacher.clean()` não é chamado pelo `save()`; o router de academic chama `clean()` explicitamente (linha ~225). Quem criar Teacher externo por service/rota nova precisa chamar `clean()` também.
+  - `rtk` resume a saída do pytest e às vezes imprime "No tests collected" mesmo com testes rodando; para conferir contagem use `rtk proxy uv run pytest ...`.
+---

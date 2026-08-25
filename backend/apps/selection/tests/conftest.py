@@ -4,10 +4,9 @@
 do `backend/conftest.py` — vale para este app também, então não é
 repetida aqui. `program` vem do mesmo lugar.
 
-`edital_regular`, `edital_suplementar` e `externo` são stubs que pulam o
-teste até os models e a categoria existirem (`f0-process-stage` e
-`f0-teacher-external`); assim os módulos de teste já podem ser escritos
-contra os nomes definitivos.
+`edital_regular` e `edital_suplementar` são stubs que pulam o teste até
+os models existirem (`f0-process-stage`); assim os módulos de teste já
+podem ser escritos contra os nomes definitivos.
 """
 
 from datetime import date
@@ -35,7 +34,17 @@ def docente(program: Program) -> Teacher:
 
 @pytest.fixture
 def externo(program: Program) -> Teacher:
-    pytest.skip("Teacher.Category.EXTERNAL chega em f0-teacher-external")
+    pessoa = Person.objects.create(
+        program=program, full_name="Carla Souza", primary_email="carla@example.com"
+    )
+    return Teacher.objects.create(
+        program=program,
+        person=pessoa,
+        category=Teacher.Category.EXTERNAL,
+        academic_degree=Teacher.AcademicDegree.DOCTORATE,
+        accredited_since=date(2026, 1, 1),
+        home_institution="USP",
+    )
 
 
 @pytest.fixture
