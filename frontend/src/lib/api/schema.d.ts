@@ -1292,6 +1292,67 @@ export interface paths {
         patch: operations["apps_selection_router_update_board"];
         trace?: never;
     };
+    "/selection/boards/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Boards
+         * @description As bancas do docente da sessão, com as etapas de cada edital.
+         *
+         *     Sem paginação: um docente compõe poucas bancas, e a tela dele é a
+         *     lista inteira. Sem filtros pelo mesmo motivo.
+         *
+         *     Não colide com `/boards/{id}/` porque aquela rota usa o conversor
+         *     `int:` — "mine" nunca casa com ele.
+         */
+        get: operations["apps_selection_router_list_my_boards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stage Scores
+         * @description A planilha da banca naquela etapa: um candidato vivo por linha.
+         */
+        get: operations["apps_selection_router_list_stage_scores"];
+        /**
+         * Set Stage Scores
+         * @description Lança as notas da etapa em lote e devolve a planilha atualizada.
+         *
+         *     Lote e não uma nota por requisição porque é assim que a banca
+         *     trabalha: ela avalia a sessão inteira e salva uma vez. O lote é
+         *     parcial de propósito — quem não vem no corpo fica como estava.
+         *
+         *     As duas permissões juntas (`add` e `change`): a mesma chamada cria a
+         *     linha de quem ainda não tinha nota e reescreve a de quem já tinha.
+         *
+         *     Inscrição fora do recorte da banca é 404, como qualquer id de fora do
+         *     escopo. Nota repetida no mesmo lote volta 400 `duplicate_score`, do
+         *     `clean()` — o corpo se contradiz e não há como escolher qual vale.
+         */
+        put: operations["apps_selection_router_set_stage_scores"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/selection/public/processes": {
         parameters: {
             query?: never;
@@ -3195,6 +3256,128 @@ export interface components {
             member_2_id?: number | null;
             /** Alternate Id */
             alternate_id?: number | null;
+        };
+        /**
+         * BoardStageOut
+         * @description A etapa do edital, como a tela do docente a vê dentro da banca.
+         *
+         *     Existe separada de `SelectionStageOut` porque o Docente **não** tem
+         *     `view_selectionstage` (migration 0006): quem compõe banca lê a etapa
+         *     pela própria banca, e não pela grade do edital. Sem `tiebreak_rank` e
+         *     sem carimbos — para lançar nota basta saber qual sessão é, quando e
+         *     onde.
+         */
+        BoardStageOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at: string | null;
+            /** Location */
+            location: string;
+        };
+        /**
+         * MyBoardOut
+         * @description Uma banca do docente da sessão, com as etapas do edital embutidas.
+         *
+         *     As etapas viajam junto pelo motivo acima: a tela "minhas bancas"
+         *     precisa oferecer a lista de sessões para lançar nota, e o docente não
+         *     tem rota para buscá-las.
+         */
+        MyBoardOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            president: components["schemas"]["BoardMemberOut"];
+            member_1: components["schemas"]["BoardMemberOut"];
+            member_2: components["schemas"]["BoardMemberOut"];
+            alternate: components["schemas"]["BoardMemberOut"];
+            /** In Use */
+            in_use: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Stages */
+            stages: components["schemas"]["BoardStageOut"][];
+        };
+        /**
+         * StageScoreOut
+         * @description Uma linha da planilha da banca: o candidato vivo e a nota atual.
+         *
+         *     A planilha nasce das **inscrições**, não das notas: enquanto a banca
+         *     não lançou, a linha existe com `scored: false` e `score: null`. É o
+         *     que faz a tela mostrar quem falta avaliar em vez de uma lista vazia.
+         *
+         *     A nota da etapa chega pré-carregada em `nota_da_etapa` (um
+         *     `Prefetch` com `to_attr` no router), então nenhuma linha desta lista
+         *     consulta o banco por conta própria.
+         */
+        StageScoreOut: {
+            /** Application Id */
+            application_id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            level: components["schemas"]["SelectionLevel"];
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Scored */
+            scored: boolean;
+            /** Score */
+            score: string | null;
+            /** Absent */
+            absent: boolean;
+            /** Passed */
+            passed: boolean;
+            /** Entered At */
+            entered_at: string | null;
+            /** Entered By */
+            entered_by: string;
+        };
+        /**
+         * StageScoreIn
+         * @description Uma linha do lote de notas: a inscrição e a nota — ou a ausência.
+         *
+         *     `score` e `absent` são XOR, e quem cobra é `StageScore.clean()`
+         *     (`absent_xor_score`), não o schema: é invariante do model, e vale
+         *     também para quem escrever fora da rota.
+         */
+        StageScoreIn: {
+            /** Application Id */
+            application_id: number;
+            /** Score */
+            score?: number | string | null;
+            /**
+             * Absent
+             * @default false
+             */
+            absent: boolean;
         };
         /**
          * PublicOptionOut
@@ -5484,6 +5667,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_my_boards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyBoardOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_stage_scores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageScoreOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_set_stage_scores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StageScoreIn"][];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageScoreOut"][];
                 };
             };
         };

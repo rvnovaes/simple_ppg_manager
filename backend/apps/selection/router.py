@@ -8,8 +8,8 @@ negócio aqui.
 from pathlib import Path
 
 from django.db import transaction
-from django.db.models import Count, Q
-from django.http import FileResponse, HttpRequest
+from django.db.models import Count, Prefetch, Q
+from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
@@ -19,9 +19,11 @@ from ninja.pagination import paginate
 
 from apps.academic.models import Teacher
 from apps.core import audit
+from apps.core.exceptions import InvalidStateTransition, NotAllowed
 from apps.core.permissions import require_perm
 from apps.core.ratelimit import enforce_rate_limit
 from apps.core.tenancy import current_program
+from apps.people.models import Person
 from apps.programs.models import CollectiveProject, Program, ResearchLine
 
 from .models import (
@@ -30,6 +32,7 @@ from .models import (
     ApplicationDocumentKind,
     ApplicationStatus,
     Board,
+    ExaminationRecord,
     QuotaCategory,
     RecordStatus,
     SelectionKind,
@@ -37,6 +40,7 @@ from .models import (
     SelectionProcess,
     SelectionProcessStatus,
     SelectionStage,
+    StageScore,
     Vacancy,
 )
 from .schemas import (
@@ -49,6 +53,7 @@ from .schemas import (
     BoardIn,
     BoardOut,
     BoardPatch,
+    MyBoardOut,
     PublicProcessOut,
     SelectionProcessIn,
     SelectionProcessOut,
@@ -56,6 +61,8 @@ from .schemas import (
     SelectionStageIn,
     SelectionStageOut,
     SelectionStagePatch,
+    StageScoreIn,
+    StageScoreOut,
     VacancyIn,
     VacancyOut,
     VacancyPatch,
@@ -638,6 +645,201 @@ def update_board(request: HttpRequest, board_id: int, payload: BoardPatch):
             fields=sorted(alterados),
         )
     return banca
+
+
+# ---------------------------------------------------------------------------
+# Notas da etapa — o docente na sua própria banca
+# ---------------------------------------------------------------------------
+#
+# Aqui o recorte muda de natureza. Nas rotas da secretaria a permissão
+# responde tudo: quem tem `change_application` decide qualquer inscrição do
+# programa. Na banca não — todo Docente tem `add/change_stagescore`, e nem
+# por isso pontua o candidato de outra banca. O que separa é
+# `Board.is_member(teacher)`, checado na rota, sempre depois do
+# `require_perm`. Permissão sozinha aqui seria vazamento entre bancas.
+#
+# Quem não tem Teacher no programa (a secretaria, a coordenação) leva 403
+# `not_a_board_member`, e não 404: a banca existe e ela até a enxerga na
+# tela de bancas; o que falta é ser da banca.
+
+
+def teacher_da_sessao(request: HttpRequest, program: Program) -> Teacher:
+    """O vínculo de docente de quem está pedindo — nunca um `teacher_id`
+    do payload.
+
+    Mesmo espírito do `_aluno_da_sessao` de `academic`: o examinador sai
+    da sessão, porque aceitar o id do corpo deixaria qualquer docente
+    lançar nota em nome de outro. O `first()` basta — uma pessoa tem no
+    máximo um vínculo de docente por programa.
+    """
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    docente = Teacher.objects.for_program(program).filter(person__in=pessoas).first()
+    if docente is None:
+        raise NotAllowed(
+            "Sua conta não compõe banca examinadora neste programa.",
+            code="not_a_board_member",
+        )
+    return docente
+
+
+@router.get("/boards/mine", response=list[MyBoardOut])
+def list_my_boards(request: HttpRequest):
+    """As bancas do docente da sessão, com as etapas de cada edital.
+
+    Sem paginação: um docente compõe poucas bancas, e a tela dele é a
+    lista inteira. Sem filtros pelo mesmo motivo.
+
+    Não colide com `/boards/{id}/` porque aquela rota usa o conversor
+    `int:` — "mine" nunca casa com ele.
+    """
+    require_perm(request, "selection.view_board")
+    program: Program = current_program(request)
+    docente = teacher_da_sessao(request, program)
+    return (
+        _bancas(program)
+        .with_teacher(docente)
+        .prefetch_related("process__stages")
+        .order_by("process", "level")
+    )
+
+
+def _minha_banca(request: HttpRequest, board_id: int) -> tuple[Board, Teacher]:
+    """A banca da URL e o docente da sessão, com a checagem de composição.
+
+    404 para banca de outro programa (como em todo o app) e 403
+    `not_a_board_member` para banca deste programa que não é sua — a
+    diferença é deliberada: negar existência protege o outro tenant, e
+    dentro do tenant a banca é pública para quem lê bancas.
+    """
+    program: Program = current_program(request)
+    banca = get_object_or_404(_bancas(program), pk=board_id)
+    docente = teacher_da_sessao(request, program)
+    if not banca.is_member(docente):
+        raise NotAllowed(
+            "Você não compõe esta banca examinadora.",
+            code="not_a_board_member",
+        )
+    return banca, docente
+
+
+def _candidatos_da_banca(banca: Board, etapa: SelectionStage):
+    """As inscrições vivas do nível × alvo da banca, com a nota da etapa.
+
+    A planilha nasce das inscrições (`alive()` + `for_target`) e não das
+    notas: quem ainda não foi avaliado precisa aparecer na tela. A nota
+    vem por `Prefetch` com `to_attr`, numa consulta só — o `StageScoreOut`
+    lê de `nota_da_etapa` e nunca consulta por linha.
+    """
+    return (
+        Application.objects.for_process(banca.process_id)
+        .alive()
+        .for_target(banca.level, banca.project, banca.research_line)
+        .prefetch_related(
+            Prefetch(
+                "scores",
+                queryset=StageScore.objects.for_stage(etapa).select_related(
+                    "entered_by__person"
+                ),
+                to_attr="nota_da_etapa",
+            )
+        )
+        .order_by("full_name", "protocol")
+    )
+
+
+def _recusar_ata_congelada(banca: Board, etapa: SelectionStage) -> None:
+    """409 `record_frozen` quando a ata corrente da (etapa × nível × alvo)
+    já saiu do rascunho.
+
+    A ata congelada guarda a fotografia das notas no `content`, e o
+    `content_hash` é o que cada assinatura confere. Deixar a nota mudar
+    por baixo invalidaria assinatura já dada — e, pior, em silêncio. Para
+    corrigir depois de congelar, reabre-se a ata (ou se emite a versão
+    `n+1`, se ela já foi assinada).
+    """
+    congelada = (
+        ExaminationRecord.objects.for_program(banca.program)
+        .current()
+        .for_key(etapa, banca.level, banca.project, banca.research_line)
+        .filter(status__in=(RecordStatus.AWAITING_SIGNATURES, RecordStatus.SIGNED))
+        .exists()
+    )
+    if congelada:
+        raise InvalidStateTransition(
+            "A ata desta etapa já foi congelada: as notas são só leitura.",
+            code="record_frozen",
+        )
+
+
+@router.get(
+    "/boards/{int:board_id}/stages/{int:stage_id}/scores",
+    response=list[StageScoreOut],
+)
+def list_stage_scores(request: HttpRequest, board_id: int, stage_id: int):
+    """A planilha da banca naquela etapa: um candidato vivo por linha."""
+    require_perm(request, "selection.view_stagescore")
+    banca, _docente = _minha_banca(request, board_id)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    return _candidatos_da_banca(banca, etapa)
+
+
+@router.put(
+    "/boards/{int:board_id}/stages/{int:stage_id}/scores",
+    response=list[StageScoreOut],
+)
+def set_stage_scores(
+    request: HttpRequest, board_id: int, stage_id: int, payload: list[StageScoreIn]
+):
+    """Lança as notas da etapa em lote e devolve a planilha atualizada.
+
+    Lote e não uma nota por requisição porque é assim que a banca
+    trabalha: ela avalia a sessão inteira e salva uma vez. O lote é
+    parcial de propósito — quem não vem no corpo fica como estava.
+
+    As duas permissões juntas (`add` e `change`): a mesma chamada cria a
+    linha de quem ainda não tinha nota e reescreve a de quem já tinha.
+
+    Inscrição fora do recorte da banca é 404, como qualquer id de fora do
+    escopo. Nota repetida no mesmo lote volta 400 `duplicate_score`, do
+    `clean()` — o corpo se contradiz e não há como escolher qual vale.
+    """
+    require_perm(request, "selection.add_stagescore")
+    require_perm(request, "selection.change_stagescore")
+    banca, docente = _minha_banca(request, board_id)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    _recusar_ata_congelada(banca, etapa)
+
+    candidatos = {
+        inscricao.pk: inscricao for inscricao in _candidatos_da_banca(banca, etapa)
+    }
+    existentes = {
+        nota.application_id: nota
+        for nota in StageScore.objects.for_stage(etapa).filter(
+            application_id__in=candidatos
+        )
+    }
+    with transaction.atomic():
+        for linha in payload:
+            inscricao = candidatos.get(linha.application_id)
+            if inscricao is None:
+                raise Http404("Inscrição fora do recorte desta banca.")
+            nota = existentes.get(linha.application_id) or StageScore(
+                program=banca.program, application=inscricao, stage=etapa
+            )
+            nota.score = linha.score
+            nota.absent = linha.absent
+            nota.entered_by = docente
+            nota.clean()
+            nota.save()
+        audit.record(
+            "selection.stage_score.set",
+            request=request,
+            target=banca,
+            stage_id=etapa.pk,
+            teacher_id=docente.pk,
+            application_ids=sorted(linha.application_id for linha in payload),
+        )
+    return _candidatos_da_banca(banca, etapa)
 
 
 # ---------------------------------------------------------------------------

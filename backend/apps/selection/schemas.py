@@ -5,6 +5,7 @@ model é serializado direto. Preenchido pelas stories de API (F1 em diante).
 """
 
 import datetime
+import decimal
 from pathlib import Path
 from typing import Any
 
@@ -725,3 +726,128 @@ class ApplicationDecisionIn(Schema):
     """
 
     note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Notas da etapa (banca)
+# ---------------------------------------------------------------------------
+
+
+class BoardStageOut(Schema):
+    """A etapa do edital, como a tela do docente a vê dentro da banca.
+
+    Existe separada de `SelectionStageOut` porque o Docente **não** tem
+    `view_selectionstage` (migration 0006): quem compõe banca lê a etapa
+    pela própria banca, e não pela grade do edital. Sem `tiebreak_rank` e
+    sem carimbos — para lançar nota basta saber qual sessão é, quando e
+    onde.
+    """
+
+    id: int
+    name: str
+    order: int
+    session_at: datetime.datetime | None
+    location: str
+
+
+class MyBoardOut(BoardOut):
+    """Uma banca do docente da sessão, com as etapas do edital embutidas.
+
+    As etapas viajam junto pelo motivo acima: a tela "minhas bancas"
+    precisa oferecer a lista de sessões para lançar nota, e o docente não
+    tem rota para buscá-las.
+    """
+
+    stages: list[BoardStageOut]
+
+    @staticmethod
+    def resolve_stages(obj: Board) -> Any:
+        return obj.process.stages.all()
+
+
+class StageScoreIn(Schema):
+    """Uma linha do lote de notas: a inscrição e a nota — ou a ausência.
+
+    `score` e `absent` são XOR, e quem cobra é `StageScore.clean()`
+    (`absent_xor_score`), não o schema: é invariante do model, e vale
+    também para quem escrever fora da rota.
+    """
+
+    application_id: int
+    score: decimal.Decimal | None = None
+    absent: bool = False
+
+
+class StageScoreOut(Schema):
+    """Uma linha da planilha da banca: o candidato vivo e a nota atual.
+
+    A planilha nasce das **inscrições**, não das notas: enquanto a banca
+    não lançou, a linha existe com `scored: false` e `score: null`. É o
+    que faz a tela mostrar quem falta avaliar em vez de uma lista vazia.
+
+    A nota da etapa chega pré-carregada em `nota_da_etapa` (um
+    `Prefetch` com `to_attr` no router), então nenhuma linha desta lista
+    consulta o banco por conta própria.
+    """
+
+    application_id: int
+    protocol: str
+    full_name: str
+    level: SelectionLevel
+    quota_category: QuotaCategory
+    quota_category_label: str
+    scored: bool
+    score: decimal.Decimal | None
+    absent: bool
+    passed: bool
+    entered_at: datetime.datetime | None
+    entered_by: str
+
+    @staticmethod
+    def _nota(obj: Application) -> Any:
+        notas = getattr(obj, "nota_da_etapa", [])
+        return notas[0] if notas else None
+
+    @staticmethod
+    def resolve_application_id(obj: Application) -> int:
+        return obj.pk
+
+    @staticmethod
+    def resolve_quota_category_label(obj: Application) -> str:
+        return obj.get_quota_category_display()
+
+    @staticmethod
+    def resolve_scored(obj: Application) -> bool:
+        return StageScoreOut._nota(obj) is not None
+
+    @staticmethod
+    def resolve_score(obj: Application) -> decimal.Decimal | None:
+        nota = StageScoreOut._nota(obj)
+        return None if nota is None else nota.score
+
+    @staticmethod
+    def resolve_absent(obj: Application) -> bool:
+        nota = StageScoreOut._nota(obj)
+        return False if nota is None else nota.absent
+
+    @staticmethod
+    def resolve_passed(obj: Application) -> bool:
+        """Sem nota lançada, `false`: quem não foi avaliado não passou —
+        e `scored` é o campo que distingue "não passou" de "ainda não
+        tem nota"."""
+        nota = StageScoreOut._nota(obj)
+        return False if nota is None else nota.passed
+
+    @staticmethod
+    def resolve_entered_at(obj: Application) -> datetime.datetime | None:
+        nota = StageScoreOut._nota(obj)
+        return None if nota is None else nota.entered_at
+
+    @staticmethod
+    def resolve_entered_by(obj: Application) -> str:
+        """O nome de quem lançou, para a banca saber com quem falar. Nota
+        antiga sem autor (ou lançada por script) volta vazia."""
+        nota = StageScoreOut._nota(obj)
+        if nota is None or nota.entered_by is None:
+            return ""
+        return nota.entered_by.person.full_name

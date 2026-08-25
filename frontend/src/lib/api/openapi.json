@@ -3774,6 +3774,152 @@
         ]
       }
     },
+    "/selection/boards/mine": {
+      "get": {
+        "operationId": "apps_selection_router_list_my_boards",
+        "summary": "List My Boards",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyBoardOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "As bancas do docente da sessão, com as etapas de cada edital.\n\nSem paginação: um docente compõe poucas bancas, e a tela dele é a\nlista inteira. Sem filtros pelo mesmo motivo.\n\nNão colide com `/boards/{id}/` porque aquela rota usa o conversor\n`int:` — \"mine\" nunca casa com ele.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/scores": {
+      "get": {
+        "operationId": "apps_selection_router_list_stage_scores",
+        "summary": "List Stage Scores",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StageScoreOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "A planilha da banca naquela etapa: um candidato vivo por linha.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "apps_selection_router_set_stage_scores",
+        "summary": "Set Stage Scores",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StageScoreOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Lança as notas da etapa em lote e devolve a planilha atualizada.\n\nLote e não uma nota por requisição porque é assim que a banca\ntrabalha: ela avalia a sessão inteira e salva uma vez. O lote é\nparcial de propósito — quem não vem no corpo fica como estava.\n\nAs duas permissões juntas (`add` e `change`): a mesma chamada cria a\nlinha de quem ainda não tinha nota e reescreve a de quem já tinha.\n\nInscrição fora do recorte da banca é 404, como qualquer id de fora do\nescopo. Nota repetida no mesmo lote volta 400 `duplicate_score`, do\n`clean()` — o corpo se contradiz e não há como escolher qual vale.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/StageScoreIn"
+                },
+                "title": "Payload",
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/selection/public/processes": {
       "get": {
         "operationId": "apps_selection_router_list_public_processes",
@@ -8187,6 +8333,273 @@
           }
         },
         "title": "BoardPatch",
+        "type": "object"
+      },
+      "BoardStageOut": {
+        "description": "A etapa do edital, como a tela do docente a vê dentro da banca.\n\nExiste separada de `SelectionStageOut` porque o Docente **não** tem\n`view_selectionstage` (migration 0006): quem compõe banca lê a etapa\npela própria banca, e não pela grade do edital. Sem `tiebreak_rank` e\nsem carimbos — para lançar nota basta saber qual sessão é, quando e\nonde.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "order",
+          "session_at",
+          "location"
+        ],
+        "title": "BoardStageOut",
+        "type": "object"
+      },
+      "MyBoardOut": {
+        "description": "Uma banca do docente da sessão, com as etapas do edital embutidas.\n\nAs etapas viajam junto pelo motivo acima: a tela \"minhas bancas\"\nprecisa oferecer a lista de sessões para lançar nota, e o docente não\ntem rota para buscá-las.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "president": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_1": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_2": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "alternate": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "in_use": {
+            "title": "In Use",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/BoardStageOut"
+            },
+            "title": "Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "president",
+          "member_1",
+          "member_2",
+          "alternate",
+          "in_use",
+          "created_at",
+          "updated_at",
+          "stages"
+        ],
+        "title": "MyBoardOut",
+        "type": "object"
+      },
+      "StageScoreOut": {
+        "description": "Uma linha da planilha da banca: o candidato vivo e a nota atual.\n\nA planilha nasce das **inscrições**, não das notas: enquanto a banca\nnão lançou, a linha existe com `scored: false` e `score: null`. É o\nque faz a tela mostrar quem falta avaliar em vez de uma lista vazia.\n\nA nota da etapa chega pré-carregada em `nota_da_etapa` (um\n`Prefetch` com `to_attr` no router), então nenhuma linha desta lista\nconsulta o banco por conta própria.",
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "boolean"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "absent": {
+            "title": "Absent",
+            "type": "boolean"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "entered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered At"
+          },
+          "entered_by": {
+            "title": "Entered By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "application_id",
+          "protocol",
+          "full_name",
+          "level",
+          "quota_category",
+          "quota_category_label",
+          "scored",
+          "score",
+          "absent",
+          "passed",
+          "entered_at",
+          "entered_by"
+        ],
+        "title": "StageScoreOut",
+        "type": "object"
+      },
+      "StageScoreIn": {
+        "description": "Uma linha do lote de notas: a inscrição e a nota — ou a ausência.\n\n`score` e `absent` são XOR, e quem cobra é `StageScore.clean()`\n(`absent_xor_score`), não o schema: é invariante do model, e vale\ntambém para quem escrever fora da rota.",
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "absent": {
+            "default": false,
+            "title": "Absent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "application_id"
+        ],
+        "title": "StageScoreIn",
         "type": "object"
       },
       "PublicOptionOut": {
