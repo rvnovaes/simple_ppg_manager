@@ -202,3 +202,36 @@ export const EXPLICACAO_DA_SITUACAO: Record<SituacaoDaInscricao, string> = {
 	approved: 'Você foi aprovado. Acompanhe a convocação para a matrícula.',
 	enrolled: 'Matrícula efetivada: você já consta como aluno do programa.'
 };
+
+/**
+ * As situações na ordem em que a inscrição as percorre.
+ *
+ * O rótulo curto continua vindo do servidor (`status_label`) em toda linha
+ * que tenha uma inscrição na mão; esta tabela existe para o `<select>` do
+ * filtro, que precisa escrever a situação sem ter nenhuma inscrição para
+ * perguntar.
+ */
+export const SITUACOES_DA_INSCRICAO: SituacaoDaInscricao[] = [
+	'submitted',
+	'homologated',
+	'rejected',
+	'eliminated',
+	'approved',
+	'enrolled'
+];
+
+export const ROTULO_DA_SITUACAO_DA_INSCRICAO: Record<SituacaoDaInscricao, string> = {
+	submitted: 'Inscrita',
+	homologated: 'Homologada',
+	rejected: 'Indeferida',
+	eliminated: 'Eliminada',
+	approved: 'Aprovada',
+	enrolled: 'Matriculada'
+};
+
+/** CPF como o candidato o escreveu no documento: 000.000.000-00. */
+export function formatarCpf(cpf: string): string {
+	const digitos = cpf.replace(/\D/g, '');
+	if (digitos.length !== 11) return cpf;
+	return `${digitos.slice(0, 3)}.${digitos.slice(3, 6)}.${digitos.slice(6, 9)}-${digitos.slice(9)}`;
+}
