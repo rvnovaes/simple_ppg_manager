@@ -316,6 +316,27 @@ class SelectionProcess(models.Model):
                 code="duplicate_process",
             )
 
+    @classmethod
+    def validate_notice_upload(cls, *, filename: str, size: int) -> None:
+        """Formato e tamanho do PDF do edital.
+
+        Só PDF, e não a lista de `EXTENSOES_DE_DOCUMENTO`: o anexo do
+        candidato é foto de celular com frequência, mas o edital é o
+        documento oficial que o programa publica — foto de edital não é
+        edital. O limite de tamanho é o mesmo do resto do projeto.
+        """
+        if not filename or not filename.lower().endswith(".pdf"):
+            raise DomainError(
+                "O arquivo do edital precisa ser um PDF.",
+                code="invalid_notice_file",
+            )
+        if size > TAMANHO_MAXIMO_DO_DOCUMENTO:
+            limite = TAMANHO_MAXIMO_DO_DOCUMENTO // (1024 * 1024)
+            raise DomainError(
+                f"O arquivo do edital tem no máximo {limite} MB.",
+                code="invalid_notice_file",
+            )
+
     def allowed_quota_categories(self) -> frozenset[str]:
         return CATEGORIAS_POR_TIPO[self.kind]
 

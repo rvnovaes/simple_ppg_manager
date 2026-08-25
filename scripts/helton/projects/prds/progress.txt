@@ -4,6 +4,8 @@ Started: ter. 25 ago 2026 11:00:21 -03
 ## Codebase Patterns
 - Worktree recém-montada não tem `frontend/node_modules`: rode `make install-web` antes do primeiro `make ready`, senão `prettier: not found` derruba o `lint`.
 - `backend/conftest.py` já tem `media_temporaria` (autouse, `MEDIA_ROOT=tmp_path`) e as fixtures `program`, `secretaria`, `client_secretaria`; conftest de app não precisa repetir.
+- Toda rota de escrita nova precisa do conjunto canônico de testes: 201 + AuditLog, payload não escolhe tenant, duplicata com `code`, 403 sem permissão, 401 sem sessão, 404 de objeto de outro programa e recusa sem token CSRF (molde: `academic/tests/test_isolada_edital_escrita.py`).
+- Depois de mexer em router/schemas, rode `make gen-api` e commite `frontend/src/lib/api/{openapi.json,schema.d.ts}` junto — são gerados, mas versionados.
 - `uv run pytest apps/<app>` sem nenhum teste coletado sai com código 5 — não é falha, mas não use isso como portão de CI isolado.
 - Registro de app novo: `INSTALLED_APPS` em `config/settings/base.py` + `api.add_router("/<app>/", router)` em `backend/api.py`; router vazio (`Router(tags=[...])`) já aparece em `api._routers`.
 ---
@@ -127,4 +129,20 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `AuditedModelAdmin` (`apps/core/admin.py`) é obrigatório para todo ModelAdmin de dado de negócio; `admin.TabularInline` **não** herda dele, mas escrita por inline passa pelo `save_model` do pai, então o AuditLog sai com o alvo pai.
   - Usar `__doc__ = QUEBRA_VIDRO` em vez de repetir a docstring nas 12 classes: `ruff` aceita e o Admin não usa docstring para nada.
   - O grupo novo se chama **"Comissão de Seleção"** (com acento e espaços) — é o nome exato que `require_perm`/seed e as próximas stories devem usar.
+---
+## 2026-08-25 - f1-processes-api
+- `schemas.py`: `SelectionProcessIn` (sem `program_id` nem `status` — o edital nasce em rascunho), `SelectionProcessPatch` (todos opcionais) e `SelectionProcessOut` com `kind_label`/`status_label`, `submission_open` resolvido no servidor, `notice_filename`/`notice_url` e `stage_count`/`vacancy_count`.
+- `services.py` (arquivo novo do app): `publish_process(*, process, request=None)` `@transaction.atomic` — junta as três faltas (etapa, vaga, template) numa só `DomainError` `process_incomplete` com a lista na mensagem, depois `publish(at=timezone.now())` → `clean()` → `save(update_fields=...)` → `audit.record("selection.process.publish")`.
+- `router.py`: `GET /processes/` paginado (filtros `kind`/`status`/`year`), `POST`, `GET {id}/`, `PATCH {id}/` (com `ensure_editable`), `POST {id}/publish`, `POST {id}/close`, `POST {id}/notice-file` (multipart). Helper `_editais(program)` anota as contagens; `_edital_do_programa` faz o 404 escopado.
+- `models.py`: classmethod `SelectionProcess.validate_notice_upload(filename=, size=)` — só `.pdf` (`invalid_notice_file`), limite `TAMANHO_MAXIMO_DO_DOCUMENTO`. Sem migration (`makemigrations --check` limpo).
+- 30 testes em `apps/selection/tests/test_api_editais.py`: conjunto canônico (201 + auditoria, payload não escolhe tenant, duplicata, 403, 401, 404 de outro programa, CSRF), publicação incompleta parametrizada nas 3 faltas, publicar/encerrar fora de estado (409), e os quatro casos do PDF (anexa, substitui, não-PDF 400, edital de outro programa 404).
+- `make ready` verde, 900 testes; `make gen-api` regenerado (openapi.json + schema.d.ts, `make lint` verde depois).
+- Files: backend/apps/selection/{router,schemas,services,models}.py, backend/apps/selection/tests/test_api_editais.py, frontend/src/lib/api/{openapi.json,schema.d.ts}
+- **Learnings for future iterations:**
+  - `AuditLog.objects.filter(...)` vem em ordem **decrescente** por padrão: teste que compara a sequência de eventos precisa de `.order_by("id")`.
+  - `mypy` cobra `FileField.name` como `str | None` — use `(obj.file.name or "")` no teste e no resolve do schema.
+  - `PATCH` de edital cobra `ensure_editable`, mas `notice-file` **não**: trocar o PDF é retificação de documento, não de vaga/etapa. Se f1-tela-editais mostrar o botão, ele continua ativo com o edital publicado.
+  - Contagem por objeto no schema: anotar no queryset (`Count(..., distinct=True)`) e no `resolve_` usar `getattr(obj, "campo", None)` com fallback para o `count()` — assim o objeto recém-salvo que volta do POST também responde.
+  - Duas anotações `Count` no mesmo `annotate` precisam de `distinct=True`: o join de etapas com vagas multiplica as linhas.
+  - O `code` do erro de publicação incompleta é `process_incomplete` para as três faltas (a mensagem diz qual) — a tela lê a mensagem, não três códigos.
 ---

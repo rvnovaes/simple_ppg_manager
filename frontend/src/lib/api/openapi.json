@@ -2817,6 +2817,357 @@
           "required": true
         }
       }
+    },
+    "/selection/processes/": {
+      "get": {
+        "operationId": "apps_selection_router_list_processes",
+        "summary": "List Processes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionKind"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionProcessStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedSelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os editais do programa, do ano mais recente para o mais antigo.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_process",
+        "summary": "Create Process",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria abre o edital do ano, em rascunho.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionProcessIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/": {
+      "get": {
+        "operationId": "apps_selection_router_get_process",
+        "summary": "Get Process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "apps_selection_router_update_process",
+        "summary": "Update Process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Correção do edital — só enquanto ele é rascunho.\n\n`ensure_editable` é do model e devolve 409 `process_not_editable`:\ndepois de publicado o candidato já se inscreveu contra este conteúdo,\ne vaga se corrige por realocação, com ofício da comissão.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionProcessPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/publish": {
+      "post": {
+        "operationId": "apps_selection_router_publish_process_endpoint",
+        "summary": "Publish Process Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Publica o edital: o trabalho (e a cobrança do que falta) está no\nservice, porque a conferência atravessa etapas, vagas e template.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/close": {
+      "post": {
+        "operationId": "apps_selection_router_close_process",
+        "summary": "Close Process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Encerra o edital — ato explícito da secretaria, nada expira por data.\n\nToca um model só, então fica no router (Seção 3): a regra de quando dá\npara encerrar é do `close()` do model, que devolve 409\n`process_not_published`.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/notice-file": {
+      "post": {
+        "operationId": "apps_selection_router_upload_notice_file",
+        "summary": "Upload Notice File",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Anexa (ou substitui) o PDF do edital.\n\nSubstituir, e não empilhar: o edital tem um arquivo, e o reenvio é a\ncorreção de quem subiu a versão errada. A remoção do arquivo anterior é\nexplícita porque o storage não participa do rollback da transação — sem\nela cada reenvio deixaria um órfão no MEDIA_ROOT.\n\nVale depois de publicado: o PDF é o documento que o edital publicado\ndivulga, e trocá-lo por uma retificação não muda vaga nem etapa.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3625,7 +3976,8 @@
         "enum": [
           "permanent",
           "collaborator",
-          "visiting"
+          "visiting",
+          "external"
         ],
         "title": "Category",
         "type": "string"
@@ -5673,6 +6025,307 @@
           "password"
         ],
         "title": "IsolatedSignupIn",
+        "type": "object"
+      },
+      "SelectionKind": {
+        "description": "Tipo do edital.\n\nO Regular chaveia por projeto coletivo; o Suplementar (ações\nafirmativas) chaveia por linha de pesquisa (decisão P4 do plano).",
+        "enum": [
+          "regular",
+          "supplementary"
+        ],
+        "title": "SelectionKind",
+        "type": "string"
+      },
+      "SelectionProcessStatus": {
+        "enum": [
+          "draft",
+          "published",
+          "closed"
+        ],
+        "title": "SelectionProcessStatus",
+        "type": "string"
+      },
+      "PagedSelectionProcessOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionProcessOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedSelectionProcessOut",
+        "type": "object"
+      },
+      "SelectionProcessOut": {
+        "description": "O edital como a tela da secretaria o vê.\n\n`submission_open` vem resolvido do servidor: comparar a janela no\nnavegador deixaria \"as inscrições estão abertas\" dependendo do relógio\nde quem acessa.\n\n`stage_count` e `vacancy_count` viajam porque a tela precisa dizer o\nque falta para publicar sem fazer uma chamada por edital — as rotas de\nlistagem e de detalhe anotam os dois; o fallback conta na hora, para o\nobjeto recém-escrito que volta do POST/PATCH.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SelectionKind"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SelectionProcessStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "submission_open": {
+            "title": "Submission Open",
+            "type": "boolean"
+          },
+          "notice_filename": {
+            "title": "Notice Filename",
+            "type": "string"
+          },
+          "notice_url": {
+            "title": "Notice Url",
+            "type": "string"
+          },
+          "convocation_subject": {
+            "title": "Convocation Subject",
+            "type": "string"
+          },
+          "convocation_body": {
+            "title": "Convocation Body",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "stage_count": {
+            "title": "Stage Count",
+            "type": "integer"
+          },
+          "vacancy_count": {
+            "title": "Vacancy Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "kind",
+          "kind_label",
+          "year",
+          "title",
+          "status",
+          "status_label",
+          "submission_opens_at",
+          "submission_closes_at",
+          "submission_open",
+          "notice_filename",
+          "notice_url",
+          "convocation_subject",
+          "convocation_body",
+          "published_at",
+          "closed_at",
+          "stage_count",
+          "vacancy_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SelectionProcessOut",
+        "type": "object"
+      },
+      "SelectionProcessIn": {
+        "description": "Abertura do edital, digitada pela secretaria.\n\nSem `program_id`: o programa é o da requisição (`current_program`),\nnunca o que o chamador escolher. Sem `status` também — o edital nasce\nem rascunho e muda de estado só por `publish`/`close`, que cobram o\nque a publicação exige e carimbam a data.\n\nO template de convocação é opcional aqui porque ele costuma ser\nescrito depois da grade de vagas; quem cobra é `publish_process`.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SelectionKind"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "convocation_subject": {
+            "default": "",
+            "title": "Convocation Subject",
+            "type": "string"
+          },
+          "convocation_body": {
+            "default": "",
+            "title": "Convocation Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "year",
+          "title",
+          "submission_opens_at",
+          "submission_closes_at"
+        ],
+        "title": "SelectionProcessIn",
+        "type": "object"
+      },
+      "SelectionProcessPatch": {
+        "description": "Correção do edital em rascunho: só os campos presentes são aplicados.\n\nDepois de publicado nada disto muda (`ensure_editable`): o candidato já\nse inscreveu contra este conteúdo, e vaga se corrige por\n`VacancyReallocation`, com ofício da comissão.",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "submission_opens_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Opens At"
+          },
+          "submission_closes_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Closes At"
+          },
+          "convocation_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convocation Subject"
+          },
+          "convocation_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convocation Body"
+          }
+        },
+        "title": "SelectionProcessPatch",
         "type": "object"
       }
     },

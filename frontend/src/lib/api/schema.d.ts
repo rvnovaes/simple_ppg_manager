@@ -1011,6 +1011,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/processes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Processes
+         * @description Os editais do programa, do ano mais recente para o mais antigo.
+         */
+        get: operations["apps_selection_router_list_processes"];
+        put?: never;
+        /**
+         * Create Process
+         * @description A secretaria abre o edital do ano, em rascunho.
+         */
+        post: operations["apps_selection_router_create_process"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Process */
+        get: operations["apps_selection_router_get_process"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Process
+         * @description Correção do edital — só enquanto ele é rascunho.
+         *
+         *     `ensure_editable` é do model e devolve 409 `process_not_editable`:
+         *     depois de publicado o candidato já se inscreveu contra este conteúdo,
+         *     e vaga se corrige por realocação, com ofício da comissão.
+         */
+        patch: operations["apps_selection_router_update_process"];
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Process Endpoint
+         * @description Publica o edital: o trabalho (e a cobrança do que falta) está no
+         *     service, porque a conferência atravessa etapas, vagas e template.
+         */
+        post: operations["apps_selection_router_publish_process_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Process
+         * @description Encerra o edital — ato explícito da secretaria, nada expira por data.
+         *
+         *     Toca um model só, então fica no router (Seção 3): a regra de quando dá
+         *     para encerrar é do `close()` do model, que devolve 409
+         *     `process_not_published`.
+         */
+        post: operations["apps_selection_router_close_process"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/notice-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Notice File
+         * @description Anexa (ou substitui) o PDF do edital.
+         *
+         *     Substituir, e não empilhar: o edital tem um arquivo, e o reenvio é a
+         *     correção de quem subiu a versão errada. A remoção do arquivo anterior é
+         *     explícita porque o storage não participa do rollback da transação — sem
+         *     ela cada reenvio deixaria um órfão no MEDIA_ROOT.
+         *
+         *     Vale depois de publicado: o PDF é o documento que o edital publicado
+         *     divulga, e trocá-lo por uma retificação não muda vaga nem etapa.
+         */
+        post: operations["apps_selection_router_upload_notice_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1351,7 +1473,7 @@ export interface components {
          * Category
          * @enum {string}
          */
-        Category: "permanent" | "collaborator" | "visiting";
+        Category: "permanent" | "collaborator" | "visiting" | "external";
         /** PagedTeacherOut */
         PagedTeacherOut: {
             /** Items */
@@ -2268,6 +2390,156 @@ export interface components {
             password: string;
             /** Program Id */
             program_id?: number | null;
+        };
+        /**
+         * SelectionKind
+         * @description Tipo do edital.
+         *
+         *     O Regular chaveia por projeto coletivo; o Suplementar (ações
+         *     afirmativas) chaveia por linha de pesquisa (decisão P4 do plano).
+         * @enum {string}
+         */
+        SelectionKind: "regular" | "supplementary";
+        /**
+         * SelectionProcessStatus
+         * @enum {string}
+         */
+        SelectionProcessStatus: "draft" | "published" | "closed";
+        /** PagedSelectionProcessOut */
+        PagedSelectionProcessOut: {
+            /** Items */
+            items: components["schemas"]["SelectionProcessOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * SelectionProcessOut
+         * @description O edital como a tela da secretaria o vê.
+         *
+         *     `submission_open` vem resolvido do servidor: comparar a janela no
+         *     navegador deixaria "as inscrições estão abertas" dependendo do relógio
+         *     de quem acessa.
+         *
+         *     `stage_count` e `vacancy_count` viajam porque a tela precisa dizer o
+         *     que falta para publicar sem fazer uma chamada por edital — as rotas de
+         *     listagem e de detalhe anotam os dois; o fallback conta na hora, para o
+         *     objeto recém-escrito que volta do POST/PATCH.
+         */
+        SelectionProcessOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            kind: components["schemas"]["SelectionKind"];
+            /** Kind Label */
+            kind_label: string;
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            status: components["schemas"]["SelectionProcessStatus"];
+            /** Status Label */
+            status_label: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /** Submission Open */
+            submission_open: boolean;
+            /** Notice Filename */
+            notice_filename: string;
+            /** Notice Url */
+            notice_url: string;
+            /** Convocation Subject */
+            convocation_subject: string;
+            /** Convocation Body */
+            convocation_body: string;
+            /** Published At */
+            published_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Stage Count */
+            stage_count: number;
+            /** Vacancy Count */
+            vacancy_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SelectionProcessIn
+         * @description Abertura do edital, digitada pela secretaria.
+         *
+         *     Sem `program_id`: o programa é o da requisição (`current_program`),
+         *     nunca o que o chamador escolher. Sem `status` também — o edital nasce
+         *     em rascunho e muda de estado só por `publish`/`close`, que cobram o
+         *     que a publicação exige e carimbam a data.
+         *
+         *     O template de convocação é opcional aqui porque ele costuma ser
+         *     escrito depois da grade de vagas; quem cobra é `publish_process`.
+         */
+        SelectionProcessIn: {
+            kind: components["schemas"]["SelectionKind"];
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /**
+             * Convocation Subject
+             * @default
+             */
+            convocation_subject: string;
+            /**
+             * Convocation Body
+             * @default
+             */
+            convocation_body: string;
+        };
+        /**
+         * SelectionProcessPatch
+         * @description Correção do edital em rascunho: só os campos presentes são aplicados.
+         *
+         *     Depois de publicado nada disto muda (`ensure_editable`): o candidato já
+         *     se inscreveu contra este conteúdo, e vaga se corrige por
+         *     `VacancyReallocation`, com ofício da comissão.
+         */
+        SelectionProcessPatch: {
+            kind?: components["schemas"]["SelectionKind"] | null;
+            /** Year */
+            year?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Submission Opens At */
+            submission_opens_at?: string | null;
+            /** Submission Closes At */
+            submission_closes_at?: string | null;
+            /** Convocation Subject */
+            convocation_subject?: string | null;
+            /** Convocation Body */
+            convocation_body?: string | null;
         };
     };
     responses: never;
@@ -3747,6 +4019,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IsolatedSignupOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_processes: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["SelectionKind"] | null;
+                status?: components["schemas"]["SelectionProcessStatus"] | null;
+                year?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedSelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionProcessIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_update_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionProcessPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_publish_process_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_close_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_upload_notice_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
                 };
             };
         };
