@@ -12,6 +12,7 @@ dependencies = [
     "gunicorn>=23.0",
     "dj-database-url>=2.2",
     "python-dotenv>=1.0",
+    "reportlab>=5.0.1",
 ]
 
 [dependency-groups]
@@ -62,6 +63,12 @@ exclude = ["migrations/"]
 [[tool.mypy.overrides]]
 module = ["*.migrations.*"]
 ignore_errors = true
+
+# O ReportLab não publica stubs (ADR-008). Isto silencia só o import da
+# biblioteca de terceiros; a verificação do código do projeto continua igual.
+[[tool.mypy.overrides]]
+module = ["reportlab.*"]
+ignore_missing_imports = true
 
 [tool.django-stubs]
 django_settings_module = "config.settings.dev"

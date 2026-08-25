@@ -13,6 +13,8 @@ Started: ter. 25 ago 2026 11:00:21 -03
 - Schema de corpo cujos campos têm todos default ainda é **corpo obrigatório** no Ninja: `POST` sem `data`/`content_type` volta 400 `Cannot parse request body`. Mande `{}`.
 - Fixture de teste que reusa o `client` do pytest-django **compartilha a sessão** com as outras fixtures do mesmo teste (o último `force_login` vence). Papel secundário usa `Client()` própria.
 - Teste que espera e-mail precisa de `django_capture_on_commit_callbacks(execute=True)`: sem ele o `on_commit` não roda e o `mail.outbox` fica vazio silenciosamente.
+- `docker compose exec backend python` é o Python do **sistema**, não o do projeto: o venv está em `/opt/venv`. Para conferir dependência dentro do container use `uv run python` (ou `/opt/venv/bin/python`).
+- Dependência nova (`uv add`) só entra no container com **rebuild**: `docker compose up -d --build backend` (+ `restart nginx`).
 - `docker compose restart backend` **quebra o Nginx** (502): o `upstream django` resolve `backend:8000` uma vez, e o container reiniciado ganha IP novo. Reinicie o nginx junto (`docker compose restart nginx`).
 ---
 ## 2026-08-25 - f0-app-selection
@@ -346,5 +348,25 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - Na `banca_regular` do conftest o externo é o **suplente**, então congelar sem impedido não manda e-mail. Para exercitar o token, ou se troca o externo para membro titular (fixture `banca_com_externo`) ou se congela com `replaced_member_id`.
   - O Docente **não** tem `view_recordsignature`: as assinaturas viajam embutidas em `ExaminationRecordOut`, como as etapas em `MyBoardOut`. Rota nova para docente precisa continuar carregando junto o que ele não pode buscar sozinho.
   - `ExaminationRecord.freeze()` já recusa ata sem candidato vivo (`no_candidates`, 400) — a checagem de `scores_incomplete` vem antes e só cobre quem existe.
+  - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
+---
+## 2026-08-25 - f3-pdf-reportlab
+- `uv add reportlab` (5.0.1, traz `pillow` e `charset-normalizer` por wheel — nenhuma lib de sistema); `pyproject.toml` + `uv.lock`.
+- `apps/selection/pdf.py` novo, uma função pública: `render_record_pdf(record) -> bytes`. Devolve bytes e **não escreve nada** (nem banco, nem disco) — quem grava o `FileField` é o `sign_record`, em f3-sign-close-stage.
+- O papel nasce do `record.content` congelado, **nunca** de uma releitura do `StageScore`: é o `content` que o `content_hash` cobre. Reler a tabela de notas produziria documento diferente do que foi assinado.
+- Layout `platypus`: título, cabeçalho em tabela chave/valor (edital, etapa, nível, alvo, banca com os quatro papéis, titular impedido quando há, versão, situação, congelada/assinada em), tabela do `content` (protocolo, candidato, cota, nota, situação — Ausente/Aprovado(a)/Reprovado(a)) e a tabela de assinaturas (nome, método, instante, 12 hex do `signed_hash`), fechando com a versão e o `content_hash` inteiro em Courier.
+- Fonte Helvetica/Courier: as embutidas do próprio PDF, sem arquivo de fonte na imagem. `_nome_do_professor` usa `getattr(teacher, "person", None)` para não explodir com professor montado em memória; `_assinaturas` devolve `[]` quando a ata não tem `pk` (relação reversa de instância não salva é `ValueError`).
+- `docs/adr/008-pdf-da-ata-com-reportlab.md`: por que ReportLab e não WeasyPrint/wkhtmltopdf/Playwright (todos trazem dependência de sistema) nem fpdf2/LaTeX; registra o rebuild obrigatório e o override de mypy.
+- `pyproject.toml`: `[[tool.mypy.overrides]] module = ["reportlab.*"] ignore_missing_imports = true` — a biblioteca não publica stubs. **Não afrouxa nada do projeto**: é override de módulo de terceiro, e o `mypy` segue estrito no resto.
+- 5 testes em `apps/selection/tests/test_pdf.py` (4 em memória, 1 com banco para as assinaturas): bytes `%PDF…%%EOF` com e sem conteúdo, cabeçalho/notas/hash no texto, banca e titular impedido, e as assinaturas com o prefixo do hash.
+- `make ready` verde, 1075 testes, mypy limpo, svelte-check 0 erros. Sem migration, sem rota, sem `make gen-api`.
+- **Verificado no canteiro**: `docker compose up -d --build backend` (+ `restart nginx`), `uv run python -c 'import reportlab'` → 5.0.1, e `render_record_pdf` na ata 3 real (rascunho, 1 linha, 0 assinaturas) → 3015 bytes de PDF válido. Conferido visualmente com `pdftotext -layout` e `pdftoppm`: nenhuma coluna quebrando linha, acentuação correta.
+- Files: backend/pyproject.toml, backend/uv.lock, backend/apps/selection/pdf.py, backend/apps/selection/tests/test_pdf.py, docs/adr/008-pdf-da-ata-com-reportlab.md, scripts/helton/projects/prds/{prd.json,progress.txt}
+- **Learnings for future iterations:**
+  - **`docker compose exec backend python` NÃO é o Python do projeto.** O venv está em `/opt/venv` (`UV_PROJECT_ENVIRONMENT`) e o `python` do PATH é o do sistema, sem as dependências — `import reportlab` dá `ModuleNotFoundError` mesmo depois do rebuild correto. Use `uv run python` (ou `/opt/venv/bin/python`) para conferir dependência dentro do container.
+  - Depois de `uv add`, **rebuild** (`docker compose up -d --build backend`) e `docker compose restart nginx` junto (o upstream do nginx guarda o IP antigo).
+  - **Conferir texto de PDF gerado exige desfazer dois envelopes**: o ReportLab passa cada `stream` por Flate **e** ASCII85. `zlib.decompress` sozinho falha; o padrão adotado no teste é `base64.a85decode(dados, adobe=True)` quando o fluxo termina em `~>`, e só então `zlib`.
+  - **Coluna estreita demais quebra a linha em silêncio**, sem erro nenhum — foi o que aconteceu com o protocolo em 32mm (`PS2027R-AAAA00` / `01`). O teste que procura o protocolo inteiro no texto é o que pega isso; largura total útil em A4 com as margens deste documento é **165mm**.
+  - Para olhar o papel de verdade: `docker cp $(docker compose ps -q backend):/tmp/ata.pdf /tmp/` e `pdftotext -layout` / `pdftoppm -png` (ambos existem no host).
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
 ---
