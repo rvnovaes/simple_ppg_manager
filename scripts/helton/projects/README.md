@@ -1,13 +1,28 @@
-# plans/ — a entrada da esteira
+# projects/ — o que alimenta a esteira
 
-Um arquivo por plano de desenvolvimento aprovado, em Markdown:
+Os três artefatos do ciclo, lado a lado. Em todos vale a mesma regra: **a raiz é
+o que está pendente, `implemented/` é o que já foi entregue.**
 
 ```
-plans/<nome>.md
+scripts/helton/projects/
+├── specs/          saída do /grill-me — o material bruto
+│   └── implemented/
+├── plans/          saída do plan mode — o que vira canteiro
+│   ├── manifest.json    (saída do /compatibilizar)
+│   └── implemented/
+└── prds/           saída do /cronograma — o que o loop executa
+    ├── prd.json
+    ├── progress.txt
+    └── implemented/<AAAA-MM-DD>-<fatia>/
 ```
 
-**O nome do arquivo é a chave primária de tudo.** Ele precisa ser kebab-case
-(minúsculas, dígitos e hífen simples), porque vira, sem tradução:
+Sem subpasta de domínio em lugar nenhum: tema costuma cruzar domínios, e a
+subpasta só cria a dúvida de onde procurar. Para o que **não** vira plano —
+conferências, checklists, transcrições avulsas — use `notes/` na raiz do
+repositório.
+
+**O nome do arquivo do plano é a chave primária de tudo.** Ele precisa ser
+kebab-case (minúsculas, dígitos e hífen simples), porque vira, sem tradução:
 
 | a partir de `plans/onda-2.md` | vira |
 |---|---|
@@ -21,31 +36,35 @@ O começo são **três sessões distintas**, e a separação é a parte que mais
 perde ao contar a história rápido:
 
 1. **Sessão de descoberta** — `/grill-me` sobre o problema. A saída é a spec,
-   gravada em `specs/<tema>.md` a cada resposta. O grill extrai; ele não redige
+   gravada em `scripts/helton/projects/specs/<tema>.md` a cada resposta. O grill extrai; ele não redige
    entregável.
 2. **Sessão nova em plan mode, apontada para a spec.** Não é continuação da
    anterior: sessão limpa, e o primeiro pedido é literalmente *"leia
-   `specs/<tema>.md` e faça o plano"*. O humano julga o resultado — arquivos
+   `scripts/helton/projects/specs/<tema>.md` e faça o plano"*. O humano julga o resultado — arquivos
    certos? premissas explícitas? o que está faltando? — e o plano aprovado é
    salvo aqui. **Commit e push**: a guarda do `montar-canteiro.sh` procura o
    plano em `origin/develop`, não no seu diretório.
-3. `/compatibilizar` cruza os planos entre si e grava `plans/manifest.json`.
-4. `./scripts/obra/montar-canteiro.sh <nome>` provisiona o canteiro —
+3. `/compatibilizar` cruza os planos entre si e grava `scripts/helton/projects/plans/manifest.json`.
+4. `./scripts/helton/obra/montar-canteiro.sh <nome>` provisiona o canteiro —
    ou `--todos`, que monta em série todos os planos que o manifesto liberou
    como `parallel` (e diz o motivo de cada um que pulou).
 5. `/cronograma`, **de dentro da worktree**, vira o plano em
-   `scripts/helton/prd.json`.
+   `scripts/helton/projects/prds/prd.json`.
+
+   > Com vários planos liberados, `/mobilizar-obras` faz os passos 4 e 5 de uma
+   > vez — monta cada canteiro, gera o cronograma de cada um e entrega o roteiro
+   > dos terminais a abrir. O ensaio e o cap continuam sendo seus.
 6. `./scripts/helton/helton.sh --tool claude 1` — ensaio vigiado — e só então o
    cap real.
-7. `./scripts/obra/desmontar-canteiro.sh <nome>` imprime o índice de revisão e
+7. `./scripts/helton/obra/desmontar-canteiro.sh <nome>` imprime o índice de revisão e
    desmonta, preservando a branch para o merge.
 8. Merge à mão em `develop`, e então
-   `./scripts/obra/arquivar-plano.sh <nome>`, que move o plano para
-   `history/`.
+   `./scripts/helton/obra/arquivar-plano.sh <nome>`, que move o plano para
+   `plans/implemented/`.
 
 ### Por que o passo 8 não é opcional
 
-Plano entregue que fica em `plans/` volta a ser montado. Depois do merge a
+Plano entregue que fica em `scripts/helton/projects/plans/` volta a ser montado. Depois do merge a
 branch `helton/<nome>` é apagada e a worktree já foi no desmonte — de modo que
 **nenhuma** das três guardas do `montar-canteiro.sh --todos` dispara (canteiro
 montado? não; branch existe? não; status no manifesto? ainda `parallel`). O
@@ -56,16 +75,19 @@ contida em `origin/develop`: arquivar antes do merge marcaria como
 entregue um trabalho que ainda pode mudar, ou ser abandonado. Para plano
 descartado de propósito, `--force`.
 
-## history/
+## implemented/
 
-O que já foi entregue, fora do caminho da esteira. É pasta versionada, e a
-enumeração não a enxerga: o `--todos` lista `plans/` sem recursão e filtra por
-`plans/<nome>.md`, e o `/compatibilizar` lê `plans/*.md` — nada aqui dentro é
-confundido com trabalho pendente.
+O que já foi entregue, fora do caminho da esteira. Existe em `plans/`, `specs/` e
+`prds/`, sempre com o mesmo papel. É pasta versionada, e a enumeração não a
+enxerga: o `--todos` lista `scripts/helton/projects/plans/` sem recursão e filtra
+por `scripts/helton/projects/plans/<nome>.md`, e o `/compatibilizar` lê
+`scripts/helton/projects/plans/*.md` — nada aqui dentro é confundido com trabalho
+pendente.
 
-As subpastas com data (`20260803-primeira-implementacao-nfe/`) são material mais
-antigo, agrupado por empreitada; o `arquivar-plano.sh` grava sempre na raiz de
-`history/`, com o mesmo nome de arquivo que o plano tinha.
+O `arquivar-plano.sh` grava sempre na raiz de `plans/implemented/`, com o mesmo
+nome de arquivo que o plano tinha. Em `prds/implemented/` o agrupamento é por
+empreitada, em pastas `<AAAA-MM-DD>-<fatia>/` com o `prd.json` e o `progress.txt`
+juntos — é o que o `helton.sh` faz sozinho ao detectar troca de branch.
 
 ### Por que a sessão do plano tem de ser nova
 
@@ -94,8 +116,8 @@ precisa ser reescrito (`needs_reslicing`). Guarda também o sha256 de cada plano
 
 ## O que **não** entra aqui
 
-- Specs — inclusive a saída do `/grill-me` → `specs/`.
+- Specs — inclusive a saída do `/grill-me` → `scripts/helton/projects/specs/`.
 - O que não vira plano (conferências, checklists, transcrições avulsas) →
   `notes/`, onde também ficam as capturas de grill anteriores a 09/08/2026.
-- PRDs de execução → `scripts/helton/prd.json` (o corrente) e
-  `scripts/helton/archive/` (os encerrados).
+- PRDs de execução → `scripts/helton/projects/prds/prd.json` (o corrente) e
+  `scripts/helton/projects/prds/implemented/` (os encerrados).

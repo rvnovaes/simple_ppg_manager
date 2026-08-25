@@ -201,11 +201,14 @@ temp/
 # versionados, e é lendo o progress.txt da base que o montar-canteiro.sh mostra
 # o log da empreitada anterior.
 
-# Os caminhos têm barra no meio, então são ancorados na raiz e só casam com
-# `scripts/helton/`. A instalação antiga ficava em `ralph/`, na raiz, e tinha as
-# duas regras equivalentes; saíram junto com ela.
-scripts/helton/.last-branch
-scripts/helton/archive/
+# O caminho tem barra no meio, então é ancorado na raiz e só casa com
+# `scripts/helton/projects/prds/`. A instalação antiga ficava em `ralph/`, na
+# raiz; saiu junto com ela.
+#
+# `prds/implemented/` NÃO entra aqui: é o arquivo das empreitadas encerradas
+# (o helton.sh move prd.json + progress.txt para lá ao trocar de branch) e é
+# versionado de propósito.
+scripts/helton/projects/prds/.last-branch
 
 # Credenciais da carga de demonstração — geradas por make seed, não versionar
 CONTAS-DEMO.txt

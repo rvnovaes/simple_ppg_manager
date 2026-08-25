@@ -401,51 +401,86 @@ consequências. Já valem como decididos:
 
 ## Human gates
 
-O que um loop autônomo **não** decide sozinho neste repositório. A regra geral é
-reversibilidade: se der errado e só for notado uma semana depois, dá para voltar
-ao estado anterior usando apenas o git? "Não" → gate.
+**A régua é o canteiro, não o arquivo.** A pergunta não é "este arquivo é
+sensível?", é **"o efeito escapa da worktree?"**. Cada agente roda numa worktree
+própria, com stack Compose e volume de banco próprios — o que acontece lá dentro
+se desfaz com `git` e com `desmontar-canteiro.sh --volumes`. Barrar o que o
+canteiro contém não protege nada: trava a empreitada cedo, e o `blocked_by_gate`
+transitivo leva as dependentes junto.
 
-O que se enquadra aqui, observado no codebase:
+Os campos do `prd.json` são dois:
 
-1. **Decisão sobre a vida acadêmica de alguém** — `apps/academic/services.py`,
-   nas funções que encerram ou deferem: `close_isolated_cycle`,
-   `enroll_isolated_request`, `create_enrollment_adjustment`. Fechar ciclo,
-   classificar candidato e deferir matrícula produzem efeito sobre terceiro que
-   já foi comunicado; desfazer no git não desfaz o e-mail que a secretaria
-   mandou nem a expectativa de quem leu o resultado. Somam-se os anexos de
-   `backend/media/` — `FileField` de `RequestDocument`, upload de usuário, fora
-   do versionamento e sem volta.
-2. **Migrations** — qualquer arquivo em `backend/apps/*/migrations/`, e os alvos
-   `make migrations` / `make migrate`. Migration destrutiva ou backfill toca
-   dado real. Vale também o `image: postgres:17.5-alpine` do compose: trocar a
-   major invalida o data dir do volume, e o caminho é `pg_dump` antes — nunca só
-   trocar a tag.
-3. **Regra de classificação e contagem de vaga** — a pontuação e a ordenação de
-   candidatos de isolada (`apps/academic/services.py`, `schemas.py`, e os
-   modelos de edital/ciclo em `apps/academic/models.py`). Número de vaga,
-   critério de desempate e arredondamento de nota: teste verde não prova
-   critério certo, e o resultado errado só aparece quando alguém reclama.
-4. **Permissões, tenant e autenticação** — `apps/core/permissions.py`
-   (`require_perm`), `apps/core/tenancy.py` (`current_program`), `apps/accounts/`
-   e qualquer query que mude escopo de `Program`. A tenancy aqui é por programa;
-   vazamento entre programas não aparece em lint, e com um só programa semeado
-   nem em teste — é por isso que o `seed_demo` semeia dois.
-5. **Contrato de API publicado** — `backend/api.py`, os `router.py`/`schemas.py`
-   de cada app, e os gerados `frontend/src/lib/api/openapi.json` e
-   `schema.d.ts`. O frontend inteiro tipa em cima deles: mudança de contrato
-   quebra o `npm run check` de quem só mexeu no backend.
-6. **Infra e segredos** — `docker-compose.yml`, `backend/Dockerfile`, `nginx/`,
-   `.env*`, `backend/config/settings/prod.py`, `docs/adr/`. Estado externo ao
-   repositório, ou decisão que já foi tomada e registrada em ADR.
-7. **Enfraquecer a maquinaria de verificação** — remover ou afrouxar asserção em
+- **`human_gate: true`** — o loop **não executa**. Só para o efeito que escapa.
+- **`review_required: true`** — o loop **executa**, e a story aparece no índice
+  do `desmontar-canteiro.sh` para o humano conferir antes do merge.
+
+Teste concreto: *o estrago sobrevive a `desmontar-canteiro.sh --volumes` e a um
+`git revert`?* Não sobrevive → `review_required`. **Na dúvida, é aí.**
+
+### O que é gate (o efeito escapa)
+
+1. **Efeito sobre terceiro, irreversível.** Hoje este projeto **não tem
+   nenhum**: não envia e-mail, não chama serviço externo, e o que a secretaria
+   comunica (resultado de ciclo de isolada, deferimento de matrícula) é
+   comunicado por ela, fora do sistema. `close_isolated_cycle`,
+   `enroll_isolated_request` e `create_enrollment_adjustment`
+   (`apps/academic/services.py`) escrevem no banco do próprio canteiro, e só.
+   No dia em que entrar envio de e-mail, notificação ou integração com sistema
+   da UFMG, **a chamada que sai** vira gate — e só ela; DTO, template, fila e
+   tela continuam `review_required`.
+2. **Segredos e o que roda fora daqui** — `.env*` (exceto o `.env` que o
+   `montar-canteiro.sh` gera para o canteiro), `backend/config/settings/prod.py`,
+   `nginx/` de produção, `.github/workflows/` (executa no push) e qualquer
+   credencial, chave ou `SECRET_KEY`. **`docker-compose.yml` não entra**: só
+   molda a stack do próprio canteiro. Trocar a *major* do
+   `image: postgres:...` também não é gate — o volume que ela invalida é o do
+   canteiro; em produção o caminho continua sendo `pg_dump` antes.
+3. **Enfraquecer a maquinaria de verificação** — remover ou afrouxar asserção em
    `backend/apps/*/tests/`, tirar passo de `make ready` (`lint`, `typecheck`,
    `test`), afrouxar `ruff`/`mypy`/`svelte-check` no `pyproject.toml` ou no
-   `package.json`, mexer em `.claude/skills/` ou em `scripts/helton/`. Tarefa
-   cujo caminho mais curto é apagar asserção é sempre gate. **Estender** a
-   verificação — teste novo, alvo novo no `Makefile`, check a mais — não é gate:
-   é o resultado desejado.
+   `package.json`, mexer em `.claude/skills/`, `.claude/settings.json` ou em
+   `scripts/helton/`. Tarefa cujo caminho mais curto é apagar asserção é sempre
+   gate. **Estender** a verificação — teste novo, alvo novo no `Makefile`, check
+   a mais — não é gate: é o resultado desejado. O `deny` do
+   `.claude/settings.json` resolve boa parte disto mecanicamente.
 
-Fora dessa lista, o padrão é `human_gate: false`. Na dúvida, `true`.
+### O que NÃO é gate, e sim `review_required`
+
+- **Migrations** — `backend/apps/*/migrations/` aplica-se ao banco do próprio
+  canteiro, e o arquivo é revertível. Merece olho no merge, não parada.
+- **Decisão sobre a vida acadêmica** — as funções de `apps/academic/services.py`
+  citadas acima, e os anexos em `backend/media/` (`FileField` de
+  `RequestDocument`): tudo dentro do canteiro.
+- **Regra de classificação e contagem de vaga** — pontuação, ordenação,
+  desempate e arredondamento de candidatos de isolada
+  (`apps/academic/services.py`, `schemas.py`, models de edital/ciclo). Teste
+  verde não prova critério certo: é o humano que confere, no merge.
+- **Permissões, tenant e autenticação** — `apps/core/permissions.py`
+  (`require_perm`), `apps/core/tenancy.py` (`current_program`),
+  `apps/accounts/` e qualquer query que mude escopo de `Program`. Vazamento entre
+  programas não aparece em lint, e com um só programa semeado nem em teste — é
+  por isso que o `seed_demo` semeia dois.
+- **Contrato de API publicado** — `backend/api.py`, os `router.py`/`schemas.py`
+  de cada app, e os gerados `frontend/src/lib/api/openapi.json` e `schema.d.ts`.
+- **`docker-compose.yml`, `backend/Dockerfile`, `nginx/nginx.conf` de dev** e
+  `docs/adr/` — decisão já registrada muda com ADR, mas o arquivo é revertível.
+
+### O preço de destravar migration
+
+Dois canteiros criando migration no mesmo app em paralelo produzem dois
+*leaf nodes*, e o `migrate` seguinte para com "Conflicting migrations detected"
+— na base, depois do merge, quando o portão de testes de cada canteiro já
+passou verde. Quem resolve é o `/compatibilizar`, pelo `creates_migration` do
+manifesto (plano-zero de schema, e os demais `serialized_after`). **Sem
+manifesto, não monte dois canteiros que mexam em schema.** Vale também a regra
+de sempre: migração gerada é lida antes do commit, e entra retrocompatível
+(`null=True` ou default).
+
+O outro preço é retrabalho: o loop constrói em cima do schema que ele mesmo
+escreveu. Mitigação barata: manter a story de migration cedo no cronograma e
+olhar só ela depois da primeira iteração vigiada.
+
+Fora dessas listas, o padrão é `human_gate: false`.
 
 ---
 

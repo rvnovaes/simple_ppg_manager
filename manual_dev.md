@@ -18,7 +18,7 @@ estão e por que estão assim.
 | `github.com/rvnovaes/helton` (clonado em `/opt/helton`) | **a esteira** — o kit que instala o loop autônomo em qualquer projeto |
 
 A esteira é genérica de propósito. O que ela sabe deste projeto está todo em
-`scripts/obra/obra.conf` e em `.env.worktree`, os dois versionados aqui. Para
+`scripts/helton/obra/obra.conf` e em `.env.worktree`, os dois versionados aqui. Para
 instalar em outro repositório, é o kit que se roda:
 
 ```bash
@@ -114,33 +114,33 @@ Docker própria e faixa de portas própria. O termo usado nos scripts é
 *canteiro*.
 
 ```
-/grill-me                          extrai a spec        → specs/<tema>.md
-sessão NOVA em plan mode           o plano              → plans/<nome>.md
+/grill-me                          extrai a spec        → scripts/helton/projects/specs/<tema>.md
+sessão NOVA em plan mode           o plano              → scripts/helton/projects/plans/<nome>.md
                                    (commitar e pushar)
 /compatibilizar                    só com mais de um plano
-./scripts/obra/montar-canteiro.sh <nome>
+./scripts/helton/obra/montar-canteiro.sh <nome>
                                    cria a worktree, sobe a stack, migra e semeia
   ── dentro da worktree ──
-  /cronograma                      converte o plano     → scripts/helton/prd.json
+  /cronograma                      converte o plano     → scripts/helton/projects/prds/prd.json
   ./scripts/helton/helton.sh --tool claude 1     ensaio vigiado, UMA iteração
   ./scripts/helton/helton.sh --tool claude 30    AFK
   ── de volta ──
-./scripts/obra/desmontar-canteiro.sh <nome>     preserva a branch helton/<nome>
+./scripts/helton/obra/desmontar-canteiro.sh <nome>     preserva a branch helton/<nome>
 git merge --no-ff helton/<nome>
-./scripts/obra/arquivar-plano.sh <nome>
+./scripts/helton/obra/arquivar-plano.sh <nome>
 ```
 
-O passo a passo com as armadilhas está em [`plans/README.md`](plans/README.md).
+O passo a passo com as armadilhas está em [`scripts/helton/projects/README.md`](scripts/helton/projects/README.md).
 
 ### Os arquivos que importam
 
 | Arquivo | Papel | Editar? |
 | --- | --- | --- |
-| `scripts/obra/obra.conf` | **tudo que a esteira sabe deste projeto** | sim, é o único |
+| `scripts/helton/obra/obra.conf` | **tudo que a esteira sabe deste projeto** | sim, é o único |
 | `scripts/helton/helton.sh` | o loop | não |
 | `scripts/helton/CLAUDE.md` | **o prompt do loop** (Claude Code), não documentação | não |
 | `scripts/helton/prompt.md` | o mesmo prompt para o Amp — gêmeo do anterior | não |
-| `scripts/helton/prd.json` | o cronograma corrente, escrito pelo `/cronograma` | não à mão |
+| `scripts/helton/projects/prds/prd.json` | o cronograma corrente, escrito pelo `/cronograma` | não à mão |
 | `.env.worktree` | o overlay de ambiente por canteiro | sim |
 | `.claude/skills/` | `cronograma`, `compatibilizar`, `mobilizar-obras`, `grill-me` | não |
 

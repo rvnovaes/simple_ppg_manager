@@ -9,7 +9,7 @@
 #
 # O nome do plano é a chave primária de tudo:
 #
-#   plans/onda-2.md  ->  worktree ../<projeto>-onda-2
+#   scripts/helton/projects/plans/onda-2.md  ->  worktree ../<projeto>-onda-2
 #                    ->  branch helton/onda-2
 #                    ->  projeto Compose <projeto>-onda-2
 #
@@ -17,9 +17,9 @@
 # compatibilização, um de cada vez.
 #
 # Uso:
-#   ./scripts/obra/montar-canteiro.sh onda-2
-#   ./scripts/obra/montar-canteiro.sh --todos
-#   ./scripts/obra/montar-canteiro.sh onda-2 --sem-deps   # sem node_modules/venv
+#   ./scripts/helton/obra/montar-canteiro.sh onda-2
+#   ./scripts/helton/obra/montar-canteiro.sh --todos
+#   ./scripts/helton/obra/montar-canteiro.sh onda-2 --sem-deps   # sem node_modules/venv
 #   cd ../<projeto>-onda-2 && claude   # e lá dentro: /cronograma
 
 set -euo pipefail
@@ -114,8 +114,8 @@ if [[ "$MODO" == "todos" ]]; then
   # ficaram de fora entram na lista de pulados, para o esquecimento de push não
   # passar em silêncio.
   mapfile -t NA_BASE < <(
-    git -C "$REPO_ROOT" ls-tree --name-only "$BASE_SHA" plans/ \
-      | sed -n 's|^plans/\(.*\)\.md$|\1|p' | grep -vx 'README' || true
+    git -C "$REPO_ROOT" ls-tree --name-only "$BASE_SHA" scripts/helton/projects/plans/ \
+      | sed -n 's|^scripts/helton/projects/plans/\(.*\)\.md$|\1|p' | grep -vx 'README' || true
   )
 
   # O manifesto do /compatibilizar também vem da base — é de lá que o
@@ -124,11 +124,11 @@ if [[ "$MODO" == "todos" ]]; then
   # deve ser obrigado a compatibilizar nada.
   declare -A STATUS=()
   MANIFESTO="não"
-  if git -C "$REPO_ROOT" cat-file -e "$BASE_SHA:plans/manifest.json" 2>/dev/null; then
+  if git -C "$REPO_ROOT" cat-file -e "$BASE_SHA:scripts/helton/projects/plans/manifest.json" 2>/dev/null; then
     MANIFESTO="sim"
     while IFS=$'\t' read -r n s; do
       [[ -n "$n" ]] && STATUS["$n"]="$s"
-    done < <(git -C "$REPO_ROOT" show "$BASE_SHA:plans/manifest.json" | python3 -c '
+    done < <(git -C "$REPO_ROOT" show "$BASE_SHA:scripts/helton/projects/plans/manifest.json" | python3 -c '
 import json, sys
 try:
     m = json.load(sys.stdin)
@@ -163,11 +163,11 @@ for p in m.get("plans", []):
 
   # Plano que existe aqui e não na base entra na mesma lista: silêncio sobre ele
   # é como um push esquecido vira "mas eu escrevi esse plano".
-  for f in "$REPO_ROOT"/plans/*.md; do
+  for f in "$REPO_ROOT"/scripts/helton/projects/plans/*.md; do
     [[ -e "$f" ]] || continue
     n="$(basename "$f" .md)"
     [[ "$n" == "README" ]] && continue
-    git -C "$REPO_ROOT" cat-file -e "$BASE_SHA:plans/$n.md" 2>/dev/null \
+    git -C "$REPO_ROOT" cat-file -e "$BASE_SHA:scripts/helton/projects/plans/$n.md" 2>/dev/null \
       || PULADOS+=("$n — existe só neste checkout: commite e faça push")
   done
 
@@ -175,7 +175,7 @@ for p in m.get("plans", []):
   if [[ "$MANIFESTO" == "sim" ]]; then
     say "manifesto encontrado na base — montando só os planos 'parallel'."
   else
-    say "ATENÇÃO: não há plans/manifest.json em $BASE_BRANCH.
+    say "ATENÇÃO: não há scripts/helton/projects/plans/manifest.json em $BASE_BRANCH.
    Sem compatibilização ninguém conferiu se estes planos disputam os mesmos
    arquivos, e dois canteiros que colidem só se descobrem no merge. Com mais de
    um plano, rode /compatibilizar antes."
@@ -247,7 +247,7 @@ nome_kebab "$PLAN" || die \
 NAME="$PROJECT-$PLAN"
 WT_DIR="$PARENT/$NAME"
 BRANCH="helton/$PLAN"
-PLAN_FILE="$REPO_ROOT/plans/$PLAN.md"
+PLAN_FILE="$REPO_ROOT/scripts/helton/projects/plans/$PLAN.md"
 
 [[ ! -e "$WT_DIR" ]] || die "já existe $WT_DIR (desmonte antes: desmontar-canteiro.sh $PLAN)"
 git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$BRANCH" \
@@ -281,12 +281,12 @@ else
     || die "$BASE_BRANCH não existe depois do fetch"
 fi
 
-if ! git -C "$REPO_ROOT" cat-file -e "$BASE_REF:plans/$PLAN.md" 2>/dev/null; then
+if ! git -C "$REPO_ROOT" cat-file -e "$BASE_REF:scripts/helton/projects/plans/$PLAN.md" 2>/dev/null; then
   [[ -f "$PLAN_FILE" ]] && die \
-    "plans/$PLAN.md existe neste checkout, mas não em $BASE_LABEL.
+    "scripts/helton/projects/plans/$PLAN.md existe neste checkout, mas não em $BASE_LABEL.
    Commite e faça push antes de montar o canteiro — a worktree é derivada da
    base, e lá dentro o /cronograma não acharia o plano."
-  die "plano não existe: plans/$PLAN.md
+  die "plano não existe: scripts/helton/projects/plans/$PLAN.md
    (o canteiro é montado para um plano aprovado; escreva-o, commite e faça push)"
 fi
 
@@ -310,15 +310,15 @@ git -C "$REPO_ROOT" worktree add "$WT_DIR" -b "$BRANCH" "$BASE_REF"
 say "✔ worktree $WT_DIR na branch $BRANCH (a partir de $BASE_LABEL)"
 
 # ── Empreitada anterior ──────────────────────────────────────────────
-# `scripts/helton/prd.json` e `progress.txt` são versionados, então a worktree
+# `scripts/helton/projects/prds/prd.json` e `progress.txt` são versionados, então a worktree
 # nasce com a empreitada que estava na base. O `.last-branch` NÃO vem junto (é
 # gitignored), de modo que o arquivamento automático do `helton.sh` nem dispara:
 # um ensaio rodado antes do `/cronograma` leria o prd velho e, seguindo o
 # `scripts/helton/CLAUDE.md`, faria checkout da branch DELE — o trabalho cairia
 # fora de $BRANCH. Por isso o canteiro nasce limpo. Nada se perde: o conteúdo
 # removido continua em $BASE_BRANCH:scripts/helton/.
-WT_PRD="$WT_DIR/scripts/helton/prd.json"
-WT_PROGRESS="$WT_DIR/scripts/helton/progress.txt"
+WT_PRD="$WT_DIR/scripts/helton/projects/prds/prd.json"
+WT_PROGRESS="$WT_DIR/scripts/helton/projects/prds/progress.txt"
 anterior=""; limpou=""
 if [[ -f "$WT_PRD" ]]; then
   anterior="$(sed -n 's/.*"branchName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$WT_PRD" | head -1)"
@@ -332,7 +332,7 @@ if [[ -f "$WT_PROGRESS" ]]; then
   awk '/^## \[/ { exit } { print }' "$WT_PROGRESS" > "$WT_PROGRESS.novo"
   {
     echo "## Empreitada: $PLAN ($BRANCH) — canteiro montado em $(date +%Y-%m-%d)"
-    echo "Log da anterior${anterior:+ ($anterior)}: $BASE_REF:scripts/helton/progress.txt"
+    echo "Log da anterior${anterior:+ ($anterior)}: $BASE_REF:scripts/helton/projects/prds/progress.txt"
     echo "---"
   } >> "$WT_PROGRESS.novo"
   mv "$WT_PROGRESS.novo" "$WT_PROGRESS"
@@ -345,7 +345,7 @@ if [[ -n "$limpou" ]]; then
     -m "prd.json removido e progress.txt reduzido à seção Codebase Patterns, para
 que um ensaio rodado antes do /cronograma não execute o prd da empreitada
 anterior nem faça checkout da branch dela. O conteúdo segue em
-$BASE_REF:scripts/helton/."
+$BASE_REF:scripts/helton/projects/prds/."
   say "✔ canteiro limpo da empreitada anterior${anterior:+ ($anterior)} — $limpou"
 fi
 
@@ -388,7 +388,7 @@ OVERLAY_BODY="$(awk -v m="$HEADER_END" 'passou { print } $0 == m { passou = 1 }'
    — é essa linha que separa a documentação do overlay do que vai para o .env"
 keys="$(printf '%s\n' "$OVERLAY_BODY" | grep -oE '^[A-Z_][A-Z0-9_]*=' | tr -d '=' | paste -sd'|' -)"
 {
-  echo "# GERADO por scripts/obra/montar-canteiro.sh para o plano '$PLAN'."
+  echo "# GERADO por scripts/helton/obra/montar-canteiro.sh para o plano '$PLAN'."
   echo "# Base: .env.example  |  Overlay: .env.worktree  |  Offset: $OFFSET"
   echo "# Editar à mão é permitido; regenerar sobrescreve."
   echo ""
@@ -487,7 +487,7 @@ cat <<EOF
 Próximo passo — de dentro da worktree:
 
   cd $WT_DIR
-  claude          # e lá: /cronograma   (gera scripts/helton/prd.json)
+  claude          # e lá: /cronograma   (gera scripts/helton/projects/prds/prd.json)
   ./scripts/helton/helton.sh --tool claude 1    # ensaio de UMA iteração, vigiado
 
 Só depois do ensaio limpo é que se libera o cap real da empreitada.

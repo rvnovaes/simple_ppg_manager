@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # arquivar-plano.sh <plano> [--force]
 #
-# Tira um plano entregue de `plans/` e o guarda em `plans/history/`, para que a
+# Tira um plano entregue de `scripts/helton/projects/plans/` e o guarda em `scripts/helton/projects/plans/implemented/`, para que a
 # esteira pare de tratá-lo como trabalho pendente.
 #
 # **Por que este passo existe.** Depois do merge, a branch `helton/<plano>` é
@@ -12,9 +12,9 @@
 #
 # Roda DEPOIS do merge, do checkout principal:
 #
-#   ./scripts/obra/desmontar-canteiro.sh onda-2     # colheita, branch preservada
+#   ./scripts/helton/obra/desmontar-canteiro.sh onda-2     # colheita, branch preservada
 #   git merge --no-ff helton/onda-2                  # à mão, quando o Roberto pedir
-#   ./scripts/obra/arquivar-plano.sh onda-2         # e só então o plano sai de plans/
+#   ./scripts/helton/obra/arquivar-plano.sh onda-2         # e só então o plano sai de scripts/helton/projects/plans/
 #
 #   --force   arquiva mesmo com a branch por mergear (para plano abandonado)
 
@@ -45,13 +45,13 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "rode de dentro 
 PROJECT="$(basename "$REPO_ROOT")"
 PARENT="$(dirname "$REPO_ROOT")"
 BRANCH="helton/$PLAN"
-ORIGEM="plans/$PLAN.md"
-DESTINO="plans/history/$PLAN.md"
+ORIGEM="scripts/helton/projects/plans/$PLAN.md"
+DESTINO="scripts/helton/projects/plans/implemented/$PLAN.md"
 
 # ── O plano existe, é rastreado, e o destino está livre? ─────────────
 if [[ ! -f "$REPO_ROOT/$ORIGEM" ]]; then
-  [[ -f "$REPO_ROOT/$DESTINO" ]] && die "$ORIGEM já está em plans/history/ — nada a fazer."
-  die "não achei $ORIGEM (nem em plans/history/).
+  [[ -f "$REPO_ROOT/$DESTINO" ]] && die "$ORIGEM já está em scripts/helton/projects/plans/implemented/ — nada a fazer."
+  die "não achei $ORIGEM (nem em scripts/helton/projects/plans/implemented/).
    Confira o nome: é o mesmo do canteiro e da branch."
 fi
 [[ ! -e "$REPO_ROOT/$DESTINO" ]] \
@@ -66,7 +66,7 @@ git -C "$REPO_ROOT" ls-files --error-unmatch "$ORIGEM" >/dev/null 2>&1 \
 # Arquivar com a worktree de pé é declarar encerrado o que ainda está na bancada.
 if [[ -e "$PARENT/$PROJECT-$PLAN" ]]; then
   die "o canteiro ainda está montado em $PARENT/$PROJECT-$PLAN.
-   Desmonte antes: ./scripts/obra/desmontar-canteiro.sh $PLAN"
+   Desmonte antes: ./scripts/helton/obra/desmontar-canteiro.sh $PLAN"
 fi
 
 # ── Índice limpo? ────────────────────────────────────────────────────
@@ -101,13 +101,13 @@ else
 fi
 
 # ── Move e commita ───────────────────────────────────────────────────
-mkdir -p "$REPO_ROOT/plans/history"
+mkdir -p "$REPO_ROOT/scripts/helton/projects/plans/implemented"
 git -C "$REPO_ROOT" mv "$ORIGEM" "$DESTINO"
 git -C "$REPO_ROOT" commit --quiet \
-  -m "chore(obra): arquiva o plano '$PLAN' em plans/history/" \
+  -m "chore(obra): arquiva o plano '$PLAN' em scripts/helton/projects/plans/implemented/" \
   -m "Empreitada encerrada — $ENTREGA.
 
-Plano entregue que fica em plans/ volta a ser montado: depois do merge a branch
+Plano entregue que fica em scripts/helton/projects/plans/ volta a ser montado: depois do merge a branch
 some e a worktree já foi, então nenhuma guarda do montar-canteiro.sh --todos
 dispara e o loop refaria o trabalho do zero."
 
@@ -115,21 +115,21 @@ say "✔ $ORIGEM → $DESTINO"
 say "  $ENTREGA"
 
 # ── Manifesto e resto ────────────────────────────────────────────────
-# O manifesto não impede nada (a enumeração do --todos sai de `plans/*.md`, não
+# O manifesto não impede nada (a enumeração do --todos sai de `scripts/helton/projects/plans/*.md`, não
 # dele), mas listar um plano que já saiu confunde quem for ler.
-if [[ -f "$REPO_ROOT/plans/manifest.json" ]] \
-   && grep -q "\"$PLAN\"" "$REPO_ROOT/plans/manifest.json"; then
-  say "  nota: plans/manifest.json ainda lista '$PLAN'. Rode /compatibilizar
+if [[ -f "$REPO_ROOT/scripts/helton/projects/plans/manifest.json" ]] \
+   && grep -q "\"$PLAN\"" "$REPO_ROOT/scripts/helton/projects/plans/manifest.json"; then
+  say "  nota: scripts/helton/projects/plans/manifest.json ainda lista '$PLAN'. Rode /compatibilizar
    antes da próxima rodada, para regravá-lo sem ele."
 fi
 
 restantes="$( (cd "$REPO_ROOT/plans" && ls -1 *.md 2>/dev/null | grep -vx 'README.md') || true )"
 echo ""
 if [[ -n "$restantes" ]]; then
-  echo "Planos ainda em plans/:"
+  echo "Planos ainda em scripts/helton/projects/plans/:"
   printf '  · %s\n' $restantes
 else
-  echo "Nenhum plano pendente em plans/."
+  echo "Nenhum plano pendente em scripts/helton/projects/plans/."
 fi
 echo ""
 echo "A base só enxerga o arquivamento depois do push:  git push ${BASE_BRANCH%%/*} ${BASE_BRANCH#*/}"

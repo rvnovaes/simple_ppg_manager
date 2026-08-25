@@ -27,7 +27,7 @@ WT_DIR="$(dirname "$REPO_ROOT")/$NAME"
 [[ -d "$WT_DIR" ]] || die "worktree $WT_DIR não existe"
 
 # ── Índice de revisão para o merge ───────────────────────────────────
-PRD="$WT_DIR/scripts/helton/prd.json"
+PRD="$WT_DIR/scripts/helton/projects/prds/prd.json"
 if [[ -f "$PRD" ]]; then
   python3 - "$PRD" <<'PY' || true
 import json, sys
