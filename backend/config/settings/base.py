@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     # Depende de programs (linha, projeto, período) e de people (a pessoa
     # por trás do vínculo) — por isso vem depois dos dois.
     "apps.academic",
+    "apps.selection",
     "apps.audit",
 ]
 

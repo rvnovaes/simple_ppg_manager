@@ -1,0 +1,20 @@
+# Helton Progress Log
+Started: ter. 25 ago 2026 11:00:21 -03
+---
+## Codebase Patterns
+- Worktree recém-montada não tem `frontend/node_modules`: rode `make install-web` antes do primeiro `make ready`, senão `prettier: not found` derruba o `lint`.
+- `backend/conftest.py` já tem `media_temporaria` (autouse, `MEDIA_ROOT=tmp_path`) e as fixtures `program`, `secretaria`, `client_secretaria`; conftest de app não precisa repetir.
+- `uv run pytest apps/<app>` sem nenhum teste coletado sai com código 5 — não é falha, mas não use isso como portão de CI isolado.
+- Registro de app novo: `INSTALLED_APPS` em `config/settings/base.py` + `api.add_router("/<app>/", router)` em `backend/api.py`; router vazio (`Router(tags=[...])`) já aparece em `api._routers`.
+---
+## 2026-08-25 - f0-app-selection
+- Criado o app `backend/apps/selection/` vazio: `apps.py` (name `apps.selection`, verbose "Processo seletivo"), `models.py`/`admin.py`/`schemas.py` só com docstring, `router.py` com `Router(tags=["selection"])`, `migrations/` e `tests/` com `conftest.py`.
+- Registrado em `INSTALLED_APPS` (logo após `apps.academic`) e montado em `/api/v1/selection/` no `backend/api.py`.
+- `tests/conftest.py`: fixture `docente` (Teacher permanente, copiada do padrão de `academic`); `externo`, `edital_regular` e `edital_suplementar` são stubs com `pytest.skip` até `f0-teacher-external` e `f0-process-stage`. `MEDIA_ROOT` em `tmp_path` já vem do conftest raiz (não duplicado).
+- Sem model nem migration (`makemigrations --check`: "No changes detected"). `make ready` verde, 562 testes.
+- Files: backend/apps/selection/{__init__,apps,models,admin,router,schemas}.py, backend/apps/selection/migrations/__init__.py, backend/apps/selection/tests/{__init__,conftest}.py, backend/config/settings/base.py, backend/api.py
+- **Learnings for future iterations:**
+  - `Teacher.home_institution` já existe no model (`apps/academic/models.py:92`); `f0-teacher-external` só precisa da categoria nova + obrigatoriedade via `clean()`.
+  - Stack desta worktree (`db`, `backend`) já estava de pé; o pytest usa o Postgres em `DB_PORT` do `.env`.
+  - Ao substituir os stubs de fixture, mantenha os nomes `edital_regular`/`edital_suplementar`/`externo` — são o contrato que as próximas stories vão usar.
+---
