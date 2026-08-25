@@ -10,7 +10,9 @@ model nunca roda no caminho real.
 """
 
 import smtplib
-from datetime import datetime
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from functools import partial
 from typing import Any
@@ -26,6 +28,7 @@ from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
 
 from .emails import enviar_convocacao, enviar_token_de_assinatura
 from .models import (
+    CATEGORIAS_POR_TIPO,
     Application,
     ApplicationDocument,
     ApplicationDocumentKind,
@@ -34,8 +37,11 @@ from .models import (
     Convocation,
     ConvocationEmail,
     ExaminationRecord,
+    QuotaCategory,
+    RankingOutcome,
     RecordSignature,
     RecordStatus,
+    SelectionKind,
     SelectionProcess,
     SelectionStage,
     StageScore,
@@ -1242,3 +1248,195 @@ def resend_convocation_emails(
         )
     _despachar(falhados, convocation=convocation, request=request)
     return convocation
+
+
+# ---------------------------------------------------------------------------
+# Classificação — funções puras (sem ORM, sem banco)
+# ---------------------------------------------------------------------------
+#
+# A regra de classificação é o que mais dói errar neste módulo: ela decide
+# quem entra no programa. Por isso ela mora aqui em forma pura — entra
+# dataclass congelada, sai dataclass congelada — e é testada sem banco, em
+# `tests/test_ranking.py`. Quem monta a entrada a partir do ORM é o
+# `compute_ranking`; estas funções não sabem o que é `Application`.
+
+
+@dataclass(frozen=True, slots=True)
+class RankingCandidate:
+    """Um aprovado pronto para ser classificado.
+
+    `tiebreak_scores` vem na ordem do `tiebreak_rank` das etapas (1º
+    critério primeiro) e `birth_date` é o último desempate — mais velho na
+    frente, como manda o edital.
+    """
+
+    application_id: int
+    quota_category: str
+    final_score: Decimal
+    tiebreak_scores: tuple[Decimal, ...] = ()
+    birth_date: date | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RankingResult:
+    """O desfecho de um candidato: posição, resultado e se houve empate."""
+
+    application_id: int
+    rank: int
+    outcome: str
+    tie_unresolved: bool = False
+
+
+def sort_key(candidate: RankingCandidate) -> tuple[Any, ...]:
+    """Ordem de classificação: nota, desempates, idade e, por fim, o id.
+
+    Equivale a `(-final_score, -tb1, -tb2, ..., birth_date)`; os desempates
+    vão numa tupla aninhada só para que candidatos com quantidades
+    diferentes de critério ainda sejam comparáveis (o Python compararia
+    `Decimal` com `date` e estouraria `TypeError`).
+
+    Sem data de nascimento o candidato vai para trás dos que têm (`date.max`):
+    é o único jeito de manter a ordem total sem inventar idade. O
+    `application_id` no fim garante ordem estável no empate total — e é ele
+    que o `tie_unresolved` denuncia, porque desempatar por número de
+    inscrição não é critério de edital, é só determinismo.
+    """
+    return (
+        -candidate.final_score,
+        tuple(-nota for nota in candidate.tiebreak_scores),
+        candidate.birth_date or date.max,
+        candidate.application_id,
+    )
+
+
+def _grupo_de_empate(candidate: RankingCandidate) -> tuple[Any, ...]:
+    """A `sort_key` sem o `application_id` — quem divide isto está empatado."""
+    return sort_key(candidate)[:-1]
+
+
+def _ordenar(
+    candidates: Iterable[RankingCandidate],
+) -> tuple[list[RankingCandidate], set[int]]:
+    """Ordena e devolve, junto, os ids que ficaram em empate total."""
+    ordenados = sorted(candidates, key=sort_key)
+    por_grupo: dict[tuple[Any, ...], list[int]] = {}
+    for candidato in ordenados:
+        por_grupo.setdefault(_grupo_de_empate(candidato), []).append(
+            candidato.application_id
+        )
+    empatados = {
+        application_id
+        for ids in por_grupo.values()
+        if len(ids) > 1
+        for application_id in ids
+    }
+    return ordenados, empatados
+
+
+def _exigir_vagas_nao_negativas(**seats: int) -> None:
+    for nome, quantidade in seats.items():
+        if quantidade < 0:
+            raise ValueError(f"{nome} não pode ser negativo (recebido {quantidade}).")
+
+
+def rank_regular(
+    candidates: Iterable[RankingCandidate],
+    *,
+    open_seats: int,
+    racial_seats: int,
+) -> list[RankingResult]:
+    """Classifica o edital Regular: ampla concorrência primeiro, cota depois.
+
+    A ordem dos passos é a regra, não uma escolha de implementação:
+
+    1. os `open_seats` primeiros da ordem geral entram como `classified_open`,
+       **qualquer que seja a categoria** — cotista que classifica na ampla não
+       consome a reserva, esse é o ponto da política;
+    2. dos que sobraram, os de cota racial entram em ordem até `racial_seats`;
+    3. reserva que ninguém ocupou não evapora nem vira vaga a mais: volta para
+       a ampla, para os próximos da ordem geral;
+    4. o resto é `not_classified`.
+
+    `rank` é a posição na ordem geral (1 é o primeiro), independente do
+    desfecho.
+    """
+    _exigir_vagas_nao_negativas(open_seats=open_seats, racial_seats=racial_seats)
+    ordenados, empatados = _ordenar(candidates)
+    categorias_validas = CATEGORIAS_POR_TIPO[SelectionKind.REGULAR]
+    invalidas = {c.quota_category for c in ordenados} - categorias_validas
+    if invalidas:
+        raise ValueError(
+            "Categoria fora do edital Regular: " + ", ".join(sorted(invalidas)) + "."
+        )
+
+    desfechos: dict[int, str] = {}
+    ampla = ordenados[:open_seats]
+    for candidato in ampla:
+        desfechos[candidato.application_id] = RankingOutcome.CLASSIFIED_OPEN
+
+    restantes = ordenados[open_seats:]
+    cotistas = [c for c in restantes if c.quota_category == QuotaCategory.RACIAL]
+    for candidato in cotistas[:racial_seats]:
+        desfechos[candidato.application_id] = RankingOutcome.CLASSIFIED_QUOTA
+
+    ociosas = racial_seats - len(cotistas[:racial_seats])
+    if ociosas:
+        sobrando = [c for c in restantes if c.application_id not in desfechos]
+        for candidato in sobrando[:ociosas]:
+            desfechos[candidato.application_id] = RankingOutcome.CLASSIFIED_OPEN
+
+    return [
+        RankingResult(
+            application_id=candidato.application_id,
+            rank=posicao,
+            outcome=desfechos.get(
+                candidato.application_id, RankingOutcome.NOT_CLASSIFIED
+            ),
+            tie_unresolved=candidato.application_id in empatados,
+        )
+        for posicao, candidato in enumerate(ordenados, start=1)
+    ]
+
+
+def rank_supplementary(
+    candidates: Iterable[RankingCandidate],
+    *,
+    seats_by_category: dict[str, int],
+) -> list[RankingResult]:
+    """Classifica o edital Suplementar: uma disputa isolada por categoria.
+
+    Aqui não existe ordem geral. Cada ação afirmativa tem as suas vagas e
+    disputa só entre os seus; sobra de uma categoria **não** passa para
+    outra, e por isso `rank` é a posição dentro da própria categoria.
+
+    Ampla concorrência na entrada é bug de quem chamou (o Suplementar só tem
+    ação afirmativa), e por isso é `ValueError` e não `DomainError`.
+    """
+    _exigir_vagas_nao_negativas(**seats_by_category)
+    por_categoria: dict[str, list[RankingCandidate]] = {}
+    for candidato in candidates:
+        if candidato.quota_category == QuotaCategory.OPEN:
+            raise ValueError(
+                "O edital Suplementar não tem ampla concorrência "
+                f"(inscrição {candidato.application_id})."
+            )
+        por_categoria.setdefault(candidato.quota_category, []).append(candidato)
+
+    resultados: list[RankingResult] = []
+    for categoria in sorted(por_categoria):
+        ordenados, empatados = _ordenar(por_categoria[categoria])
+        vagas = seats_by_category.get(categoria, 0)
+        resultados.extend(
+            RankingResult(
+                application_id=candidato.application_id,
+                rank=posicao,
+                outcome=(
+                    RankingOutcome.CLASSIFIED_QUOTA
+                    if posicao <= vagas
+                    else RankingOutcome.NOT_CLASSIFIED
+                ),
+                tie_unresolved=candidato.application_id in empatados,
+            )
+            for posicao, candidato in enumerate(ordenados, start=1)
+        )
+    return resultados

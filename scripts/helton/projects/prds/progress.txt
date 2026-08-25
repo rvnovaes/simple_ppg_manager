@@ -534,3 +534,18 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `Application` tem unique por `(process, cpf)`: script de canteiro que semeia inscrição com CPF já usado devolve a inscrição existente (e pode devolvê-la `eliminated`) em vez de criar a nova.
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
 ---
+## 2026-08-25 - f5-ranking-puro
+- Funções puras de classificação no fim de `apps/selection/services.py`, sob o cabeçalho "Classificação": dataclasses congeladas (`slots=True`) `RankingCandidate(application_id, quota_category, final_score, tiebreak_scores, birth_date)` e `RankingResult(application_id, rank, outcome, tie_unresolved)`.
+- `sort_key(c)` = `(-final_score, (-tb1, -tb2, ...), birth_date or date.max, application_id)`. Os desempates vão numa **tupla aninhada** de propósito: com entradas de tamanhos diferentes, a versão achatada compararia `Decimal` com `date` e estouraria `TypeError`. A ordem resultante é a mesma da especificação quando os tamanhos batem.
+- `_ordenar()` devolve `(ordenados, ids_empatados)` — empate total é o grupo que divide a `sort_key` sem o `application_id`; todos eles saem com `tie_unresolved=True`, porque desempatar por número de inscrição é determinismo, não critério de edital.
+- `rank_regular(candidates, *, open_seats, racial_seats)`: ampla primeiro (qualquer categoria), depois racial até `racial_seats`, reserva ociosa volta para a ampla pelos próximos da ordem geral, resto `not_classified`; `rank` = posição na ordem geral. `ValueError` para vaga negativa e para categoria fora de `CATEGORIAS_POR_TIPO[REGULAR]`.
+- `rank_supplementary(candidates, *, seats_by_category)`: disputa isolada por categoria (sobra não passa de uma para outra), `rank` = posição **dentro da categoria**, `open` na entrada é `ValueError`. Categorias percorridas em `sorted()` para saída determinística.
+- 21 testes em `apps/selection/tests/test_ranking.py`, **nenhum com `django_db`** — inclui os seis casos mínimos do plano (cotista na ampla não consome reserva; reserva ociosa reverte sem ultrapassar o total; desempate por etapa 1, etapa 2 e idade; empate total; categoria sem candidato; `open_seats=0`).
+- `make ready` verde: 1178 testes, ruff e mypy limpos, svelte-check 0 erros.
+- Files: backend/apps/selection/services.py, backend/apps/selection/tests/test_ranking.py
+- **Learnings for future iterations:**
+  - `RankingOutcome` (`classified_open`/`classified_quota`/`not_classified`) já existia em `models.py`, junto de `DESFECHOS_CLASSIFICADOS` — o `compute_ranking` grava esses valores em `Application.final_outcome`/`final_rank`/`ranked_at` (campos já existentes, e `Application` já tem o método que os zera).
+  - `CATEGORIAS_POR_TIPO[SelectionKind.REGULAR]` = `{open, racial}` e `[SUPPLEMENTARY]` = as quatro ações afirmativas: use a constante em vez de repetir a lista.
+  - Erro de chamador nestas funções é `ValueError`, não `DomainError` — `DomainError` é para o que a tela mostra ao usuário; aqui só chega bug de quem montou a entrada. O `compute_ranking` é que traduz o que for regra de negócio.
+  - `rank` no Suplementar é por categoria; a tela de resultado não pode assumir posição única por edital quando `kind=supplementary`.
+---
