@@ -10,16 +10,21 @@ from django.db.models import Count, Q
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import File, Router, Status, UploadedFile
+from django.views.decorators.csrf import csrf_protect
+from ninja import File, Form, Router, Status, UploadedFile
+from ninja.decorators import decorate_view
 from ninja.pagination import paginate
 
 from apps.academic.models import Teacher
 from apps.core import audit
 from apps.core.permissions import require_perm
+from apps.core.ratelimit import enforce_rate_limit
 from apps.core.tenancy import current_program
 from apps.programs.models import CollectiveProject, Program, ResearchLine
 
 from .models import (
+    Application,
+    ApplicationDocumentKind,
     Board,
     QuotaCategory,
     RecordStatus,
@@ -31,9 +36,13 @@ from .models import (
     Vacancy,
 )
 from .schemas import (
+    ApplicationIn,
+    ApplicationReceiptOut,
+    ApplicationStatusOut,
     BoardIn,
     BoardOut,
     BoardPatch,
+    PublicProcessOut,
     SelectionProcessIn,
     SelectionProcessOut,
     SelectionProcessPatch,
@@ -44,7 +53,17 @@ from .schemas import (
     VacancyOut,
     VacancyPatch,
 )
-from .services import publish_process
+from .services import (
+    JANELA_DE_CONSULTA_EM_SEGUNDOS,
+    JANELA_DE_INSCRICAO_EM_SEGUNDOS,
+    JANELA_DE_LEITURA_EM_SEGUNDOS,
+    LIMITE_DE_CONSULTA_DE_PROTOCOLO,
+    LIMITE_DE_INSCRICAO_POR_IP,
+    LIMITE_DE_LEITURA_PUBLICA,
+    edital_com_inscricao_aberta,
+    publish_process,
+    submit_application,
+)
 
 router = Router(tags=["selection"])
 
@@ -611,3 +630,136 @@ def update_board(request: HttpRequest, board_id: int, payload: BoardPatch):
             fields=sorted(alterados),
         )
     return banca
+
+
+# ---------------------------------------------------------------------------
+# Rotas públicas — candidato sem login
+# ---------------------------------------------------------------------------
+#
+# As três rotas abaixo são as únicas do app sem sessão. Elas existem porque
+# o candidato do processo seletivo NÃO tem vínculo com a instituição no
+# momento em que se inscreve: exigir conta seria exigir que ele criasse uma
+# só para mandar o formulário, e a secretaria acabaria digitando inscrição
+# no lugar dele — o trabalho que este módulo tira dela.
+#
+# O que substitui a sessão, em toda rota daqui:
+#   1. limite por IP (`enforce_rate_limit`, apps/core/ratelimit.py);
+#   2. `csrf_protect` explícito na escrita — `auth=None` desliga junto a
+#      checagem de CSRF que o SessionAuth faria (mesma armadilha do login);
+#   3. tenant tirado do edital aberto (`edital_com_inscricao_aberta`), nunca
+#      de `program_id` no corpo.
+# O Nginx dá 80m de corpo só no prefixo `/api/v1/selection/public/`: são até
+# sete anexos num POST só.
+
+
+@router.get("/public/processes", auth=None, response=list[PublicProcessOut])
+def list_public_processes(request: HttpRequest):
+    """Os editais com inscrição aberta agora, de todos os programas.
+
+    # público: é o cartaz do processo seletivo — edital publicado é
+    # documento público, e quem o lê ainda não tem conta para autenticar.
+    # Não escapa nada de pessoal: só edital, etapas e grade de vagas.
+    #
+    # Sem escopo de tenant, de propósito e ao contrário de toda rota
+    # autenticada: não há sessão de onde tirar `current_program`, e
+    # aceitar `program_id` do chamador só decidiria o que já é público.
+    # `program_acronym` no schema é o que distingue os editais na tela.
+    """
+    enforce_rate_limit(
+        request,
+        scope="selection-public-read",
+        limit=LIMITE_DE_LEITURA_PUBLICA,
+        window_seconds=JANELA_DE_LEITURA_EM_SEGUNDOS,
+    )
+    return (
+        SelectionProcess.objects.open_for_submission(timezone.now())
+        .select_related("program")
+        .prefetch_related("stages", "vacancies__project", "vacancies__research_line")
+        .order_by("program__acronym", "year", "kind")
+    )
+
+
+@router.post("/public/applications", auth=None, response={201: ApplicationReceiptOut})
+@decorate_view(csrf_protect)
+def submit_public_application(
+    request: HttpRequest,
+    payload: ApplicationIn = Form(...),
+    identity: UploadedFile = File(...),
+    diploma: UploadedFile = File(...),
+    lattes: UploadedFile = File(...),
+    payment_receipt: UploadedFile = File(...),
+    expanded_abstract: UploadedFile | None = File(None),
+    memorial: UploadedFile | None = File(None),
+    quota_proof: UploadedFile | None = File(None),
+):
+    """A inscrição inteira num POST: dados e anexos juntos.
+
+    # público: o candidato não tem conta (ver o bloco acima). Um POST só, e
+    # não um rascunho com anexos incrementais, porque sem login não há a
+    # quem devolver o rascunho depois.
+    #
+    # Os três anexos opcionais na assinatura são condicionais no domínio,
+    # não dispensáveis: resumo expandido é do Regular, memorial é do
+    # Suplementar e a comprovação é de quem concorre por cota. Quem cobra é
+    # `required_document_kinds()` do model, pelo edital e pela cota
+    # escolhidos — a assinatura só não pode exigir os três de todo mundo.
+    """
+    enforce_rate_limit(
+        request,
+        scope="selection-apply",
+        limit=LIMITE_DE_INSCRICAO_POR_IP,
+        window_seconds=JANELA_DE_INSCRICAO_EM_SEGUNDOS,
+    )
+    # O tenant sai daqui: só edital publicado e com a janela aberta agora.
+    edital = edital_com_inscricao_aberta(
+        process_id=payload.process_id, at=timezone.now()
+    )
+    # Projeto e linha escopados no programa DO EDITAL — id de outro
+    # programa é 404, como nas rotas da secretaria.
+    projeto, linha = _alvo(edital.program, payload.project_id, payload.research_line_id)
+    payload.project_id = projeto.pk if projeto is not None else None
+    payload.research_line_id = linha.pk if linha is not None else None
+    enviados = {
+        ApplicationDocumentKind.IDENTITY: identity,
+        ApplicationDocumentKind.DIPLOMA: diploma,
+        ApplicationDocumentKind.LATTES: lattes,
+        ApplicationDocumentKind.PAYMENT_RECEIPT: payment_receipt,
+        ApplicationDocumentKind.EXPANDED_ABSTRACT: expanded_abstract,
+        ApplicationDocumentKind.MEMORIAL: memorial,
+        ApplicationDocumentKind.QUOTA_PROOF: quota_proof,
+    }
+    inscricao = submit_application(
+        process=edital,
+        dados=payload,
+        files={
+            str(kind): arquivo
+            for kind, arquivo in enviados.items()
+            if arquivo is not None
+        },
+        request=request,
+    )
+    return Status(201, inscricao)
+
+
+@router.get("/public/applications/{protocol}", auth=None, response=ApplicationStatusOut)
+def get_public_application(request: HttpRequest, protocol: str):
+    """Consulta pública pelo protocolo.
+
+    # público: é como o candidato sem conta descobre se a inscrição dele
+    # foi homologada. O protocolo é o segredo que substitui a senha —
+    # `secrets` o gera (ver `gerar_protocolo`).
+    #
+    # A resposta não tem nome, CPF nem documento: quem digita o protocolo
+    # pode não ser o candidato. Protocolo inexistente é 404 genérico, sem
+    # dizer se o número nunca existiu ou se é de outro edital.
+    """
+    enforce_rate_limit(
+        request,
+        scope="selection-protocol",
+        limit=LIMITE_DE_CONSULTA_DE_PROTOCOLO,
+        window_seconds=JANELA_DE_CONSULTA_EM_SEGUNDOS,
+    )
+    return get_object_or_404(
+        Application.objects.select_related("process"),
+        protocol=protocol.strip().upper(),
+    )

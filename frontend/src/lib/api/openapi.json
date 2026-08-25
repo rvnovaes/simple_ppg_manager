@@ -3773,6 +3773,240 @@
           }
         ]
       }
+    },
+    "/selection/public/processes": {
+      "get": {
+        "operationId": "apps_selection_router_list_public_processes",
+        "summary": "List Public Processes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicProcessOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os editais com inscrição aberta agora, de todos os programas.\n\n# público: é o cartaz do processo seletivo — edital publicado é\n# documento público, e quem o lê ainda não tem conta para autenticar.\n# Não escapa nada de pessoal: só edital, etapas e grade de vagas.\n#\n# Sem escopo de tenant, de propósito e ao contrário de toda rota\n# autenticada: não há sessão de onde tirar `current_program`, e\n# aceitar `program_id` do chamador só decidiria o que já é público.\n# `program_acronym` no schema é o que distingue os editais na tela.",
+        "tags": [
+          "selection"
+        ]
+      }
+    },
+    "/selection/public/applications": {
+      "post": {
+        "operationId": "apps_selection_router_submit_public_application",
+        "summary": "Submit Public Application",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A inscrição inteira num POST: dados e anexos juntos.\n\n# público: o candidato não tem conta (ver o bloco acima). Um POST só, e\n# não um rascunho com anexos incrementais, porque sem login não há a\n# quem devolver o rascunho depois.\n#\n# Os três anexos opcionais na assinatura são condicionais no domínio,\n# não dispensáveis: resumo expandido é do Regular, memorial é do\n# Suplementar e a comprovação é de quem concorre por cota. Quem cobra é\n# `required_document_kinds()` do model, pelo edital e pela cota\n# escolhidos — a assinatura só não pode exigir os três de todo mundo.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "process_id": {
+                    "title": "Process Id",
+                    "type": "integer"
+                  },
+                  "full_name": {
+                    "title": "Full Name",
+                    "type": "string"
+                  },
+                  "email": {
+                    "title": "Email",
+                    "type": "string"
+                  },
+                  "cpf": {
+                    "title": "Cpf",
+                    "type": "string"
+                  },
+                  "birth_date": {
+                    "format": "date",
+                    "title": "Birth Date",
+                    "type": "string"
+                  },
+                  "phone_number": {
+                    "default": "",
+                    "title": "Phone Number",
+                    "type": "string"
+                  },
+                  "level": {
+                    "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto.",
+                    "enum": [
+                      "masters",
+                      "doctorate"
+                    ],
+                    "title": "SelectionLevel",
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Project Id"
+                  },
+                  "research_line_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Research Line Id"
+                  },
+                  "quota_category": {
+                    "enum": [
+                      "open",
+                      "racial",
+                      "disability",
+                      "quilombola",
+                      "trans",
+                      "indigenous"
+                    ],
+                    "title": "QuotaCategory",
+                    "type": "string"
+                  },
+                  "identity": {
+                    "format": "binary",
+                    "title": "Identity",
+                    "type": "string"
+                  },
+                  "diploma": {
+                    "format": "binary",
+                    "title": "Diploma",
+                    "type": "string"
+                  },
+                  "lattes": {
+                    "format": "binary",
+                    "title": "Lattes",
+                    "type": "string"
+                  },
+                  "payment_receipt": {
+                    "format": "binary",
+                    "title": "Payment Receipt",
+                    "type": "string"
+                  },
+                  "expanded_abstract": {
+                    "anyOf": [
+                      {
+                        "format": "binary",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Expanded Abstract"
+                  },
+                  "memorial": {
+                    "anyOf": [
+                      {
+                        "format": "binary",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Memorial"
+                  },
+                  "quota_proof": {
+                    "anyOf": [
+                      {
+                        "format": "binary",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Quota Proof"
+                  }
+                },
+                "required": [
+                  "process_id",
+                  "full_name",
+                  "email",
+                  "cpf",
+                  "birth_date",
+                  "level",
+                  "quota_category",
+                  "identity",
+                  "diploma",
+                  "lattes",
+                  "payment_receipt"
+                ]
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/selection/public/applications/{protocol}": {
+      "get": {
+        "operationId": "apps_selection_router_get_public_application",
+        "summary": "Get Public Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "protocol",
+            "schema": {
+              "title": "Protocol",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Consulta pública pelo protocolo.\n\n# público: é como o candidato sem conta descobre se a inscrição dele\n# foi homologada. O protocolo é o segredo que substitui a senha —\n# `secrets` o gera (ver `gerar_protocolo`).\n#\n# A resposta não tem nome, CPF nem documento: quem digita o protocolo\n# pode não ser o candidato. Protocolo inexistente é 404 genérico, sem\n# dizer se o número nunca existiu ou se é de outro edital.",
+        "tags": [
+          "selection"
+        ]
+      }
     }
   },
   "components": {
@@ -7628,6 +7862,392 @@
           }
         },
         "title": "BoardPatch",
+        "type": "object"
+      },
+      "PublicOptionOut": {
+        "description": "Uma opção do formulário público — nível ou categoria de cota.\n\nRótulo junto do valor porque a tela pública não tem a tabela de\n`TextChoices` do backend e não pode inventar tradução.",
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "PublicOptionOut",
+        "type": "object"
+      },
+      "PublicProcessOut": {
+        "description": "Edital aberto, como a página pública o mostra.\n\n`program_acronym` viaja porque esta listagem NÃO é escopada por tenant\n(não há sessão de onde tirar o programa, e edital publicado é\ndocumento público): sem a sigla, dois editais de programas diferentes\napareceriam como dois títulos indistinguíveis.\n\n`levels`, `targets` e `quota_categories` são derivados das vagas com\n`quantity > 0` — é o que o formulário oferece. Oferecer combinação sem\nvaga só levaria o candidato a preencher tudo para receber\n`no_vacancy_for_choice` no fim.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SelectionKind"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "program_acronym": {
+            "title": "Program Acronym",
+            "type": "string"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "notice_url": {
+            "title": "Notice Url",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/PublicStageOut"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "vacancies": {
+            "items": {
+              "$ref": "#/components/schemas/PublicVacancyOut"
+            },
+            "title": "Vacancies",
+            "type": "array"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/PublicOptionOut"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/PublicTargetOut"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "quota_categories": {
+            "items": {
+              "$ref": "#/components/schemas/PublicOptionOut"
+            },
+            "title": "Quota Categories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "kind_label",
+          "year",
+          "title",
+          "program_acronym",
+          "submission_opens_at",
+          "submission_closes_at",
+          "notice_url",
+          "stages",
+          "vacancies",
+          "levels",
+          "targets",
+          "quota_categories"
+        ],
+        "title": "PublicProcessOut",
+        "type": "object"
+      },
+      "PublicStageOut": {
+        "description": "Etapa como o candidato a vê no edital aberto.\n\nSem `id` de nada além da própria etapa e sem carimbo técnico: esta é a\npágina que qualquer um na internet abre, e o que não serve para o\ncandidato decidir se se inscreve não sai daqui.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "order",
+          "session_at",
+          "location"
+        ],
+        "title": "PublicStageOut",
+        "type": "object"
+      },
+      "PublicTargetOut": {
+        "description": "Alvo com vaga aberta: projeto coletivo (Regular) ou linha\n(Suplementar). Um dos dois ids é sempre nulo — é o XOR do model.",
+        "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "research_line_id",
+          "label"
+        ],
+        "title": "PublicTargetOut",
+        "type": "object"
+      },
+      "PublicVacancyOut": {
+        "description": "Combinação nível × alvo × cota que ainda tem vaga.\n\nA quantidade viaja porque o edital é público: quantas vagas há em cada\nlinha da grade é informação do próprio documento, não dado interno.",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "quantity"
+        ],
+        "title": "PublicVacancyOut",
+        "type": "object"
+      },
+      "ApplicationReceiptOut": {
+        "description": "O comprovante que o candidato anota: protocolo e instante.\n\nNada mais sai daqui. O que ele digitou já está na tela dele, e o que o\nsistema decidiu depois (homologação) se consulta pelo protocolo.",
+        "properties": {
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "submitted_at"
+        ],
+        "title": "ApplicationReceiptOut",
+        "type": "object"
+      },
+      "ApplicationIn": {
+        "description": "O formulário público de inscrição, sem os anexos.\n\nVai por `Form(...)` porque a requisição é multipart: o candidato manda\nos dados e os cinco a sete documentos num POST só (não há sessão para\nguardar rascunho entre chamadas).\n\nSem `program_id`: o tenant é o programa do edital, resolvido por\n`edital_com_inscricao_aberta`. Sem `status` nem `protocol` — os dois\nsão do servidor.",
+        "properties": {
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "cpf": {
+            "title": "Cpf",
+            "type": "string"
+          },
+          "birth_date": {
+            "format": "date",
+            "title": "Birth Date",
+            "type": "string"
+          },
+          "phone_number": {
+            "default": "",
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          }
+        },
+        "required": [
+          "process_id",
+          "full_name",
+          "email",
+          "cpf",
+          "birth_date",
+          "level",
+          "quota_category"
+        ],
+        "title": "ApplicationIn",
+        "type": "object"
+      },
+      "ApplicationStatus": {
+        "enum": [
+          "submitted",
+          "homologated",
+          "rejected",
+          "eliminated",
+          "approved",
+          "enrolled"
+        ],
+        "title": "ApplicationStatus",
+        "type": "string"
+      },
+      "ApplicationStatusOut": {
+        "description": "A consulta pública de protocolo.\n\nSem nome, CPF, e-mail ou documento: quem tem o protocolo pode não ser o\ncandidato (ele passa o número adiante), então a resposta diz só em que\npé está a inscrição.",
+        "properties": {
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "status",
+          "status_label",
+          "submitted_at",
+          "process_title"
+        ],
+        "title": "ApplicationStatusOut",
         "type": "object"
       }
     },

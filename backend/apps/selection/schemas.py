@@ -6,6 +6,7 @@ model é serializado direto. Preenchido pelas stories de API (F1 em diante).
 
 import datetime
 from pathlib import Path
+from typing import Any
 
 from django.utils import timezone
 from ninja import Schema
@@ -13,6 +14,8 @@ from ninja import Schema
 from apps.academic.models import Teacher
 
 from .models import (
+    Application,
+    ApplicationStatus,
     Board,
     QuotaCategory,
     SelectionKind,
@@ -369,3 +372,225 @@ class BoardOut(Schema):
     def resolve_in_use(obj: Board) -> bool:
         anotado = getattr(obj, "atas_fora_do_rascunho", None)
         return obj.in_use() if anotado is None else bool(anotado)
+
+
+# ---------------------------------------------------------------------------
+# Inscrição pública (candidato sem login)
+# ---------------------------------------------------------------------------
+
+
+class PublicStageOut(Schema):
+    """Etapa como o candidato a vê no edital aberto.
+
+    Sem `id` de nada além da própria etapa e sem carimbo técnico: esta é a
+    página que qualquer um na internet abre, e o que não serve para o
+    candidato decidir se se inscreve não sai daqui.
+    """
+
+    name: str
+    order: int
+    session_at: datetime.datetime | None
+    location: str
+
+
+class PublicOptionOut(Schema):
+    """Uma opção do formulário público — nível ou categoria de cota.
+
+    Rótulo junto do valor porque a tela pública não tem a tabela de
+    `TextChoices` do backend e não pode inventar tradução.
+    """
+
+    value: str
+    label: str
+
+
+class PublicTargetOut(Schema):
+    """Alvo com vaga aberta: projeto coletivo (Regular) ou linha
+    (Suplementar). Um dos dois ids é sempre nulo — é o XOR do model."""
+
+    project_id: int | None
+    research_line_id: int | None
+    label: str
+
+
+class PublicVacancyOut(Schema):
+    """Combinação nível × alvo × cota que ainda tem vaga.
+
+    A quantidade viaja porque o edital é público: quantas vagas há em cada
+    linha da grade é informação do próprio documento, não dado interno.
+    """
+
+    level: SelectionLevel
+    level_label: str
+    project_id: int | None
+    research_line_id: int | None
+    target_label: str
+    quota_category: QuotaCategory
+    quota_category_label: str
+    quantity: int
+
+    @staticmethod
+    def resolve_level_label(obj: Vacancy) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_quota_category_label(obj: Vacancy) -> str:
+        return obj.get_quota_category_display()
+
+    @staticmethod
+    def resolve_target_label(obj: Vacancy) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""
+
+
+class PublicProcessOut(Schema):
+    """Edital aberto, como a página pública o mostra.
+
+    `program_acronym` viaja porque esta listagem NÃO é escopada por tenant
+    (não há sessão de onde tirar o programa, e edital publicado é
+    documento público): sem a sigla, dois editais de programas diferentes
+    apareceriam como dois títulos indistinguíveis.
+
+    `levels`, `targets` e `quota_categories` são derivados das vagas com
+    `quantity > 0` — é o que o formulário oferece. Oferecer combinação sem
+    vaga só levaria o candidato a preencher tudo para receber
+    `no_vacancy_for_choice` no fim.
+    """
+
+    id: int
+    kind: SelectionKind
+    kind_label: str
+    year: int
+    title: str
+    program_acronym: str
+    submission_opens_at: datetime.datetime
+    submission_closes_at: datetime.datetime
+    notice_url: str
+    stages: list[PublicStageOut]
+    vacancies: list[PublicVacancyOut]
+    levels: list[PublicOptionOut]
+    targets: list[PublicTargetOut]
+    quota_categories: list[PublicOptionOut]
+
+    @staticmethod
+    def resolve_kind_label(obj: SelectionProcess) -> str:
+        return obj.get_kind_display()
+
+    @staticmethod
+    def resolve_program_acronym(obj: SelectionProcess) -> str:
+        return obj.program.acronym
+
+    @staticmethod
+    def resolve_notice_url(obj: SelectionProcess) -> str:
+        return obj.notice_file.url if obj.notice_file else ""
+
+    @staticmethod
+    def resolve_stages(obj: SelectionProcess) -> list[Any]:
+        return list(obj.stages.all())
+
+    @staticmethod
+    def resolve_vacancies(obj: SelectionProcess) -> list[Any]:
+        return _vagas_abertas(obj)
+
+    @staticmethod
+    def resolve_levels(obj: SelectionProcess) -> list[dict[str, str]]:
+        return _opcoes(SelectionLevel, {v.level for v in _vagas_abertas(obj)})
+
+    @staticmethod
+    def resolve_quota_categories(obj: SelectionProcess) -> list[dict[str, str]]:
+        return _opcoes(QuotaCategory, {v.quota_category for v in _vagas_abertas(obj)})
+
+    @staticmethod
+    def resolve_targets(obj: SelectionProcess) -> list[dict[str, Any]]:
+        alvos: dict[tuple[int | None, int | None], dict[str, Any]] = {}
+        for vaga in _vagas_abertas(obj):
+            chave = (vaga.project_id, vaga.research_line_id)
+            if chave not in alvos:
+                alvo = vaga.project or vaga.research_line
+                alvos[chave] = {
+                    "project_id": vaga.project_id,
+                    "research_line_id": vaga.research_line_id,
+                    "label": str(alvo) if alvo is not None else "",
+                }
+        return list(alvos.values())
+
+
+def _vagas_abertas(process: SelectionProcess) -> list[Vacancy]:
+    """As vagas com quantidade > 0 deste edital, lidas uma vez só.
+
+    Os quatro `resolve_` de `PublicProcessOut` derivam da mesma lista; sem
+    o cache no objeto, cada um faria a própria consulta e a listagem
+    pública viraria 4 × N queries.
+    """
+    cache = getattr(process, "_vagas_abertas", None)
+    if cache is None:
+        cache = [v for v in process.vacancies.all() if v.quantity > 0]
+        process._vagas_abertas = cache  # type: ignore[attr-defined]
+    return cache
+
+
+def _opcoes(choices: Any, valores: set[str]) -> list[dict[str, str]]:
+    """Value + label na ordem do `TextChoices`, filtrado pelo que existe."""
+    return [
+        {"value": str(opcao), "label": opcao.label}
+        for opcao in choices
+        if str(opcao) in valores
+    ]
+
+
+class ApplicationIn(Schema):
+    """O formulário público de inscrição, sem os anexos.
+
+    Vai por `Form(...)` porque a requisição é multipart: o candidato manda
+    os dados e os cinco a sete documentos num POST só (não há sessão para
+    guardar rascunho entre chamadas).
+
+    Sem `program_id`: o tenant é o programa do edital, resolvido por
+    `edital_com_inscricao_aberta`. Sem `status` nem `protocol` — os dois
+    são do servidor.
+    """
+
+    process_id: int
+    full_name: str
+    email: str
+    cpf: str
+    birth_date: datetime.date
+    phone_number: str = ""
+    level: SelectionLevel
+    project_id: int | None = None
+    research_line_id: int | None = None
+    quota_category: QuotaCategory
+
+
+class ApplicationReceiptOut(Schema):
+    """O comprovante que o candidato anota: protocolo e instante.
+
+    Nada mais sai daqui. O que ele digitou já está na tela dele, e o que o
+    sistema decidiu depois (homologação) se consulta pelo protocolo.
+    """
+
+    protocol: str
+    submitted_at: datetime.datetime
+
+
+class ApplicationStatusOut(Schema):
+    """A consulta pública de protocolo.
+
+    Sem nome, CPF, e-mail ou documento: quem tem o protocolo pode não ser o
+    candidato (ele passa o número adiante), então a resposta diz só em que
+    pé está a inscrição.
+    """
+
+    protocol: str
+    status: ApplicationStatus
+    status_label: str
+    submitted_at: datetime.datetime
+    process_title: str
+
+    @staticmethod
+    def resolve_status_label(obj: Application) -> str:
+        return obj.get_status_display()
+
+    @staticmethod
+    def resolve_process_title(obj: Application) -> str:
+        return obj.process.title

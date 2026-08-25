@@ -1292,6 +1292,93 @@ export interface paths {
         patch: operations["apps_selection_router_update_board"];
         trace?: never;
     };
+    "/selection/public/processes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Public Processes
+         * @description Os editais com inscrição aberta agora, de todos os programas.
+         *
+         *     # público: é o cartaz do processo seletivo — edital publicado é
+         *     # documento público, e quem o lê ainda não tem conta para autenticar.
+         *     # Não escapa nada de pessoal: só edital, etapas e grade de vagas.
+         *     #
+         *     # Sem escopo de tenant, de propósito e ao contrário de toda rota
+         *     # autenticada: não há sessão de onde tirar `current_program`, e
+         *     # aceitar `program_id` do chamador só decidiria o que já é público.
+         *     # `program_acronym` no schema é o que distingue os editais na tela.
+         */
+        get: operations["apps_selection_router_list_public_processes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Public Application
+         * @description A inscrição inteira num POST: dados e anexos juntos.
+         *
+         *     # público: o candidato não tem conta (ver o bloco acima). Um POST só, e
+         *     # não um rascunho com anexos incrementais, porque sem login não há a
+         *     # quem devolver o rascunho depois.
+         *     #
+         *     # Os três anexos opcionais na assinatura são condicionais no domínio,
+         *     # não dispensáveis: resumo expandido é do Regular, memorial é do
+         *     # Suplementar e a comprovação é de quem concorre por cota. Quem cobra é
+         *     # `required_document_kinds()` do model, pelo edital e pela cota
+         *     # escolhidos — a assinatura só não pode exigir os três de todo mundo.
+         */
+        post: operations["apps_selection_router_submit_public_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/applications/{protocol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Public Application
+         * @description Consulta pública pelo protocolo.
+         *
+         *     # público: é como o candidato sem conta descobre se a inscrição dele
+         *     # foi homologada. O protocolo é o segredo que substitui a senha —
+         *     # `secrets` o gera (ver `gerar_protocolo`).
+         *     #
+         *     # A resposta não tem nome, CPF nem documento: quem digita o protocolo
+         *     # pode não ser o candidato. Protocolo inexistente é 404 genérico, sem
+         *     # dizer se o número nunca existiu ou se é de outro edital.
+         */
+        get: operations["apps_selection_router_get_public_application"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2990,6 +3077,203 @@ export interface components {
             member_2_id?: number | null;
             /** Alternate Id */
             alternate_id?: number | null;
+        };
+        /**
+         * PublicOptionOut
+         * @description Uma opção do formulário público — nível ou categoria de cota.
+         *
+         *     Rótulo junto do valor porque a tela pública não tem a tabela de
+         *     `TextChoices` do backend e não pode inventar tradução.
+         */
+        PublicOptionOut: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * PublicProcessOut
+         * @description Edital aberto, como a página pública o mostra.
+         *
+         *     `program_acronym` viaja porque esta listagem NÃO é escopada por tenant
+         *     (não há sessão de onde tirar o programa, e edital publicado é
+         *     documento público): sem a sigla, dois editais de programas diferentes
+         *     apareceriam como dois títulos indistinguíveis.
+         *
+         *     `levels`, `targets` e `quota_categories` são derivados das vagas com
+         *     `quantity > 0` — é o que o formulário oferece. Oferecer combinação sem
+         *     vaga só levaria o candidato a preencher tudo para receber
+         *     `no_vacancy_for_choice` no fim.
+         */
+        PublicProcessOut: {
+            /** Id */
+            id: number;
+            kind: components["schemas"]["SelectionKind"];
+            /** Kind Label */
+            kind_label: string;
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            /** Program Acronym */
+            program_acronym: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /** Notice Url */
+            notice_url: string;
+            /** Stages */
+            stages: components["schemas"]["PublicStageOut"][];
+            /** Vacancies */
+            vacancies: components["schemas"]["PublicVacancyOut"][];
+            /** Levels */
+            levels: components["schemas"]["PublicOptionOut"][];
+            /** Targets */
+            targets: components["schemas"]["PublicTargetOut"][];
+            /** Quota Categories */
+            quota_categories: components["schemas"]["PublicOptionOut"][];
+        };
+        /**
+         * PublicStageOut
+         * @description Etapa como o candidato a vê no edital aberto.
+         *
+         *     Sem `id` de nada além da própria etapa e sem carimbo técnico: esta é a
+         *     página que qualquer um na internet abre, e o que não serve para o
+         *     candidato decidir se se inscreve não sai daqui.
+         */
+        PublicStageOut: {
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at: string | null;
+            /** Location */
+            location: string;
+        };
+        /**
+         * PublicTargetOut
+         * @description Alvo com vaga aberta: projeto coletivo (Regular) ou linha
+         *     (Suplementar). Um dos dois ids é sempre nulo — é o XOR do model.
+         */
+        PublicTargetOut: {
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Label */
+            label: string;
+        };
+        /**
+         * PublicVacancyOut
+         * @description Combinação nível × alvo × cota que ainda tem vaga.
+         *
+         *     A quantidade viaja porque o edital é público: quantas vagas há em cada
+         *     linha da grade é informação do próprio documento, não dado interno.
+         */
+        PublicVacancyOut: {
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Quantity */
+            quantity: number;
+        };
+        /**
+         * ApplicationReceiptOut
+         * @description O comprovante que o candidato anota: protocolo e instante.
+         *
+         *     Nada mais sai daqui. O que ele digitou já está na tela dele, e o que o
+         *     sistema decidiu depois (homologação) se consulta pelo protocolo.
+         */
+        ApplicationReceiptOut: {
+            /** Protocol */
+            protocol: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+        };
+        /**
+         * ApplicationIn
+         * @description O formulário público de inscrição, sem os anexos.
+         *
+         *     Vai por `Form(...)` porque a requisição é multipart: o candidato manda
+         *     os dados e os cinco a sete documentos num POST só (não há sessão para
+         *     guardar rascunho entre chamadas).
+         *
+         *     Sem `program_id`: o tenant é o programa do edital, resolvido por
+         *     `edital_com_inscricao_aberta`. Sem `status` nem `protocol` — os dois
+         *     são do servidor.
+         */
+        ApplicationIn: {
+            /** Process Id */
+            process_id: number;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /** Cpf */
+            cpf: string;
+            /**
+             * Birth Date
+             * Format: date
+             */
+            birth_date: string;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            quota_category: components["schemas"]["QuotaCategory"];
+        };
+        /**
+         * ApplicationStatus
+         * @enum {string}
+         */
+        ApplicationStatus: "submitted" | "homologated" | "rejected" | "eliminated" | "approved" | "enrolled";
+        /**
+         * ApplicationStatusOut
+         * @description A consulta pública de protocolo.
+         *
+         *     Sem nome, CPF, e-mail ou documento: quem tem o protocolo pode não ser o
+         *     candidato (ele passa o número adiante), então a resposta diz só em que
+         *     pé está a inscrição.
+         */
+        ApplicationStatusOut: {
+            /** Protocol */
+            protocol: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Process Title */
+            process_title: string;
         };
     };
     responses: never;
@@ -4917,6 +5201,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_public_processes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProcessOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_submit_public_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Process Id */
+                    process_id: number;
+                    /** Full Name */
+                    full_name: string;
+                    /** Email */
+                    email: string;
+                    /** Cpf */
+                    cpf: string;
+                    /**
+                     * Birth Date
+                     * Format: date
+                     */
+                    birth_date: string;
+                    /**
+                     * Phone Number
+                     * @default
+                     */
+                    phone_number?: string;
+                    /**
+                     * SelectionLevel
+                     * @description Mesmos valores de `Student.Level` — a conversão em aluno copia direto.
+                     * @enum {string}
+                     */
+                    level: "masters" | "doctorate";
+                    /** Project Id */
+                    project_id?: number | null;
+                    /** Research Line Id */
+                    research_line_id?: number | null;
+                    /**
+                     * QuotaCategory
+                     * @enum {string}
+                     */
+                    quota_category: "open" | "racial" | "disability" | "quilombola" | "trans" | "indigenous";
+                    /**
+                     * Identity
+                     * Format: binary
+                     */
+                    identity: string;
+                    /**
+                     * Diploma
+                     * Format: binary
+                     */
+                    diploma: string;
+                    /**
+                     * Lattes
+                     * Format: binary
+                     */
+                    lattes: string;
+                    /**
+                     * Payment Receipt
+                     * Format: binary
+                     */
+                    payment_receipt: string;
+                    /** Expanded Abstract */
+                    expanded_abstract?: string | null;
+                    /** Memorial */
+                    memorial?: string | null;
+                    /** Quota Proof */
+                    quota_proof?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationReceiptOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_public_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                protocol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationStatusOut"];
                 };
             };
         };
