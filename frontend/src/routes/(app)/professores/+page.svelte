@@ -10,10 +10,15 @@
 	type Linha = components['schemas']['ResearchLineOut'];
 	type Projeto = components['schemas']['CollectiveProjectOut'];
 
+	// As três primeiras são categorias CAPES e entram no relatório do
+	// programa. `external` não é: existe só para o professor de outra
+	// instituição compor banca do processo seletivo — e por isso a
+	// instituição de origem é obrigatória nela (`Teacher.clean`).
 	const CATEGORIAS = [
 		{ valor: 'permanent', rotulo: 'Permanente' },
 		{ valor: 'collaborator', rotulo: 'Colaborador' },
-		{ valor: 'visiting', rotulo: 'Visitante' }
+		{ valor: 'visiting', rotulo: 'Visitante' },
+		{ valor: 'external', rotulo: 'Externo (banca)' }
 	] as const;
 
 	const TITULACOES = [
@@ -107,6 +112,7 @@
 	let credenciadoAte = $state('');
 	let lattes = $state('');
 	let instituicao = $state('');
+	const externo = $derived(categoria === 'external');
 	let linhasSelecionadas = $state<number[]>([]);
 	let projetosSelecionados = $state<number[]>([]);
 
@@ -380,7 +386,7 @@
 				/>
 			</div>
 			<div>
-				<label class="etiqueta mb-2 block" for="prof-categoria">Categoria CAPES</label>
+				<label class="etiqueta mb-2 block" for="prof-categoria">Categoria</label>
 				<select id="prof-categoria" class="campo" bind:value={categoria}>
 					{#each CATEGORIAS as opcao (opcao.valor)}
 						<option value={opcao.valor}>{opcao.rotulo}</option>
@@ -415,8 +421,19 @@
 				<input id="prof-lattes" type="url" class="campo font-mono" bind:value={lattes} />
 			</div>
 			<div>
-				<label class="etiqueta mb-2 block" for="prof-instituicao">Instituição de origem</label>
-				<input id="prof-instituicao" class="campo" bind:value={instituicao} />
+				<label class="etiqueta mb-2 block" for="prof-instituicao">
+					Instituição de origem{externo ? ' *' : ''}
+				</label>
+				<!-- Obrigatória no externo: a categoria só existe para dizer de
+				onde o professor vem. A validação que vale é a do `clean()` do
+				model (`external_requires_institution`); esta aqui só evita a
+				viagem até o servidor. -->
+				<input id="prof-instituicao" class="campo" bind:value={instituicao} required={externo} />
+				{#if externo}
+					<p class="text-cinza mt-1 text-[0.8125rem]">
+						Obrigatória para o professor externo, que compõe banca do processo seletivo.
+					</p>
+				{/if}
 			</div>
 		</div>
 

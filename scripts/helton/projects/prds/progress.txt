@@ -213,3 +213,18 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - Grade de vaga não cria linha zerada: célula vazia que continua 0 não vira `Vacancy`. Zerar vaga existente é PATCH para 0 (o model aceita, e f5 conta com isso para a realocação).
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
 ---
+## 2026-08-25 - f1-tela-bancas
+- `(app)/selecao/bancas/+page.svelte`: substitui o marcador pela tela de verdade. Filtro por edital e nível (vai ao servidor, `list_boards` já aceita `process_id`/`level`); listagem agrupada linha → alvo → banca, com os quatro papéis expandidos (`BoardOut` já traz nome/categoria/instituição de cada examinador); `in_use` vira etiqueta "Ata congelada" e desabilita o lápis.
+- Formulário único (nova e edição): edital + nível + alvo numa linha, os quatro `<select>` de examinadores em outra. Só credenciados (`accredited_until === null`) entram nos `<option>` — descredenciado é `teacher_not_accredited` no model. Membro repetido é barrado na UX (mensagem + submit desabilitado) e no backend (`duplicate_board_member`). Na edição o `<select>` de edital fica travado: `BoardPatch` não aceita `process_id`.
+- `(app)/professores/+page.svelte`: `external` ("Externo (banca)") entra em `CATEGORIAS`; rótulo do campo passa de "Categoria CAPES" para "Categoria" (o externo não é categoria CAPES); "Instituição de origem" fica `required` e ganha nota quando a categoria é externo.
+- `lib/selecao.ts`: `PapelDaBanca`, `PAPEIS_DA_BANCA` (espelho de `Board.PAPEIS`) e `rotuloDoExaminador()` — nome, mais a instituição quando externo.
+- `make ready` verde: 968 testes, mypy limpo, svelte-check 0 erros.
+- Verificação no browser **pendente**: o plugin browser-use travou em "Allow remote debugging?" do Chrome (consentimento manual, ver `docs/manual_dev.md`) nas três tentativas. Em compensação o fluxo inteiro foi exercitado pela API da stack desta worktree, logado como `secretaria@ppgd.test`: externo com instituição criado (id 4, UERJ), externo sem instituição recusado com `home_institution_required`, banca de mestrado montada com o externo no lugar de titular 2, e membro repetido recusado com `duplicate_board_member`. Os dados ficaram no banco do canteiro, então a conferência visual é só abrir `/selecao/bancas`.
+- Files: frontend/src/routes/(app)/selecao/bancas/+page.svelte, frontend/src/routes/(app)/professores/+page.svelte, frontend/src/lib/selecao.ts, scripts/helton/projects/prds/{prd.json,progress.txt}
+- **Learnings for future iterations:**
+  - `seed_demo` **não** cria edital nem banca do `selection`, e não existe `CONTAS-DEMO.txt` no repo — as contas saem da saída do próprio comando (senha `demo@ppgd2026`). Dentro do container é `uv run python manage.py seed_demo`; `python manage.py` puro não acha o Django.
+  - `SelectionProcessIn` usa `submission_opens_at`/`submission_closes_at` (não `applications_*`).
+  - O validador de e-mail do Pydantic recusa TLD reservado: `@externo.test` passa no seed (criado pelo ORM) mas **não** pela API. Para exercitar rota de escrita use `.example.com`.
+  - `svelte/prefer-svelte-reactivity` recusa `new Map`/`new Set` mutáveis mesmo dentro de `$derived.by` — agrupamento se faz com `Record<string, ...>`, e "tem duplicata?" com `some((x,i) => arr.indexOf(x) !== i)`.
+  - Filtro de tela que dispara `carregar()` dentro de `$effect`: **não** leia o `$state` do filtro no caminho síncrono do efeito, senão cada troca de filtro carrega duas vezes (o efeito e o `onchange`). Padrão adotado: a função de carga recebe os filtros por parâmetro, e só o `onchange` os lê.
+---

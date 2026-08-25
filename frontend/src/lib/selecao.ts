@@ -101,3 +101,38 @@ export function isoParaLocal(iso: string): string {
 export function localParaIso(local: string): string {
 	return new Date(local).toISOString();
 }
+
+/**
+ * Os quatro lugares da banca, na ordem em que a ata os lista.
+ *
+ * Espelho de `Board.PAPEIS` (`apps/selection/models.py`). O nome do campo é
+ * o mesmo do schema — `BoardOut` expande `president`/`member_1`/`member_2`/
+ * `alternate`, e `BoardIn` recebe os `*_id` correspondentes —, então a tela
+ * percorre esta lista em vez de repetir os quatro nomes em cada lugar.
+ */
+export type PapelDaBanca = 'president' | 'member_1' | 'member_2' | 'alternate';
+
+export const PAPEIS_DA_BANCA: { campo: PapelDaBanca; rotulo: string }[] = [
+	{ campo: 'president', rotulo: 'Presidente' },
+	{ campo: 'member_1', rotulo: 'Titular 1' },
+	{ campo: 'member_2', rotulo: 'Titular 2' },
+	{ campo: 'alternate', rotulo: 'Suplente' }
+];
+
+/**
+ * Como o examinador aparece num `<option>` ou na linha da banca.
+ *
+ * A instituição só entra quando ele é externo: é a única categoria em que
+ * `home_institution` é obrigatória (`Teacher.clean`), e é justamente ali que
+ * quem monta a banca precisa saber de onde a pessoa vem.
+ */
+export function rotuloDoExaminador(examinador: {
+	full_name: string;
+	category: string;
+	home_institution: string;
+}): string {
+	const externo = examinador.category === 'external' && examinador.home_institution !== '';
+	return externo
+		? `${examinador.full_name} · ${examinador.home_institution}`
+		: examinador.full_name;
+}

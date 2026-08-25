@@ -339,8 +339,8 @@
         "f1-tela-editais"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Tela e ajuste de professores prontos; make ready verde. Verificação de browser pendente: o plugin browser-use ficou travado no consentimento 'Allow remote debugging?' do Chrome. O fluxo foi exercitado ponta a ponta pela API da stack (externo com instituição, banca com externo, duplicate_board_member, home_institution_required)."
     },
     {
       "id": "f2-inscricao-publica-api",
