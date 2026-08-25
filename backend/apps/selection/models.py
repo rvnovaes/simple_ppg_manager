@@ -1200,6 +1200,23 @@ class Application(models.Model):
         self.status = ApplicationStatus.APPROVED
         self.final_score = score
 
+    def revoke_approval(self) -> None:
+        """Aprovada volta a viva — só a ata retificada (`version > 1`) chega aqui.
+
+        Existe porque a versão nova da ata pode tirar do corte quem a
+        anterior aprovou, e `eliminate` só aceita inscrição viva. Limpa
+        nota final e classificação junto: quem sai do corte não guarda a
+        posição, e o ranking da chave é recalculado depois
+        (`compute_ranking`). Inscrição já convertida em aluno não é
+        `approved` e por isso nem chega aqui — o `_exigir_status` recusa.
+        """
+        self._exigir_status(ApplicationStatus.APPROVED)
+        self.status = ApplicationStatus.HOMOLOGATED
+        self.final_score = None
+        self.final_rank = None
+        self.final_outcome = ""
+        self.ranked_at = None
+
     def reinstate(self) -> None:
         """Eliminada volta a viva. Fase 2: só a retificação de ata chama."""
         self._exigir_status(ApplicationStatus.ELIMINATED)

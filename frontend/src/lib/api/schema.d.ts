@@ -1437,6 +1437,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Stage Record
+         * @description Assina a ata congelada como examinador logado.
+         *
+         *     Não exige titularidade: quem assina é quem está na lista de
+         *     signatários da ata (`expected_signers`), e o suplente entra nela
+         *     quando substitui um titular impedido. Quem compõe a banca mas não
+         *     assina esta ata leva `not_the_signer`, não 404 — a ata existe e ele
+         *     pode lê-la.
+         *
+         *     A terceira assinatura fecha a etapa: desfechos aplicados e PDF
+         *     gravado, tudo na mesma transação (`_close_stage`).
+         */
+        post: operations["apps_selection_router_sign_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/selection/public/processes": {
         parameters: {
             query?: never;
@@ -3618,6 +3647,22 @@ export interface components {
         RecordFreezeIn: {
             /** Replaced Member Id */
             replaced_member_id?: number | null;
+        };
+        /**
+         * RecordSignIn
+         * @description Assinatura da ata pelo examinador logado.
+         *
+         *     `content_hash` é o hash que a tela mostrou ao signatário. Vazio
+         *     significa "assino o que está aí agora"; preenchido, o servidor confere
+         *     e recusa com `record_changed` se a ata mudou desde a leitura — a
+         *     assinatura vale sobre um texto, não sobre um identificador de ata.
+         */
+        RecordSignIn: {
+            /**
+             * Content Hash
+             * @default
+             */
+            content_hash: string;
         };
         /**
          * PublicOptionOut
@@ -6088,6 +6133,33 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_sign_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSignIn"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

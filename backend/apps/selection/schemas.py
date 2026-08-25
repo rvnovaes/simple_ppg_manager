@@ -1025,3 +1025,15 @@ class RecordFreezeIn(Schema):
     """
 
     replaced_member_id: int | None = None
+
+
+class RecordSignIn(Schema):
+    """Assinatura da ata pelo examinador logado.
+
+    `content_hash` é o hash que a tela mostrou ao signatário. Vazio
+    significa "assino o que está aí agora"; preenchido, o servidor confere
+    e recusa com `record_changed` se a ata mudou desde a leitura — a
+    assinatura vale sobre um texto, não sobre um identificador de ata.
+    """
+
+    content_hash: str = ""

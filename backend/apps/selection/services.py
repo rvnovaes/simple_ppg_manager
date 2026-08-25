@@ -11,22 +11,25 @@ model nunca roda no caminho real.
 
 import smtplib
 from datetime import datetime
+from decimal import Decimal
 from functools import partial
 from typing import Any
 
+from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import UploadedFile
 
 from apps.core import audit
-from apps.core.exceptions import DomainError, InvalidStateTransition
+from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
 
 from .emails import enviar_token_de_assinatura
 from .models import (
     Application,
     ApplicationDocument,
     ApplicationDocumentKind,
+    ApplicationStatus,
     Board,
     ExaminationRecord,
     RecordSignature,
@@ -37,6 +40,7 @@ from .models import (
     Vacancy,
     gerar_protocolo,
 )
+from .pdf import render_record_pdf
 from .schemas import ApplicationIn
 
 
@@ -287,12 +291,21 @@ def _linhas_da_ata(record: ExaminationRecord) -> tuple[list[dict[str, Any]], lis
     e quem ainda não foi avaliado precisa ser contado como pendência — é
     o que `freeze_record` cobra em `scores_incomplete`.
     """
-    inscricoes = list(
-        Application.objects.for_process(record.process_id)
-        .alive()
-        .for_target(record.level, record.project, record.research_line)
-        .order_by("full_name", "protocol")
+    candidatas = Application.objects.for_process(record.process_id).for_target(
+        record.level, record.project, record.research_line
     )
+    anterior = getattr(record, "supersedes", None)
+    if anterior is None:
+        candidatas = candidatas.alive()
+    else:
+        # Versão retificada: as linhas são **as mesmas pessoas** que a
+        # versão anterior julgou, com as notas de agora. Filtrar por
+        # `alive()` deixaria de fora justamente quem a v1 eliminou — e é
+        # ele que a retificação costuma existir para reintegrar.
+        candidatas = candidatas.filter(
+            pk__in=[linha["application_id"] for linha in anterior.content]
+        )
+    inscricoes = list(candidatas.order_by("full_name", "protocol"))
     notas = {
         nota.application_id: nota
         for nota in StageScore.objects.for_stage(record.stage)
@@ -571,3 +584,220 @@ def reopen_record(
         deleted_signatures=apagadas,
     )
     return record
+
+
+# ---------------------------------------------------------------------------
+# Assinatura e fechamento da etapa
+# ---------------------------------------------------------------------------
+#
+# A terceira assinatura é o que fecha a etapa: é ela que promove, elimina
+# e aprova candidato. Nada disso acontece no congelamento — enquanto a ata
+# não está assinada por todos, ela é só uma proposta da banca.
+#
+# Duas travas moram aqui, e não na borda:
+#
+#   1. `select_for_update()` na ata ANTES de contar as assinaturas. Duas
+#      assinaturas simultâneas leriam "faltam 2" e "faltam 2" e a etapa
+#      nunca fecharia — ou, pior, leriam "faltam 0" as duas e o
+#      fechamento rodaria duas vezes.
+#   2. Tudo num `atomic` só: marcar assinada, aplicar desfecho e gravar o
+#      PDF. Um PDF sem os desfechos aplicados (ou o contrário) é ata que
+#      não corresponde ao que o sistema fez.
+
+
+def _desfechos_anteriores(record: ExaminationRecord) -> dict[int, bool] | None:
+    """Como a versão anterior da ata classificou cada inscrição.
+
+    `None` na versão 1: não há anterior, então todo desfecho é novo. Nas
+    seguintes, o dicionário é o que permite re-sincronizar **só quem
+    mudou** — reaplicar a ata inteira reeliminaria quem já estava
+    eliminado e explodiria em `application_not_homologated`.
+    """
+    anterior = getattr(record, "supersedes", None)
+    if anterior is None:
+        return None
+    return {
+        int(linha["application_id"]): bool(linha["passed"])
+        for linha in anterior.content
+    }
+
+
+def _aplicar_desfecho(
+    *,
+    inscricao: Application,
+    stage: SelectionStage,
+    passou: bool,
+    nota: Decimal | None,
+    ultima_etapa: bool,
+) -> str:
+    """Leva a inscrição ao estado que a linha da ata determina.
+
+    Devolve o que aconteceu (`promoted`/`eliminated`/`approved`) para o
+    payload da auditoria. Reprovar quem a versão anterior aprovou passa
+    por `revoke_approval`; promover quem ela eliminou, por `reinstate`.
+    """
+    if not passou:
+        if inscricao.status == ApplicationStatus.APPROVED:
+            inscricao.revoke_approval()
+        inscricao.eliminate(stage)
+        inscricao.save()
+        return "eliminated"
+
+    if inscricao.status == ApplicationStatus.ELIMINATED:
+        inscricao.reinstate()
+    if not ultima_etapa:
+        # Passar numa etapa intermediária não muda o status: seguir vivo
+        # já é a promoção, e ela deriva da ata assinada.
+        inscricao.save()
+        return "promoted"
+
+    if inscricao.status == ApplicationStatus.APPROVED:
+        # Retificação que só mexeu na nota: reaprova com a nota nova.
+        inscricao.revoke_approval()
+    inscricao.approve(nota if nota is not None else Decimal(0))
+    inscricao.save()
+    return "approved"
+
+
+def _close_stage(
+    record: ExaminationRecord, request: HttpRequest | None = None
+) -> ExaminationRecord:
+    """Fecha a etapa: ata assinada, desfechos aplicados e PDF gravado.
+
+    Chamado pela última assinatura (por login ou por token), já dentro da
+    transação dela. O que vale é o `content` congelado, não as notas de
+    agora: é o `content` que o `content_hash` cobre e que os examinadores
+    assinaram.
+    """
+    agora = timezone.now()
+    record.mark_signed(agora)
+    record.save(update_fields=["status", "signed_at", "updated_at"])
+
+    antes = _desfechos_anteriores(record)
+    ultima = record.stage.is_last
+    inscricoes = {
+        inscricao.pk: inscricao
+        for inscricao in Application.objects.filter(
+            pk__in=[linha["application_id"] for linha in record.content]
+        )
+    }
+    resultado: dict[str, list[int]] = {
+        "promoted": [],
+        "eliminated": [],
+        "approved": [],
+    }
+    for linha in record.content:
+        inscricao = inscricoes.get(int(linha["application_id"]))
+        if inscricao is None:  # pragma: no cover - linha órfã não existe
+            continue
+        passou = bool(linha["passed"])
+        nota = None if linha["score"] is None else Decimal(str(linha["score"]))
+        # Desfecho igual ao da versão anterior: nada a re-sincronizar, a
+        # não ser que a nota final da última etapa tenha mudado.
+        repetido = antes is not None and antes.get(inscricao.pk) == passou
+        nota_final_mudou = ultima and passou and inscricao.final_score != nota
+        if repetido and not nota_final_mudou:
+            continue
+        acao = _aplicar_desfecho(
+            inscricao=inscricao,
+            stage=record.stage,
+            passou=passou,
+            nota=nota,
+            ultima_etapa=ultima,
+        )
+        resultado[acao].append(inscricao.pk)
+
+    anterior = getattr(record, "supersedes", None)
+    if anterior is not None and anterior.status == RecordStatus.SIGNED:
+        # A retificação pode já ter substituído a anterior ao criar esta
+        # versão — o `clean()` da ata não admite duas correntes na mesma
+        # chave, então a v2 em rascunho só existe com a v1 já substituída.
+        anterior.supersede()
+        anterior.save(update_fields=["status", "updated_at"])
+
+    record.pdf.save(
+        f"ata-{record.pk}-v{record.version}.pdf",
+        ContentFile(render_record_pdf(record)),
+        save=True,
+    )
+
+    audit.record(
+        "selection.stage.close",
+        request=request,
+        target=record,
+        stage_id=record.stage_id,
+        version=record.version,
+        superseded_id=None if anterior is None else anterior.pk,
+        promoted=resultado["promoted"],
+        eliminated=resultado["eliminated"],
+        approved=resultado["approved"],
+    )
+    return record
+
+
+def _assinatura_do_usuario(record: ExaminationRecord, user: Any) -> RecordSignature:
+    """A linha de assinatura desta ata que pertence ao usuário logado.
+
+    Quem não é signatário não recebe 404 — a ata existe e ele até pode
+    lê-la se compõe a banca; o que ele não pode é assinar por outro.
+    """
+    assinatura = (
+        record.signatures.select_related("signer__person")
+        .filter(signer__person__user=user)
+        .first()
+    )
+    if assinatura is None:
+        raise NotAllowed("Você não é signatário desta ata.", code="not_the_signer")
+    # A instância travada é a que conta: `sign()` confere o hash pela
+    # `record` da própria assinatura.
+    assinatura.record = record
+    return assinatura
+
+
+@transaction.atomic
+def sign_record(
+    *,
+    record: ExaminationRecord,
+    user: Any,
+    ip: str | None = None,
+    content_hash: str = "",
+    request: HttpRequest | None = None,
+) -> ExaminationRecord:
+    """Assina a ata como o professor logado; na última, fecha a etapa.
+
+    `content_hash` é o hash que a tela mostrou. Vazio significa "assino o
+    que está aí agora"; preenchido e diferente do corrente vira
+    `record_changed` — é como o presidente que reabriu e recongelou a ata
+    entre a leitura e o clique não colhe assinatura sobre texto velho.
+    """
+    # `select_for_update()` sem `select_related`: o Postgres recusa
+    # `FOR UPDATE` sobre o lado nulável de um outer join, e `supersedes`,
+    # `project` e `research_line` são todos nuláveis.
+    ata = ExaminationRecord.objects.select_for_update().get(pk=record.pk)
+    assinatura = _assinatura_do_usuario(ata, user)
+    assinatura.ensure_can_sign_by_login(user)
+
+    agora = timezone.now()
+    assinatura.sign(agora, content_hash or ata.content_hash, user=user, ip=ip)
+    assinatura.save(
+        update_fields=[
+            "signed_at",
+            "signed_hash",
+            "signed_by_user",
+            "ip_address",
+            "updated_at",
+        ]
+    )
+    audit.record(
+        "selection.record.sign",
+        request=request,
+        target=ata,
+        stage_id=ata.stage_id,
+        signature_id=assinatura.pk,
+        signer_id=assinatura.signer_id,
+        method=assinatura.method,
+    )
+
+    if not ata.signatures.pending().exists():
+        _close_stage(ata, request=request)
+    return ata

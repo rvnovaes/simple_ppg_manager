@@ -21,7 +21,7 @@ from apps.academic.models import Teacher
 from apps.core import audit
 from apps.core.exceptions import InvalidStateTransition, NotAllowed
 from apps.core.permissions import require_perm
-from apps.core.ratelimit import enforce_rate_limit
+from apps.core.ratelimit import client_ip, enforce_rate_limit
 from apps.core.tenancy import current_program
 from apps.people.models import Person
 from apps.programs.models import CollectiveProject, Program, ResearchLine
@@ -58,6 +58,7 @@ from .schemas import (
     MyBoardOut,
     PublicProcessOut,
     RecordFreezeIn,
+    RecordSignIn,
     SelectionProcessIn,
     SelectionProcessOut,
     SelectionProcessPatch,
@@ -83,6 +84,7 @@ from .services import (
     publish_process,
     refresh_record,
     reopen_record,
+    sign_record,
     so_digitos,
     submit_application,
 )
@@ -1003,6 +1005,37 @@ def reopen_stage_record(request: HttpRequest, board_id: int, stage_id: int):
     _exigir_presidente(banca, docente)
     etapa = _etapa_do_edital(banca.process, stage_id)
     ata = reopen_record(record=_ata_corrente(banca, etapa), request=request)
+    return _com_assinaturas(ata)
+
+
+@router.post(
+    "/boards/{int:board_id}/stages/{int:stage_id}/record/sign",
+    response=ExaminationRecordOut,
+)
+def sign_stage_record(
+    request: HttpRequest, board_id: int, stage_id: int, payload: RecordSignIn
+):
+    """Assina a ata congelada como examinador logado.
+
+    Não exige titularidade: quem assina é quem está na lista de
+    signatários da ata (`expected_signers`), e o suplente entra nela
+    quando substitui um titular impedido. Quem compõe a banca mas não
+    assina esta ata leva `not_the_signer`, não 404 — a ata existe e ele
+    pode lê-la.
+
+    A terceira assinatura fecha a etapa: desfechos aplicados e PDF
+    gravado, tudo na mesma transação (`_close_stage`).
+    """
+    require_perm(request, "selection.sign_examinationrecord")
+    banca, _docente = _minha_banca(request, board_id)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    ata = sign_record(
+        record=_ata_corrente(banca, etapa),
+        user=request.user,
+        ip=client_ip(request) or None,
+        content_hash=payload.content_hash,
+        request=request,
+    )
     return _com_assinaturas(ata)
 
 

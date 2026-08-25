@@ -4163,6 +4163,63 @@
         ]
       }
     },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/sign": {
+      "post": {
+        "operationId": "apps_selection_router_sign_stage_record",
+        "summary": "Sign Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Assina a ata congelada como examinador logado.\n\nNão exige titularidade: quem assina é quem está na lista de\nsignatários da ata (`expected_signers`), e o suplente entra nela\nquando substitui um titular impedido. Quem compõe a banca mas não\nassina esta ata leva `not_the_signer`, não 404 — a ata existe e ele\npode lê-la.\n\nA terceira assinatura fecha a etapa: desfechos aplicados e PDF\ngravado, tudo na mesma transação (`_close_stage`).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordSignIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/selection/public/processes": {
       "get": {
         "operationId": "apps_selection_router_list_public_processes",
@@ -9209,6 +9266,18 @@
           }
         },
         "title": "RecordFreezeIn",
+        "type": "object"
+      },
+      "RecordSignIn": {
+        "description": "Assinatura da ata pelo examinador logado.\n\n`content_hash` é o hash que a tela mostrou ao signatário. Vazio\nsignifica \"assino o que está aí agora\"; preenchido, o servidor confere\ne recusa com `record_changed` se a ata mudou desde a leitura — a\nassinatura vale sobre um texto, não sobre um identificador de ata.",
+        "properties": {
+          "content_hash": {
+            "default": "",
+            "title": "Content Hash",
+            "type": "string"
+          }
+        },
+        "title": "RecordSignIn",
         "type": "object"
       },
       "PublicOptionOut": {
