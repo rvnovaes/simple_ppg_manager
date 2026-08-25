@@ -122,3 +122,25 @@ SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "http://localhost:8080")
+
+# --- E-mail (ADR-009) --------------------------------------------------------
+# Sem fila e sem agendador: o envio acontece dentro do request que o pediu, e a
+# falha volta para a tela, visível e reenviável. O default é o backend de
+# console — sem configuração nenhuma o projeto NÃO tenta falar com servidor de
+# e-mail, e a mensagem sai no log. Em desenvolvimento o Compose aponta para o
+# Mailpit (SMTP em mailpit:1025); em produção, para o relay que a infra
+# indicar (SPF/DKIM são responsabilidade dela).
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "25"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "False").lower() == "true"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "nao-responda@localhost")
+
+# Origem pública do sistema, usada para montar link absoluto em e-mail (o de
+# assinatura da ata, por exemplo). Não dá para deduzir do request: o e-mail é
+# lido fora do navegador, e em canteiro a porta muda a cada worktree.
+SITE_URL = os.getenv("SITE_URL", "http://localhost:8080").rstrip("/")

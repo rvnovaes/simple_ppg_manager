@@ -179,3 +179,17 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - Fixture `professores` do conftest do app é **compartilhada com `banca_regular`**: teste que precisa de examinador diferente tem que criar os próprios (aqui, `outros_professores`).
   - Para forçar estado de ata em teste de rota, `ExaminationRecord.objects.filter(pk=...).update(status=...)` evita montar `freeze()` com linhas — o que está sob teste é a rota da banca, não a máquina da ata.
 ---
+## 2026-08-25 - f1-email-settings-mailpit
+- `config/settings/base.py`: bloco "E-mail (ADR-009)" no fim do arquivo — `EMAIL_BACKEND` (default **console**, para que projeto sem configuração nenhuma não tente falar com servidor de e-mail), `EMAIL_HOST/PORT/USE_TLS/HOST_USER/HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` e `SITE_URL` (com `.rstrip("/")`, para o link do e-mail não sair com barra dupla).
+- `docker-compose.yml`: serviço `mailpit` (`axllent/mailpit:v1.27`, `MP_MAX_MESSAGES=500`, **sem porta publicada** — publicar é a story gate `f6-gate-mailpit-ui-port`) e, no `backend`, `EMAIL_BACKEND=smtp`, `EMAIL_HOST=mailpit`, `EMAIL_PORT=1025`, `DEFAULT_FROM_EMAIL` e `SITE_URL=http://localhost:${NGINX_PORT:-8080}`; `depends_on: mailpit (service_started)`.
+- `docs/adr/009-email-de-convocacao-sem-fila.md`: sem Celery/fila/retry automático; falha vira linha de `ConvocationEmail` com status e é reenviável pela secretaria; registra que o corte de SMTP das isoladas foi escopo daquele módulo e não proibição geral; SPF/DKIM/relay com a infra; `SITE_URL` obrigatória em ambiente que envia.
+- Aceite verificado no canteiro: `send_mail` pelo shell do backend → a mensagem aparece na API do Mailpit (`total: 1`, `nao-responda@ppgd.local -> destino@exemplo.br`).
+- `make ready` verde, 968 testes. Sem migration; nada de front (não houve `make gen-api`).
+- Files: backend/config/settings/base.py, docker-compose.yml, docs/adr/009-email-de-convocacao-sem-fila.md
+- **Learnings for future iterations:**
+  - **A imagem do backend não tem `curl`** (o `verify` do prd pedia `curl http://mailpit:8025/...`). Use `docker compose exec -T backend python -c "import urllib.request, json; ..."` — está anotado no comentário do serviço `mailpit` no compose.
+  - `pytest-django` troca o `EMAIL_BACKEND` por `locmem` sozinho: teste de e-mail se escreve com `django.core.mail.outbox`, sem mock e sem tocar em settings.
+  - `SITE_URL` já vem sem barra final (`rstrip`); monte link como `f"{settings.SITE_URL}/selecao/assinatura/{token}"`.
+  - `EMAIL_PORT` precisa de `int(...)` no settings — variável de ambiente é string e o backend SMTP do Django não converte.
+  - **Pendência para `f6-docs`**: o `CLAUDE.md` raiz ainda diz, na régua dos gates, que "hoje este projeto não tem nenhum" efeito irreversível sobre terceiro. Isso continua verdade nesta story (nada envia ainda), mas deixa de ser quando `f4-convocacoes-api` entrar — a chamada que sai vira gate.
+---

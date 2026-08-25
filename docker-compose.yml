@@ -46,12 +46,40 @@ services:
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:${NGINX_PORT:-8080}}
       # Dentro da rede do compose o banco atende em "db".
       DATABASE_URL: postgres://${POSTGRES_USER:-ppg}:${POSTGRES_PASSWORD:-ppg}@db:5432/${POSTGRES_DB:-ppg}
+      # Em desenvolvimento todo e-mail vai para o Mailpit desta stack e para
+      # em lugar nenhum fora dela (ADR-009). O default do base.py é o backend
+      # de console; aqui trocamos por SMTP para exercitar o caminho real.
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.smtp.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-mailpit}
+      EMAIL_PORT: ${EMAIL_PORT:-1025}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-nao-responda@ppgd.local}
+      # O link que sai no e-mail é aberto no navegador do destinatário, então
+      # aponta para a porta publicada do Nginx DESTE canteiro.
+      SITE_URL: ${SITE_URL:-http://localhost:${NGINX_PORT:-8080}}
     volumes:
       - ./backend:/app
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     command: uv run python manage.py runserver 0.0.0.0:8000
+
+  # Captura de e-mail em desenvolvimento: recebe SMTP em 1025 e mostra as
+  # mensagens numa UI em 8025. Nada sai daqui para a internet — é o que torna
+  # seguro exercitar convocação e link de assinatura dentro do canteiro.
+  #
+  # Sem porta publicada nesta story: para abrir a UI no host, ou se faz um
+  # `docker compose port mailpit 8025`, ou se espera a story que publica
+  # MAILPIT_UI_PORT por canteiro. De dentro da stack a UI e a API HTTP
+  # respondem em http://mailpit:8025 — a imagem do backend não tem curl, então
+  # a conferência sai por `python -c "import urllib.request; ..."`.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    environment:
+      # Sem volume de propósito: o histórico de e-mail de desenvolvimento não
+      # sobrevive (nem precisa sobreviver) ao `docker compose down`.
+      MP_MAX_MESSAGES: 500
 
   # Servidor de desenvolvimento do front. Fica no Compose, e não no host, para
   # que a porta do Vite deixe de ser um recurso disputado: aqui a 5173 é um

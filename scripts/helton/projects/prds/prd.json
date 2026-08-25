@@ -291,7 +291,7 @@
         "f0-app-selection"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
