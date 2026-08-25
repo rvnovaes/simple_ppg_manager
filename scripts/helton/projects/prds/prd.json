@@ -842,7 +842,7 @@
         "f1-tela-editais"
       ],
       "priority": 34,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

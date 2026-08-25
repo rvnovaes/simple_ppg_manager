@@ -310,3 +310,46 @@ export function ehAContaLogada(
 ): boolean {
 	return pessoasDaConta.some((pessoa) => pessoa.full_name === nomeDoExaminador);
 }
+
+export type EspecieDeRealocacao = components['schemas']['ReallocationKind'];
+
+/**
+ * Espelho de `ReallocationKind` (`apps/selection/models.py`).
+ *
+ * O rótulo curto do servidor (`kind_label`) chega em toda realocação já
+ * gravada; esta tabela existe para o `<select>` do formulário, que precisa
+ * escrever a espécie **antes** de existir a realocação — e para a frase que
+ * explica o que cada uma pode mover, que não cabe num rótulo.
+ */
+export const ESPECIES_DE_REALOCACAO: {
+	valor: EspecieDeRealocacao;
+	rotulo: string;
+	explicacao: string;
+}[] = [
+	{
+		valor: 'level_transfer',
+		rotulo: 'Transferência entre níveis',
+		explicacao: 'Mesmo alvo e mesma cota, de mestrado para doutorado (ou o contrário).'
+	},
+	{
+		valor: 'notice_rectification',
+		rotulo: 'Retificação de edital',
+		explicacao: 'Mesmo nível e mesma cota, de um alvo para outro.'
+	}
+];
+
+/**
+ * A vaga como o `<select>` da realocação a escreve.
+ *
+ * Nível, alvo, cota e o saldo **de agora** — que é o que a comissão precisa
+ * ver para não pedir mais do que existe (`insufficient_balance` é do
+ * servidor, e continua sendo dele a última palavra).
+ */
+export function rotuloDaVaga(vaga: {
+	level_label: string;
+	target_label: string;
+	quota_category_label: string;
+	quantity: number;
+}): string {
+	return `${vaga.level_label} · ${vaga.target_label} · ${vaga.quota_category_label} (${vaga.quantity})`;
+}
