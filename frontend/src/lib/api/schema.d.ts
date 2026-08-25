@@ -1243,6 +1243,55 @@ export interface paths {
         patch: operations["apps_selection_router_update_vacancy"];
         trace?: never;
     };
+    "/selection/boards/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Boards
+         * @description As bancas do programa, com os filtros da tela.
+         *
+         *     `teacher_id` passa por `Board.objects.with_teacher`, o único lugar em
+         *     que o OU dos quatro papéis é escrito.
+         */
+        get: operations["apps_selection_router_list_boards"];
+        put?: never;
+        /**
+         * Create Board
+         * @description A secretaria designa a banca de um nível × alvo do edital.
+         */
+        post: operations["apps_selection_router_create_board"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Board */
+        get: operations["apps_selection_router_get_board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Board
+         * @description Troca de examinador ou correção do alvo, só enquanto a banca não
+         *     tem ata fora do rascunho (409 `board_in_use`).
+         */
+        patch: operations["apps_selection_router_update_board"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2817,6 +2866,130 @@ export interface components {
             quota_category?: components["schemas"]["QuotaCategory"] | null;
             /** Quantity */
             quantity?: number | null;
+        };
+        /**
+         * BoardMemberOut
+         * @description Um examinador, como a tela da banca o mostra.
+         *
+         *     Nome, categoria e instituição viajam resolvidos porque a tela lista os
+         *     quatro papéis de cada banca e precisa distinguir o docente do programa
+         *     do externo — e, no externo, de onde ele vem (`home_institution` é
+         *     obrigatória nessa categoria).
+         */
+        BoardMemberOut: {
+            /** Id */
+            id: number;
+            /** Full Name */
+            full_name: string;
+            /** Category */
+            category: string;
+            /** Category Label */
+            category_label: string;
+            /** Home Institution */
+            home_institution: string;
+        };
+        /**
+         * BoardOut
+         * @description A banca como a tela da secretaria a vê.
+         *
+         *     Os quatro examinadores vêm expandidos (nome, categoria, instituição) —
+         *     a tela não deve cruzar id de professor com nome. `in_use` diz se a
+         *     banca ainda é editável: a listagem anota a contagem de atas fora do
+         *     rascunho; o fallback consulta na hora, para o objeto recém-escrito que
+         *     volta do POST/PATCH.
+         */
+        BoardOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            president: components["schemas"]["BoardMemberOut"];
+            member_1: components["schemas"]["BoardMemberOut"];
+            member_2: components["schemas"]["BoardMemberOut"];
+            alternate: components["schemas"]["BoardMemberOut"];
+            /** In Use */
+            in_use: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** PagedBoardOut */
+        PagedBoardOut: {
+            /** Items */
+            items: components["schemas"]["BoardOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * BoardIn
+         * @description Banca nova: nível × alvo do edital e os quatro examinadores.
+         *
+         *     Sem `program_id` (é o da sessão). `process_id` vem no corpo porque a
+         *     rota é `boards/` e não pende do edital — a tela de bancas lista as
+         *     bancas de vários editais.
+         *
+         *     O alvo é XOR e amarrado ao tipo do edital, como na vaga: Regular pede
+         *     `project_id`, Suplementar pede `research_line_id`.
+         */
+        BoardIn: {
+            /** Process Id */
+            process_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            /** President Id */
+            president_id: number;
+            /** Member 1 Id */
+            member_1_id: number;
+            /** Member 2 Id */
+            member_2_id: number;
+            /** Alternate Id */
+            alternate_id: number;
+        };
+        /**
+         * BoardPatch
+         * @description Correção da banca — enquanto nenhuma ata dela saiu do rascunho.
+         *
+         *     `process_id` não está aqui: mudar a banca de edital seria criar outra
+         *     banca. O alvo e os quatro papéis mudam porque impedimento e
+         *     substituição de examinador acontecem antes da primeira sessão.
+         */
+        BoardPatch: {
+            level?: components["schemas"]["SelectionLevel"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            /** President Id */
+            president_id?: number | null;
+            /** Member 1 Id */
+            member_1_id?: number | null;
+            /** Member 2 Id */
+            member_2_id?: number | null;
+            /** Alternate Id */
+            alternate_id?: number | null;
         };
     };
     responses: never;
@@ -4644,6 +4817,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VacancyOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_boards: {
+        parameters: {
+            query?: {
+                process_id?: number | null;
+                level?: components["schemas"]["SelectionLevel"] | null;
+                project_id?: number | null;
+                research_line_id?: number | null;
+                teacher_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedBoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_update_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardOut"];
                 };
             };
         };

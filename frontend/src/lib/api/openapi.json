@@ -3524,6 +3524,255 @@
           }
         ]
       }
+    },
+    "/selection/boards/": {
+      "get": {
+        "operationId": "apps_selection_router_list_boards",
+        "summary": "List Boards",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "process_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Process Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "teacher_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Teacher Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedBoardOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "As bancas do programa, com os filtros da tela.\n\n`teacher_id` passa por `Board.objects.with_teacher`, o único lugar em\nque o OU dos quatro papéis é escrito.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_board",
+        "summary": "Create Board",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria designa a banca de um nível × alvo do edital.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/": {
+      "get": {
+        "operationId": "apps_selection_router_get_board",
+        "summary": "Get Board",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "apps_selection_router_update_board",
+        "summary": "Update Board",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Troca de examinador ou correção do alvo, só enquanto a banca não\ntem ata fora do rascunho (409 `board_in_use`).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -7081,6 +7330,304 @@
           }
         },
         "title": "VacancyPatch",
+        "type": "object"
+      },
+      "BoardMemberOut": {
+        "description": "Um examinador, como a tela da banca o mostra.\n\nNome, categoria e instituição viajam resolvidos porque a tela lista os\nquatro papéis de cada banca e precisa distinguir o docente do programa\ndo externo — e, no externo, de onde ele vem (`home_institution` é\nobrigatória nessa categoria).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "category_label": {
+            "title": "Category Label",
+            "type": "string"
+          },
+          "home_institution": {
+            "title": "Home Institution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "category",
+          "category_label",
+          "home_institution"
+        ],
+        "title": "BoardMemberOut",
+        "type": "object"
+      },
+      "BoardOut": {
+        "description": "A banca como a tela da secretaria a vê.\n\nOs quatro examinadores vêm expandidos (nome, categoria, instituição) —\na tela não deve cruzar id de professor com nome. `in_use` diz se a\nbanca ainda é editável: a listagem anota a contagem de atas fora do\nrascunho; o fallback consulta na hora, para o objeto recém-escrito que\nvolta do POST/PATCH.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "president": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_1": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_2": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "alternate": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "in_use": {
+            "title": "In Use",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "president",
+          "member_1",
+          "member_2",
+          "alternate",
+          "in_use",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BoardOut",
+        "type": "object"
+      },
+      "PagedBoardOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BoardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedBoardOut",
+        "type": "object"
+      },
+      "BoardIn": {
+        "description": "Banca nova: nível × alvo do edital e os quatro examinadores.\n\nSem `program_id` (é o da sessão). `process_id` vem no corpo porque a\nrota é `boards/` e não pende do edital — a tela de bancas lista as\nbancas de vários editais.\n\nO alvo é XOR e amarrado ao tipo do edital, como na vaga: Regular pede\n`project_id`, Suplementar pede `research_line_id`.",
+        "properties": {
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "president_id": {
+            "title": "President Id",
+            "type": "integer"
+          },
+          "member_1_id": {
+            "title": "Member 1 Id",
+            "type": "integer"
+          },
+          "member_2_id": {
+            "title": "Member 2 Id",
+            "type": "integer"
+          },
+          "alternate_id": {
+            "title": "Alternate Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "process_id",
+          "level",
+          "president_id",
+          "member_1_id",
+          "member_2_id",
+          "alternate_id"
+        ],
+        "title": "BoardIn",
+        "type": "object"
+      },
+      "BoardPatch": {
+        "description": "Correção da banca — enquanto nenhuma ata dela saiu do rascunho.\n\n`process_id` não está aqui: mudar a banca de edital seria criar outra\nbanca. O alvo e os quatro papéis mudam porque impedimento e\nsubstituição de examinador acontecem antes da primeira sessão.",
+        "properties": {
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "president_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "President Id"
+          },
+          "member_1_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member 1 Id"
+          },
+          "member_2_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member 2 Id"
+          },
+          "alternate_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alternate Id"
+          }
+        },
+        "title": "BoardPatch",
         "type": "object"
       }
     },

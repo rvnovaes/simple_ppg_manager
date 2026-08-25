@@ -163,3 +163,19 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `update_fields` precisa de `"updated_at"` junto, senão o `auto_now` não é gravado.
   - Fixture `projeto` (e `linha`) já existem no `conftest.py` do app; `client_sem_permissao`, `secretaria` e `program` vêm do `backend/conftest.py`.
 ---
+## 2026-08-25 - f1-boards-api
+- `models.py`: `Board.in_use()` (existe ata da banca fora do rascunho) e `Board.ensure_editable()` → 409 `board_in_use`. Motivo registrado na docstring: o `content_hash` da ata congelada inclui o id da banca e o do impedido, então trocar examinador depois disso invalidaria assinatura já dada. `in_use()` devolve `False` para banca sem pk (objeto novo não tem ata).
+- `schemas.py`: `BoardMemberOut` (id, `full_name` via `person`, `category`, `category_label`, `home_institution`), `BoardIn` (com `process_id` no corpo — a rota é `boards/`, não pende do edital), `BoardPatch` (sem `process_id`: mudar de edital seria outra banca) e `BoardOut` com os quatro papéis expandidos, `process_title`, `level_label`, `target_label` e `in_use`.
+- `router.py`: `GET /boards/` **paginado** (como `processes/`, e ao contrário de etapas/vagas: a listagem cruza todos os editais do programa) com os cinco filtros; `POST /boards/`; `GET /boards/{id}/`; `PATCH /boards/{id}/` com `ensure_editable`. Helpers `_professor_do_programa` e `_bancas` (select_related dos quatro `__person` + anotação `atas_fora_do_rascunho`).
+- **Banca não exige edital em rascunho** (diferente de etapa e vaga): ela se compõe com o edital publicado e as inscrições abertas. Quem trava a edição é a ata, não o edital.
+- **Decisão para o revisor**: docente de outro programa no payload é **404**, não 400 `teacher_from_other_program`. O `_professor_do_programa` escopa como `_alvo` já fazia com projeto/linha — 400 com o código do domínio confirmaria que o id existe em algum lugar. O invariante do model continua valendo para quem escreve fora da rota (testado em `test_vacancy_board.py`).
+- 26 testes em `apps/selection/tests/test_api_bancas.py`: conjunto canônico (201 + auditoria, payload não escolhe tenant, `duplicate_board`, 403, 401, 404 de edital alheio, CSRF), membro repetido, descredenciado, `target_mismatch`, docente de outro programa (404), os cinco filtros (incluindo `teacher_id` nos quatro papéis e o 404 do docente alheio), `board_in_use` parametrizado nos 3 status fora do rascunho, "ata em rascunho continua editável" e `in_use` na listagem.
+- `make ready` verde, 968 testes; `make gen-api` regenerado (openapi.json + schema.d.ts, `make lint` verde depois). Sem migration (`makemigrations --check` limpo).
+- Files: backend/apps/selection/{models,router,schemas}.py, backend/apps/selection/tests/test_api_bancas.py, frontend/src/lib/api/{openapi.json,schema.d.ts}
+- **Learnings for future iterations:**
+  - Anotação com `filter=` em `Count` (`Count("records", filter=~Q(records__status=RecordStatus.DRAFT))`) é o jeito de expor "já saiu do rascunho?" na listagem sem uma consulta por linha — mesmo padrão de `stage_count`, com o fallback `getattr(obj, "anotado", None)` no `resolve_`.
+  - `save(update_fields=...)` aceita o **attname** (`"president_id"`, `"project_id"`) tanto quanto o nome do campo — por isso o PATCH pode montar `update_fields` direto das chaves do `model_dump`.
+  - `Board.PAPEIS` é a tupla dos quatro papéis; use-a para gerar `select_related` e para iterar o payload (`f"{papel}_id"`) em vez de repetir os quatro nomes.
+  - Fixture `professores` do conftest do app é **compartilhada com `banca_regular`**: teste que precisa de examinador diferente tem que criar os próprios (aqui, `outros_professores`).
+  - Para forçar estado de ata em teste de rota, `ExaminationRecord.objects.filter(pk=...).update(status=...)` evita montar `freeze()` com linhas — o que está sob teste é a rota da banca, não a máquina da ata.
+---

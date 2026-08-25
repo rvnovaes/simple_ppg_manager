@@ -10,7 +10,10 @@ from pathlib import Path
 from django.utils import timezone
 from ninja import Schema
 
+from apps.academic.models import Teacher
+
 from .models import (
+    Board,
     QuotaCategory,
     SelectionKind,
     SelectionLevel,
@@ -253,3 +256,116 @@ class VacancyOut(Schema):
     def resolve_target_label(obj: Vacancy) -> str:
         alvo = obj.project or obj.research_line
         return str(alvo) if alvo is not None else ""
+
+
+# ---------------------------------------------------------------------------
+# Bancas
+# ---------------------------------------------------------------------------
+
+
+class BoardMemberOut(Schema):
+    """Um examinador, como a tela da banca o mostra.
+
+    Nome, categoria e instituição viajam resolvidos porque a tela lista os
+    quatro papéis de cada banca e precisa distinguir o docente do programa
+    do externo — e, no externo, de onde ele vem (`home_institution` é
+    obrigatória nessa categoria).
+    """
+
+    id: int
+    full_name: str
+    category: str
+    category_label: str
+    home_institution: str
+
+    @staticmethod
+    def resolve_full_name(obj: Teacher) -> str:
+        return obj.person.full_name
+
+    @staticmethod
+    def resolve_category_label(obj: Teacher) -> str:
+        return obj.get_category_display()
+
+
+class BoardIn(Schema):
+    """Banca nova: nível × alvo do edital e os quatro examinadores.
+
+    Sem `program_id` (é o da sessão). `process_id` vem no corpo porque a
+    rota é `boards/` e não pende do edital — a tela de bancas lista as
+    bancas de vários editais.
+
+    O alvo é XOR e amarrado ao tipo do edital, como na vaga: Regular pede
+    `project_id`, Suplementar pede `research_line_id`.
+    """
+
+    process_id: int
+    level: SelectionLevel
+    project_id: int | None = None
+    research_line_id: int | None = None
+    president_id: int
+    member_1_id: int
+    member_2_id: int
+    alternate_id: int
+
+
+class BoardPatch(Schema):
+    """Correção da banca — enquanto nenhuma ata dela saiu do rascunho.
+
+    `process_id` não está aqui: mudar a banca de edital seria criar outra
+    banca. O alvo e os quatro papéis mudam porque impedimento e
+    substituição de examinador acontecem antes da primeira sessão.
+    """
+
+    level: SelectionLevel | None = None
+    project_id: int | None = None
+    research_line_id: int | None = None
+    president_id: int | None = None
+    member_1_id: int | None = None
+    member_2_id: int | None = None
+    alternate_id: int | None = None
+
+
+class BoardOut(Schema):
+    """A banca como a tela da secretaria a vê.
+
+    Os quatro examinadores vêm expandidos (nome, categoria, instituição) —
+    a tela não deve cruzar id de professor com nome. `in_use` diz se a
+    banca ainda é editável: a listagem anota a contagem de atas fora do
+    rascunho; o fallback consulta na hora, para o objeto recém-escrito que
+    volta do POST/PATCH.
+    """
+
+    id: int
+    program_id: int
+    process_id: int
+    process_title: str
+    level: SelectionLevel
+    level_label: str
+    project_id: int | None
+    research_line_id: int | None
+    target_label: str
+    president: BoardMemberOut
+    member_1: BoardMemberOut
+    member_2: BoardMemberOut
+    alternate: BoardMemberOut
+    in_use: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_process_title(obj: Board) -> str:
+        return str(obj.process)
+
+    @staticmethod
+    def resolve_level_label(obj: Board) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_target_label(obj: Board) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""
+
+    @staticmethod
+    def resolve_in_use(obj: Board) -> bool:
+        anotado = getattr(obj, "atas_fora_do_rascunho", None)
+        return obj.in_use() if anotado is None else bool(anotado)

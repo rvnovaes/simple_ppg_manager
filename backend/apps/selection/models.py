@@ -829,6 +829,30 @@ class Board(models.Model):
         titulares[posicoes.index(replaced_member.pk)] = self.alternate
         return titulares
 
+    # -- estado ------------------------------------------------------------
+
+    def in_use(self) -> bool:
+        """A banca já produziu ata que saiu do rascunho.
+
+        Ata congelada carrega os nomes dos examinadores no `content_hash`
+        (`canonical_document` inclui o id da banca e o do impedido): trocar
+        membro depois disso invalidaria assinatura já dada. Banca sem pk
+        ainda não tem ata nenhuma.
+        """
+        if self.pk is None:
+            return False
+        return self.records.exclude(status=RecordStatus.DRAFT).exists()
+
+    def ensure_editable(self) -> None:
+        """Composição da banca só muda enquanto todas as atas dela são
+        rascunho."""
+        if self.in_use():
+            raise InvalidStateTransition(
+                "Esta banca já tem ata congelada ou assinada e não pode "
+                "mais ser alterada.",
+                code="board_in_use",
+            )
+
     # -- invariantes -------------------------------------------------------
 
     def clean(self) -> None:

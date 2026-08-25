@@ -6,20 +6,23 @@ negócio aqui.
 """
 
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import File, Router, Status, UploadedFile
 from ninja.pagination import paginate
 
+from apps.academic.models import Teacher
 from apps.core import audit
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
 from apps.programs.models import CollectiveProject, Program, ResearchLine
 
 from .models import (
+    Board,
     QuotaCategory,
+    RecordStatus,
     SelectionKind,
     SelectionLevel,
     SelectionProcess,
@@ -28,6 +31,9 @@ from .models import (
     Vacancy,
 )
 from .schemas import (
+    BoardIn,
+    BoardOut,
+    BoardPatch,
     SelectionProcessIn,
     SelectionProcessOut,
     SelectionProcessPatch,
@@ -445,3 +451,163 @@ def update_vacancy(
             fields=sorted(alterados),
         )
     return vaga
+
+
+# ---------------------------------------------------------------------------
+# Bancas examinadoras
+# ---------------------------------------------------------------------------
+#
+# A banca NÃO pende de `ensure_editable` do edital: ela se compõe depois de
+# o edital estar publicado, com as inscrições já abertas. O que a trava é a
+# própria ata — `Board.ensure_editable()` devolve 409 `board_in_use` assim
+# que existe ata fora do rascunho, porque o hash da ata congelada carrega a
+# composição da banca.
+
+
+def _professor_do_programa(program: Program, teacher_id: int) -> Teacher:
+    """Examinador escopado no programa da sessão.
+
+    404 e não 400 `teacher_from_other_program`: o id de outro programa não
+    existe aqui, e responder com o código do domínio confirmaria que ele
+    existe em algum lugar. O invariante do model continua valendo — é ele
+    que guarda quem escreve fora da rota.
+    """
+    return get_object_or_404(Teacher.objects.for_program(program), pk=teacher_id)
+
+
+def _bancas(program: Program):
+    """Bancas do programa, com o que o `BoardOut` expande.
+
+    A anotação evita uma consulta de "esta banca já tem ata?" por linha da
+    listagem; `distinct=True` não é preciso porque há um só `Count`.
+    """
+    return (
+        Board.objects.filter(program=program)
+        .select_related(
+            "process",
+            "project",
+            "research_line",
+            *(f"{papel}__person" for papel in Board.PAPEIS),
+        )
+        .annotate(
+            atas_fora_do_rascunho=Count(
+                "records", filter=~Q(records__status=RecordStatus.DRAFT)
+            )
+        )
+    )
+
+
+@router.get("/boards/", response=list[BoardOut])
+@paginate
+def list_boards(
+    request: HttpRequest,
+    process_id: int | None = None,
+    level: SelectionLevel | None = None,
+    project_id: int | None = None,
+    research_line_id: int | None = None,
+    teacher_id: int | None = None,
+):
+    """As bancas do programa, com os filtros da tela.
+
+    `teacher_id` passa por `Board.objects.with_teacher`, o único lugar em
+    que o OU dos quatro papéis é escrito.
+    """
+    require_perm(request, "selection.view_board")
+    program: Program = current_program(request)
+    bancas = _bancas(program)
+    filtros = {
+        "process_id": process_id,
+        "level": level,
+        "project_id": project_id,
+        "research_line_id": research_line_id,
+    }
+    bancas = bancas.filter(
+        **{campo: valor for campo, valor in filtros.items() if valor is not None}
+    )
+    if teacher_id is not None:
+        bancas = bancas.with_teacher(_professor_do_programa(program, teacher_id))
+    return bancas
+
+
+@router.post("/boards/", response={201: BoardOut})
+def create_board(request: HttpRequest, payload: BoardIn):
+    """A secretaria designa a banca de um nível × alvo do edital."""
+    require_perm(request, "selection.add_board")
+    program: Program = current_program(request)
+    dados = payload.model_dump()
+    edital = _edital_do_programa(request, dados.pop("process_id"))
+    projeto, linha = _alvo(
+        program, dados.pop("project_id"), dados.pop("research_line_id")
+    )
+    membros = {
+        papel: _professor_do_programa(program, dados.pop(f"{papel}_id"))
+        for papel in Board.PAPEIS
+    }
+    banca = Board(
+        program=program,
+        process=edital,
+        project=projeto,
+        research_line=linha,
+        **membros,
+        **dados,
+    )
+    with transaction.atomic():
+        banca.clean()
+        banca.save()
+        audit.record(
+            "selection.board.create",
+            request=request,
+            target=banca,
+            process_id=edital.pk,
+            level=banca.level,
+        )
+    return Status(201, banca)
+
+
+@router.get("/boards/{int:board_id}/", response=BoardOut)
+def get_board(request: HttpRequest, board_id: int):
+    require_perm(request, "selection.view_board")
+    return get_object_or_404(_bancas(current_program(request)), pk=board_id)
+
+
+@router.patch("/boards/{int:board_id}/", response=BoardOut)
+def update_board(request: HttpRequest, board_id: int, payload: BoardPatch):
+    """Troca de examinador ou correção do alvo, só enquanto a banca não
+    tem ata fora do rascunho (409 `board_in_use`)."""
+    require_perm(request, "selection.change_board")
+    program: Program = current_program(request)
+    banca = get_object_or_404(_bancas(program), pk=board_id)
+    banca.ensure_editable()
+    campos = payload.model_dump(exclude_unset=True)
+    alvo = {
+        campo: campos.pop(campo)
+        for campo in ("project_id", "research_line_id")
+        if campo in campos
+    }
+    if alvo:
+        banca.project, banca.research_line = _alvo(
+            program,
+            alvo.get("project_id", banca.project_id),
+            alvo.get("research_line_id", banca.research_line_id),
+        )
+    membros = [campo for campo in campos if campo.endswith("_id")]
+    for campo in membros:
+        setattr(
+            banca,
+            campo.removesuffix("_id"),
+            _professor_do_programa(program, campos[campo]),
+        )
+    for campo, valor in campos.items():
+        if campo not in membros:
+            setattr(banca, campo, valor)
+    alterados = [*campos, *alvo]
+    with transaction.atomic():
+        banca.clean()
+        banca.save(update_fields=[*alterados, "updated_at"] if alterados else None)
+        audit.record(
+            "selection.board.update",
+            request=request,
+            target=banca,
+            fields=sorted(alterados),
+        )
+    return banca
