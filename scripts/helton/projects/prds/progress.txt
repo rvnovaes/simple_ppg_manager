@@ -31,3 +31,18 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `Teacher.clean()` não é chamado pelo `save()`; o router de academic chama `clean()` explicitamente (linha ~225). Quem criar Teacher externo por service/rota nova precisa chamar `clean()` também.
   - `rtk` resume a saída do pytest e às vezes imprime "No tests collected" mesmo com testes rodando; para conferir contagem use `rtk proxy uv run pytest ...`.
 ---
+## 2026-08-25 - f0-process-stage
+- `apps/selection/models.py`: 11 `TextChoices` de módulo (`SelectionKind`, `SelectionProcessStatus`, `SelectionLevel`, `QuotaCategory`, `ApplicationStatus`, `RankingOutcome`, `ApplicationDocumentKind`, `RecordStatus`, `SignatureMethod`, `ReallocationKind`, `EmailDeliveryStatus`), constantes `CATEGORIAS_POR_TIPO`, `NOTA_DE_CORTE`, `NOTA_MAXIMA`, `PLACEHOLDERS_DE_CONVOCACAO`; helpers `xor_de_alvo(nome)` e `caminho_do_edital`; `_PlaceholderTolerante` (dict com `__missing__`) para o `format_map`.
+- `SelectionProcess` com QuerySet `for_program/published/open_for_submission(at)`, `clean()` (`invalid_submission_window`, `duplicate_process`), `allowed_quota_categories`, `ensure_quota_category`, `ensure_target`, `submission_open(at)` (exige published), `ensure_editable`, `publish(at)`, `close(at)`, `render_convocation(application, stage)` (duck typing: `full_name` + `protocol`), propriedades `is_draft`/`is_published`.
+- `SelectionStage` (CASCADE `stages`), 3 uniques (a de `tiebreak_rank` condicional), `is_first`/`is_last`/`previous()`, `program_id` via pai, `clean()` (`invalid_stage_order`, `duplicate_stage`).
+- Migration `selection/0001_initial.py` lida e com dependência explícita em `academic/0012` + `programs/0006`.
+- Fixtures `edital_regular`/`edital_suplementar` reais: publicados (2025-12-15), janela 2026-01-01 → 2026-12-31, ano 2027, template de convocação preenchido e as 3 etapas de cada tipo já criadas (tb 1 e 2 nas duas primeiras).
+- 46 testes em `selection/tests/test_models.py` (a maioria em memória; 7 com `django_db` para os espelhos das uniques e `open_for_submission`). `make ready` verde, 613 testes; `makemigrations --check` limpo.
+- Files: backend/apps/selection/models.py, backend/apps/selection/migrations/0001_initial.py, backend/apps/selection/tests/conftest.py, backend/apps/selection/tests/test_models.py
+- **Learnings for future iterations:**
+  - `publish(at)`/`close(at)` recebem o instante como argumento (o router passa `timezone.now()`); nada aqui chama `now()` por conta própria, o que mantém os testes determinísticos.
+  - `render_convocation` formata `data_hora` com `timezone.localtime` — o `TIME_ZONE` do projeto é America/Sao_Paulo, então 14:30 UTC vira 11:30 no texto. Teste com `tzinfo=UTC` precisa considerar isso.
+  - As fixtures de edital já vêm com etapas; story de `stages` API que testar "edital sem etapa" precisa criar edital próprio em draft.
+  - `ruff` C408: usar literal `{}` em vez de `dict(...)` em kwargs de helper de teste.
+  - `scripts/helton/obra/montar-canteiro.sh` está modificado na worktree desde antes desta iteração (não é desta story; não foi commitado).
+---

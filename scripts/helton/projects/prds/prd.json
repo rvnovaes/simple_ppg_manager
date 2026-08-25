@@ -76,7 +76,7 @@
         "f0-teacher-external"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
