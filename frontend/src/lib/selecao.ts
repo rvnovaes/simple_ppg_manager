@@ -235,3 +235,56 @@ export function formatarCpf(cpf: string): string {
 	if (digitos.length !== 11) return cpf;
 	return `${digitos.slice(0, 3)}.${digitos.slice(3, 6)}.${digitos.slice(6, 9)}-${digitos.slice(9)}`;
 }
+
+export type SituacaoDaAta = components['schemas']['RecordStatus'];
+
+/**
+ * O que cada situação da ata significa para quem está na banca.
+ *
+ * O rótulo curto vem do servidor (`status_label`), como em toda parte deste
+ * módulo; o que mora aqui é a frase que diz ao examinador o que ele ainda
+ * pode (ou não pode) fazer naquele estado — a diferença entre "rascunho" e
+ * "aguardando assinaturas" é justamente essa, e ela não cabe num rótulo.
+ */
+export const EXPLICACAO_DA_SITUACAO_DA_ATA: Record<SituacaoDaAta, string> = {
+	draft:
+		'Rascunho: as notas ainda podem mudar, e a ata acompanha. Quem preside congela quando a etapa terminar.',
+	awaiting_signatures:
+		'Congelada: as notas desta chave viraram só leitura e o texto abaixo é o que cada examinador assina.',
+	signed: 'Assinada por todos: os desfechos da etapa foram aplicados e o PDF da ata foi gravado.',
+	superseded: 'Substituída por uma versão posterior, guardada como histórico.'
+};
+
+/**
+ * A nota como a ata a escreve: número, "ausente" ou travessão.
+ *
+ * A API devolve `score` como **string** (é `Decimal` no banco, e virar
+ * `number` no JSON perderia a casa decimal exata que a ata registra). Esta
+ * função existe para nenhuma tela ser tentada a fazer `Number(score)` só
+ * para exibir.
+ */
+export function formatarNota(nota: string | null, ausente: boolean): string {
+	if (ausente) return 'Ausente';
+	if (nota === null || nota === '') return '—';
+	return nota;
+}
+
+/**
+ * Se este examinador da banca é a conta logada.
+ *
+ * O casamento é pelo nome da pessoa: `BoardMemberOut.full_name` sai de
+ * `Teacher.person.full_name`, e `UserOut.people` traz as pessoas da conta —
+ * mas nenhuma das duas expõe o id do `Teacher`, então o nome é o que há.
+ *
+ * Por isso o resultado é **dica de tela, e não autorização**: com dois
+ * homônimos na mesma banca ele erraria. Quem decide continua sendo o
+ * backend (`not_the_board_president`, `not_the_signer`, `not_a_titular_member`),
+ * e a tela mostra o erro dele — nunca esconde a ação a ponto de a pessoa
+ * certa não conseguir agir.
+ */
+export function ehAContaLogada(
+	nomeDoExaminador: string,
+	pessoasDaConta: { full_name: string }[]
+): boolean {
+	return pessoasDaConta.some((pessoa) => pessoa.full_name === nomeDoExaminador);
+}

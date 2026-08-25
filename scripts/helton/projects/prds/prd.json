@@ -617,7 +617,7 @@
         "f1-tela-editais"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
