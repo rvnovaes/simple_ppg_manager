@@ -22,7 +22,7 @@ from django.utils import formats
 
 from apps.core.exceptions import DomainError
 
-from .models import RecordSignature
+from .models import ConvocationEmail, RecordSignature
 
 
 def link_de_assinatura(token: str) -> str:
@@ -60,4 +60,23 @@ def enviar_token_de_assinatura(signature: RecordSignature, token: str) -> None:
         subject=f"Assinatura da ata — {ata.stage.name} — {ata.process.title}",
         body=corpo,
         to=[signature.signer.person.primary_email],
+    ).send(fail_silently=False)
+
+
+def enviar_convocacao(email: ConvocationEmail) -> None:
+    """Manda ao candidato o e-mail de convocação já renderizado.
+
+    Nada é montado aqui: assunto e corpo foram congelados em
+    `Convocation.email_for` no instante do disparo do lote, e reenviar é
+    mandar de novo **o mesmo texto** — o candidato não pode receber duas
+    versões de uma convocação porque a secretaria editou o edital no meio.
+
+    `fail_silently=False` de propósito: quem chama (`send_convocations`)
+    trata a exceção por destinatário e a grava em `mark_failed`. Engolir
+    a falha aqui deixaria o lote inteiro com cara de entregue.
+    """
+    EmailMessage(
+        subject=email.rendered_subject,
+        body=email.rendered_body,
+        to=[email.to_email],
     ).send(fail_silently=False)

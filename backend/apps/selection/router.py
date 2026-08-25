@@ -32,6 +32,7 @@ from .models import (
     ApplicationDocumentKind,
     ApplicationStatus,
     Board,
+    Convocation,
     ExaminationRecord,
     QuotaCategory,
     RecordSignature,
@@ -54,6 +55,8 @@ from .schemas import (
     BoardIn,
     BoardOut,
     BoardPatch,
+    ConvocationDetailOut,
+    ConvocationOut,
     ExaminationRecordOut,
     MyBoardOut,
     PublicProcessOut,
@@ -92,7 +95,9 @@ from .services import (
     publish_process,
     refresh_record,
     reopen_record,
+    resend_convocation_emails,
     resend_signature_token,
+    send_convocations,
     sign_record,
     sign_record_with_token,
     so_digitos,
@@ -1555,3 +1560,74 @@ def download_application_document(request: HttpRequest, document_id: int):
         as_attachment=True,
         filename=Path(documento.file.name or "").name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Convocação de etapa — a secretaria chama os candidatos para a prova
+# ---------------------------------------------------------------------------
+#
+# O disparo é `add_convocation`, permissão que só a Secretaria tem
+# (migration 0006): convocar é ato de expediente, não avaliação. Nenhuma
+# das três rotas devolve 500 por causa do servidor de e-mail — o lote é
+# criado numa transação e o envio acontece fora dela, com o resultado
+# gravado por destinatário (`send_convocations`).
+
+
+def _lotes_da_etapa(edital: SelectionProcess, etapa: SelectionStage):
+    """Os lotes já disparados para esta etapa, do mais recente ao mais
+    antigo (`Meta.ordering`), com os e-mails pré-carregados: as contagens
+    de `ConvocationOut` saem deles, e sem o `prefetch` seriam quatro
+    consultas por lote."""
+    return (
+        etapa.convocations.filter(process=edital)
+        .select_related("stage", "sent_by")
+        .prefetch_related("emails")
+    )
+
+
+@router.get(
+    "/processes/{int:process_id}/stages/{int:stage_id}/convocations",
+    response=list[ConvocationOut],
+)
+def list_convocations(request: HttpRequest, process_id: int, stage_id: int):
+    """Os lotes de convocação de uma etapa, com a contagem por situação.
+
+    Sem paginação: são poucos lotes por etapa (o primeiro disparo e os
+    reforços de quem foi homologado depois), e a tela mostra todos.
+    """
+    require_perm(request, "selection.view_convocation")
+    edital = _edital_do_programa(request, process_id)
+    etapa = _etapa_do_edital(edital, stage_id)
+    return _lotes_da_etapa(edital, etapa)
+
+
+@router.post(
+    "/processes/{int:process_id}/stages/{int:stage_id}/convocations",
+    response={201: ConvocationDetailOut},
+)
+def send_convocations_endpoint(request: HttpRequest, process_id: int, stage_id: int):
+    """Dispara a convocação da etapa para quem ainda não foi chamado.
+
+    Reexecutar é seguro e é o fluxo previsto: quem já recebeu e-mail
+    nesta etapa fica de fora, então a secretaria clica de novo depois de
+    homologar mais uma inscrição e só ela é convocada. Se não sobrou
+    ninguém, a resposta é 4xx (`no_convocable_applications`) — e não um
+    lote vazio.
+    """
+    require_perm(request, "selection.add_convocation")
+    edital = _edital_do_programa(request, process_id)
+    etapa = _etapa_do_edital(edital, stage_id)
+    return Status(201, send_convocations(process=edital, stage=etapa, request=request))
+
+
+@router.post("/convocations/{int:convocation_id}/resend", response=ConvocationDetailOut)
+def resend_convocation_endpoint(request: HttpRequest, convocation_id: int):
+    """Reenvia os e-mails que falharam neste lote — só eles."""
+    require_perm(request, "selection.add_convocation")
+    lote = get_object_or_404(
+        Convocation.objects.filter(program=current_program(request)).select_related(
+            "stage", "process", "sent_by"
+        ),
+        pk=convocation_id,
+    )
+    return resend_convocation_emails(convocation=lote, request=request)

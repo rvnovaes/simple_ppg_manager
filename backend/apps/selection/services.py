@@ -24,13 +24,15 @@ from ninja import UploadedFile
 from apps.core import audit
 from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
 
-from .emails import enviar_token_de_assinatura
+from .emails import enviar_convocacao, enviar_token_de_assinatura
 from .models import (
     Application,
     ApplicationDocument,
     ApplicationDocumentKind,
     ApplicationStatus,
     Board,
+    Convocation,
+    ConvocationEmail,
     ExaminationRecord,
     RecordSignature,
     RecordStatus,
@@ -1077,3 +1079,166 @@ def rectify_record(
         rows=len(nova.content),
     )
     return nova
+
+
+# ---------------------------------------------------------------------------
+# Convocação de etapa (lote de e-mails)
+# ---------------------------------------------------------------------------
+#
+# A regra que organiza tudo daqui para baixo: **escrever dentro da
+# transação, enviar fora dela**. O lote e os e-mails `pending` nascem
+# atômicos — ou o lote inteiro existe, ou nenhum e-mail existe. O envio
+# vem depois do commit, um destinatário por vez, e cada falha fica na
+# linha do próprio e-mail (`mark_failed`).
+#
+# Enviar dentro do bloco teria os dois defeitos ao mesmo tempo: uma caixa
+# postal inválida desfaria o registro dos e-mails que já tinham saído, e
+# esses e-mails continuariam entregues — rastro perdido, mensagem no ar.
+# Por isso nenhuma falha de SMTP vira 500 nesta operação (armadilha 3 do
+# plano): o lote é sempre criado, e a tela mostra quem falhou.
+
+
+def _usuario_de(request: HttpRequest | None) -> Any | None:
+    """O usuário autenticado da requisição, ou `None` (mesma regra de
+    `audit.record`: sessão anônima não carimba autoria)."""
+    usuario = getattr(request, "user", None)
+    if usuario is None or not usuario.is_authenticated:
+        return None
+    return usuario
+
+
+def _despachar(
+    emails: list[ConvocationEmail],
+    *,
+    convocation: Convocation,
+    request: HttpRequest | None,
+) -> tuple[int, int]:
+    """Envia os e-mails um a um, **fora** de qualquer transação.
+
+    Devolve (enviados, falhados). O `except` é por destinatário de
+    propósito: endereço inválido de um candidato não pode calar a
+    convocação dos outros trinta.
+    """
+    enviados = 0
+    falhados: list[int] = []
+    for email in emails:
+        try:
+            enviar_convocacao(email)
+        except (OSError, smtplib.SMTPException) as erro:
+            email.mark_failed(str(erro))
+            email.save(update_fields=["status", "error", "attempts", "updated_at"])
+            falhados.append(email.pk)
+            continue
+        email.mark_sent(timezone.now())
+        email.save(
+            update_fields=["status", "error", "attempts", "sent_at", "updated_at"]
+        )
+        enviados += 1
+    if falhados:
+        # Evento próprio, como no token da ata: é assim que a secretaria
+        # descobre, sem abrir o lote, que sobrou e-mail para reenviar.
+        audit.record(
+            "selection.convocation.email_failed",
+            request=request,
+            target=convocation,
+            stage_id=convocation.stage_id,
+            failed=len(falhados),
+            emails=falhados,
+        )
+    return enviados, len(falhados)
+
+
+@transaction.atomic
+def _abrir_lote(
+    *,
+    process: SelectionProcess,
+    stage: SelectionStage,
+    request: HttpRequest | None,
+) -> tuple[Convocation, list[ConvocationEmail]]:
+    """Cria o lote da etapa com um e-mail `pending` por convocável novo.
+
+    "Novo" é quem ainda não recebeu e-mail **nesta etapa**, em lote
+    nenhum: reexecutar a convocação depois que mais uma inscrição foi
+    homologada chama só ela, e quem já foi chamado não recebe duas vezes.
+    Se não sobrou ninguém, o lote não é criado — um lote vazio seria uma
+    linha a mais na tela dizendo que nada aconteceu.
+    """
+    ja_convocados = ConvocationEmail.objects.filter(convocation__stage=stage).values(
+        "application_id"
+    )
+    convocaveis = list(
+        Application.objects.convocable_for(stage)
+        .exclude(pk__in=ja_convocados)
+        .order_by("full_name", "pk")
+    )
+    if not convocaveis:
+        raise DomainError(
+            "Não há candidato para convocar nesta etapa — ou todos já foram "
+            "convocados, ou a ata da etapa anterior ainda não foi assinada.",
+            code="no_convocable_applications",
+        )
+
+    lote = Convocation.from_process(process, stage, sent_by=_usuario_de(request))
+    lote.clean()
+    lote.save()
+
+    emails = []
+    for inscricao in convocaveis:
+        email = lote.email_for(inscricao)
+        email.clean()
+        email.save()
+        emails.append(email)
+
+    audit.record(
+        "selection.convocation.send",
+        request=request,
+        target=lote,
+        stage_id=stage.pk,
+        process_id=process.pk,
+        emails=len(emails),
+    )
+    return lote, emails
+
+
+def send_convocations(
+    *,
+    process: SelectionProcess,
+    stage: SelectionStage,
+    request: HttpRequest | None = None,
+) -> Convocation:
+    """Dispara a convocação da etapa para quem ainda não foi chamado."""
+    lote, emails = _abrir_lote(process=process, stage=stage, request=request)
+    _despachar(emails, convocation=lote, request=request)
+    return lote
+
+
+def resend_convocation_emails(
+    *, convocation: Convocation, request: HttpRequest | None = None
+) -> Convocation:
+    """Reenvia só o que falhou neste lote — nunca o que já foi entregue.
+
+    Reenviar e-mail entregue é spam para o candidato, e ainda por cima
+    apaga a diferença entre "a mensagem chegou" e "a mensagem foi tentada
+    de novo". O texto é o mesmo do disparo original: ele está congelado
+    na linha desde então.
+    """
+    falhados = list(
+        convocation.emails.failed()
+        .select_related("application")
+        .order_by("application__full_name", "pk")
+    )
+    if not falhados:
+        raise DomainError(
+            "Não há e-mail falhado neste lote para reenviar.",
+            code="no_failed_emails",
+        )
+    with transaction.atomic():
+        audit.record(
+            "selection.convocation.resend",
+            request=request,
+            target=convocation,
+            stage_id=convocation.stage_id,
+            emails=[email.pk for email in falhados],
+        )
+    _despachar(falhados, convocation=convocation, request=request)
+    return convocation

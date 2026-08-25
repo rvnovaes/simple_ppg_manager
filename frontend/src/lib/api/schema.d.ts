@@ -1816,6 +1816,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/processes/{process_id}/stages/{stage_id}/convocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Convocations
+         * @description Os lotes de convocação de uma etapa, com a contagem por situação.
+         *
+         *     Sem paginação: são poucos lotes por etapa (o primeiro disparo e os
+         *     reforços de quem foi homologado depois), e a tela mostra todos.
+         */
+        get: operations["apps_selection_router_list_convocations"];
+        put?: never;
+        /**
+         * Send Convocations Endpoint
+         * @description Dispara a convocação da etapa para quem ainda não foi chamado.
+         *
+         *     Reexecutar é seguro e é o fluxo previsto: quem já recebeu e-mail
+         *     nesta etapa fica de fora, então a secretaria clica de novo depois de
+         *     homologar mais uma inscrição e só ela é convocada. Se não sobrou
+         *     ninguém, a resposta é 4xx (`no_convocable_applications`) — e não um
+         *     lote vazio.
+         */
+        post: operations["apps_selection_router_send_convocations_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/convocations/{convocation_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Convocation Endpoint
+         * @description Reenvia os e-mails que falharam neste lote — só eles.
+         */
+        post: operations["apps_selection_router_resend_convocation_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4315,6 +4368,118 @@ export interface components {
              */
             note: string;
         };
+        /**
+         * ConvocationOut
+         * @description Um lote de convocação, com a contagem por situação.
+         *
+         *     É o resumo que a listagem devolve (mesma separação de
+         *     `RecordSummaryOut`): a tela do edital mostra "10 enviados, 2
+         *     falharam" por lote, e só quem abre o lote precisa da lista de
+         *     destinatários.
+         *
+         *     `subject` é a cópia guardada no disparo, não o template atual do
+         *     edital — se alguém editou o edital depois, o que vale para o
+         *     candidato é o que saiu.
+         */
+        ConvocationOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Subject */
+            subject: string;
+            /** Sent By Name */
+            sent_by_name: string;
+            /** Total */
+            total: number;
+            /** Sent */
+            sent: number;
+            /** Failed */
+            failed: number;
+            /** Pending */
+            pending: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ConvocationDetailOut
+         * @description O lote com os destinatários — resposta do disparo e do reenvio,
+         *     onde a secretaria precisa ver na hora quem ficou de fora.
+         */
+        ConvocationDetailOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Subject */
+            subject: string;
+            /** Sent By Name */
+            sent_by_name: string;
+            /** Total */
+            total: number;
+            /** Sent */
+            sent: number;
+            /** Failed */
+            failed: number;
+            /** Pending */
+            pending: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Emails */
+            emails: components["schemas"]["ConvocationEmailOut"][];
+        };
+        /**
+         * ConvocationEmailOut
+         * @description Um e-mail do lote, com o resultado da entrega.
+         *
+         *     O corpo renderizado **não** viaja: são dezenas por lote, e a tela
+         *     mostra situação, destinatário e o erro de quem falhou — que é o que
+         *     a secretaria usa para decidir reenviar ou corrigir o endereço.
+         */
+        ConvocationEmailOut: {
+            /** Id */
+            id: number;
+            /** Application Id */
+            application_id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** To Email */
+            to_email: string;
+            status: components["schemas"]["EmailDeliveryStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Attempts */
+            attempts: number;
+            /** Error */
+            error: string;
+            /** Sent At */
+            sent_at: string | null;
+        };
+        /**
+         * EmailDeliveryStatus
+         * @enum {string}
+         */
+        EmailDeliveryStatus: "pending" | "sent" | "failed";
     };
     responses: never;
     parameters: never;
@@ -6825,6 +6990,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    apps_selection_router_list_convocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_send_convocations_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_resend_convocation_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                convocation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationDetailOut"];
+                };
             };
         };
     };

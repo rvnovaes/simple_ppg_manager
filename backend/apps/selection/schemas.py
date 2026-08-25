@@ -19,6 +19,9 @@ from .models import (
     ApplicationDocument,
     ApplicationStatus,
     Board,
+    Convocation,
+    ConvocationEmail,
+    EmailDeliveryStatus,
     ExaminationRecord,
     QuotaCategory,
     RecordSignature,
@@ -1170,3 +1173,106 @@ class PublicSignatureReceiptOut(Schema):
     @staticmethod
     def resolve_pending_signatures(obj: RecordSignature) -> int:
         return obj.record.signatures.pending().count()
+
+
+# ---------------------------------------------------------------------------
+# Convocação de etapa
+# ---------------------------------------------------------------------------
+
+
+class ConvocationEmailOut(Schema):
+    """Um e-mail do lote, com o resultado da entrega.
+
+    O corpo renderizado **não** viaja: são dezenas por lote, e a tela
+    mostra situação, destinatário e o erro de quem falhou — que é o que
+    a secretaria usa para decidir reenviar ou corrigir o endereço.
+    """
+
+    id: int
+    application_id: int
+    protocol: str
+    full_name: str
+    to_email: str
+    status: EmailDeliveryStatus
+    status_label: str
+    attempts: int
+    error: str
+    sent_at: datetime.datetime | None
+
+    @staticmethod
+    def resolve_protocol(obj: ConvocationEmail) -> str:
+        return obj.application.protocol
+
+    @staticmethod
+    def resolve_full_name(obj: ConvocationEmail) -> str:
+        return obj.application.full_name
+
+    @staticmethod
+    def resolve_status_label(obj: ConvocationEmail) -> str:
+        return obj.get_status_display()
+
+
+class ConvocationOut(Schema):
+    """Um lote de convocação, com a contagem por situação.
+
+    É o resumo que a listagem devolve (mesma separação de
+    `RecordSummaryOut`): a tela do edital mostra "10 enviados, 2
+    falharam" por lote, e só quem abre o lote precisa da lista de
+    destinatários.
+
+    `subject` é a cópia guardada no disparo, não o template atual do
+    edital — se alguém editou o edital depois, o que vale para o
+    candidato é o que saiu.
+    """
+
+    id: int
+    program_id: int
+    process_id: int
+    stage_id: int
+    stage_name: str
+    subject: str
+    sent_by_name: str
+    total: int
+    sent: int
+    failed: int
+    pending: int
+    created_at: datetime.datetime
+
+    @staticmethod
+    def resolve_stage_name(obj: Convocation) -> str:
+        return obj.stage.name
+
+    @staticmethod
+    def resolve_sent_by_name(obj: Convocation) -> str:
+        return "" if obj.sent_by is None else obj.sent_by.get_username()
+
+    @staticmethod
+    def resolve_total(obj: Convocation) -> int:
+        return len(obj.emails.all())
+
+    @staticmethod
+    def resolve_sent(obj: Convocation) -> int:
+        return sum(1 for e in obj.emails.all() if e.status == EmailDeliveryStatus.SENT)
+
+    @staticmethod
+    def resolve_failed(obj: Convocation) -> int:
+        return sum(
+            1 for e in obj.emails.all() if e.status == EmailDeliveryStatus.FAILED
+        )
+
+    @staticmethod
+    def resolve_pending(obj: Convocation) -> int:
+        return sum(
+            1 for e in obj.emails.all() if e.status == EmailDeliveryStatus.PENDING
+        )
+
+
+class ConvocationDetailOut(ConvocationOut):
+    """O lote com os destinatários — resposta do disparo e do reenvio,
+    onde a secretaria precisa ver na hora quem ficou de fora."""
+
+    emails: list[ConvocationEmailOut]
+
+    @staticmethod
+    def resolve_emails(obj: Convocation) -> Any:
+        return obj.emails.all()

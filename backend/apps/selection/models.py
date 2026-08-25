@@ -969,10 +969,38 @@ class ApplicationQuerySet(models.QuerySet["Application"]):
         return self.filter(level=level, project=project, research_line=research_line)
 
     def convocable_for(self, stage: "SelectionStage") -> "ApplicationQuerySet":
-        """Quem pode ser convocado para a etapa: as inscrições vivas do
-        edital. Versão simples — `f4-convocacoes-api` refina para exigir
-        aprovação na etapa anterior."""
-        return self.for_process(stage.process_id).alive()
+        """Quem pode ser convocado para a etapa.
+
+        Na primeira etapa, todo mundo que está vivo: homologado e ainda
+        não eliminado (`alive`). Da segunda em diante, só quem a etapa
+        anterior promoveu — e quem promove é a **ata assinada** da `k-1`,
+        não a passagem do tempo. Enquanto ela não estiver assinada, a
+        chave (nível × alvo) inteira fica de fora: convocar antes disso
+        chamaria para a prova gente que a etapa anterior já eliminou, e o
+        candidato receberia o e-mail antes de saber que caiu.
+
+        As chaves assinadas são poucas (nível × alvo do edital) e vêm em
+        uma consulta só; o `Q` composto existe porque o alvo é nulável
+        dos dois lados (XOR) e `Exists` com `OuterRef` sobre coluna nula
+        compararia `= NULL`, que nunca é verdadeiro.
+        """
+        vivas = self.for_process(stage.process_id).alive()
+        anterior = stage.previous()
+        if anterior is None:
+            return vivas
+        chaves = (
+            ExaminationRecord.objects.filter(stage=anterior, status=RecordStatus.SIGNED)
+            .values_list("level", "project_id", "research_line_id")
+            .distinct()
+        )
+        filtro = models.Q()
+        for level, project_id, research_line_id in chaves:
+            filtro |= models.Q(
+                level=level, project_id=project_id, research_line_id=research_line_id
+            )
+        if not filtro:
+            return vivas.none()
+        return vivas.filter(filtro)
 
 
 class Application(models.Model):

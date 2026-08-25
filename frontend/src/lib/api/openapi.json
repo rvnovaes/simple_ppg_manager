@@ -5023,6 +5023,140 @@
           }
         ]
       }
+    },
+    "/selection/processes/{process_id}/stages/{stage_id}/convocations": {
+      "get": {
+        "operationId": "apps_selection_router_list_convocations",
+        "summary": "List Convocations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConvocationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os lotes de convocação de uma etapa, com a contagem por situação.\n\nSem paginação: são poucos lotes por etapa (o primeiro disparo e os\nreforços de quem foi homologado depois), e a tela mostra todos.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_send_convocations_endpoint",
+        "summary": "Send Convocations Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvocationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Dispara a convocação da etapa para quem ainda não foi chamado.\n\nReexecutar é seguro e é o fluxo previsto: quem já recebeu e-mail\nnesta etapa fica de fora, então a secretaria clica de novo depois de\nhomologar mais uma inscrição e só ela é convocada. Se não sobrou\nninguém, a resposta é 4xx (`no_convocable_applications`) — e não um\nlote vazio.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/convocations/{convocation_id}/resend": {
+      "post": {
+        "operationId": "apps_selection_router_resend_convocation_endpoint",
+        "summary": "Resend Convocation Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "convocation_id",
+            "schema": {
+              "title": "Convocation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvocationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reenvia os e-mails que falharam neste lote — só eles.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -10612,6 +10746,229 @@
         },
         "title": "ApplicationDecisionIn",
         "type": "object"
+      },
+      "ConvocationOut": {
+        "description": "Um lote de convocação, com a contagem por situação.\n\nÉ o resumo que a listagem devolve (mesma separação de\n`RecordSummaryOut`): a tela do edital mostra \"10 enviados, 2\nfalharam\" por lote, e só quem abre o lote precisa da lista de\ndestinatários.\n\n`subject` é a cópia guardada no disparo, não o template atual do\nedital — se alguém editou o edital depois, o que vale para o\ncandidato é o que saiu.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "sent_by_name": {
+            "title": "Sent By Name",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "stage_id",
+          "stage_name",
+          "subject",
+          "sent_by_name",
+          "total",
+          "sent",
+          "failed",
+          "pending",
+          "created_at"
+        ],
+        "title": "ConvocationOut",
+        "type": "object"
+      },
+      "ConvocationDetailOut": {
+        "description": "O lote com os destinatários — resposta do disparo e do reenvio,\nonde a secretaria precisa ver na hora quem ficou de fora.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "sent_by_name": {
+            "title": "Sent By Name",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "emails": {
+            "items": {
+              "$ref": "#/components/schemas/ConvocationEmailOut"
+            },
+            "title": "Emails",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "stage_id",
+          "stage_name",
+          "subject",
+          "sent_by_name",
+          "total",
+          "sent",
+          "failed",
+          "pending",
+          "created_at",
+          "emails"
+        ],
+        "title": "ConvocationDetailOut",
+        "type": "object"
+      },
+      "ConvocationEmailOut": {
+        "description": "Um e-mail do lote, com o resultado da entrega.\n\nO corpo renderizado **não** viaja: são dezenas por lote, e a tela\nmostra situação, destinatário e o erro de quem falhou — que é o que\na secretaria usa para decidir reenviar ou corrigir o endereço.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "to_email": {
+            "title": "To Email",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EmailDeliveryStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "protocol",
+          "full_name",
+          "to_email",
+          "status",
+          "status_label",
+          "attempts",
+          "error",
+          "sent_at"
+        ],
+        "title": "ConvocationEmailOut",
+        "type": "object"
+      },
+      "EmailDeliveryStatus": {
+        "enum": [
+          "pending",
+          "sent",
+          "failed"
+        ],
+        "title": "EmailDeliveryStatus",
+        "type": "string"
       }
     },
     "securitySchemes": {
