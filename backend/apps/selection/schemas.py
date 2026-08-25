@@ -19,11 +19,15 @@ from .models import (
     ApplicationDocument,
     ApplicationStatus,
     Board,
+    ExaminationRecord,
     QuotaCategory,
+    RecordSignature,
+    RecordStatus,
     SelectionKind,
     SelectionLevel,
     SelectionProcess,
     SelectionProcessStatus,
+    SignatureMethod,
     Vacancy,
 )
 
@@ -851,3 +855,173 @@ class StageScoreOut(Schema):
         if nota is None or nota.entered_by is None:
             return ""
         return nota.entered_by.person.full_name
+
+
+# ---------------------------------------------------------------------------
+# Ata da etapa
+# ---------------------------------------------------------------------------
+
+
+class RecordRowOut(Schema):
+    """Uma linha do `content` da ata — a nota como ela foi congelada.
+
+    Não é lida do `StageScore`: vem do JSON gravado na ata, que é o que o
+    `content_hash` cobre. Depois do congelamento a fonte da verdade da
+    ata é ela mesma, e não a tabela de notas, que pode ter sido corrigida
+    numa versão seguinte.
+
+    `score` é **string** de propósito (`"85.50"`): é assim que está no
+    JSON, porque `float` mudaria o hash entre gravações.
+    """
+
+    application_id: int
+    protocol: str
+    full_name: str
+    quota_category: str
+    score: str | None
+    absent: bool
+    passed: bool
+
+
+class RecordSignatureOut(Schema):
+    """Uma assinatura da ata, como as telas a mostram.
+
+    O `token_hash` **não** sai daqui, e nem o token: o que a secretaria
+    precisa saber é se o e-mail saiu (`token_sent_at`) e até quando o
+    link vale. Do hash assinado viajam só os 12 primeiros dígitos — o
+    suficiente para conferir a olho contra o rodapé do PDF, e nada além.
+    """
+
+    id: int
+    signer_id: int
+    signer_name: str
+    signer_category: str
+    signer_institution: str
+    method: SignatureMethod
+    method_label: str
+    signed: bool
+    signed_at: datetime.datetime | None
+    signed_hash_prefix: str
+    token_sent_at: datetime.datetime | None
+    token_expires_at: datetime.datetime | None
+
+    @staticmethod
+    def resolve_signer_name(obj: RecordSignature) -> str:
+        return obj.signer.person.full_name
+
+    @staticmethod
+    def resolve_signer_category(obj: RecordSignature) -> str:
+        return obj.signer.get_category_display()
+
+    @staticmethod
+    def resolve_signer_institution(obj: RecordSignature) -> str:
+        return obj.signer.home_institution
+
+    @staticmethod
+    def resolve_method_label(obj: RecordSignature) -> str:
+        return obj.get_method_display()
+
+    @staticmethod
+    def resolve_signed(obj: RecordSignature) -> bool:
+        return obj.is_signed
+
+    @staticmethod
+    def resolve_signed_hash_prefix(obj: RecordSignature) -> str:
+        return obj.signed_hash[:12]
+
+
+class ExaminationRecordOut(Schema):
+    """A ata de uma etapa, com conteúdo e assinaturas embutidos.
+
+    As assinaturas viajam dentro da ata, e não numa rota própria, pelo
+    mesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem
+    `view_recordsignature` (migration 0006), e a tela dele precisa
+    mostrar quem já assinou. Uma ata tem três assinaturas — não há o que
+    paginar.
+
+    `content_hash` sai inteiro porque é ele que o examinador confere
+    antes de assinar (a rota de assinatura o recebe de volta).
+    """
+
+    id: int
+    program_id: int
+    process_id: int
+    process_title: str
+    stage_id: int
+    stage_name: str
+    board_id: int
+    level: SelectionLevel
+    level_label: str
+    project_id: int | None
+    research_line_id: int | None
+    target_label: str
+    replaced_member_id: int | None
+    replaced_member_name: str
+    version: int
+    status: RecordStatus
+    status_label: str
+    content: list[RecordRowOut]
+    content_hash: str
+    hash_ok: bool
+    has_pdf: bool
+    frozen_at: datetime.datetime | None
+    signed_at: datetime.datetime | None
+    signatures: list[RecordSignatureOut]
+    pending_signatures: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_process_title(obj: ExaminationRecord) -> str:
+        return str(obj.process)
+
+    @staticmethod
+    def resolve_stage_name(obj: ExaminationRecord) -> str:
+        return obj.stage.name
+
+    @staticmethod
+    def resolve_level_label(obj: ExaminationRecord) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_target_label(obj: ExaminationRecord) -> str:
+        alvo = obj.project or obj.research_line
+        return str(alvo) if alvo is not None else ""
+
+    @staticmethod
+    def resolve_replaced_member_name(obj: ExaminationRecord) -> str:
+        impedido = obj.replaced_member
+        return "" if impedido is None else impedido.person.full_name
+
+    @staticmethod
+    def resolve_status_label(obj: ExaminationRecord) -> str:
+        return obj.get_status_display()
+
+    @staticmethod
+    def resolve_hash_ok(obj: ExaminationRecord) -> bool:
+        """Rascunho não tem hash e responde `false`: o campo só quer
+        dizer algo depois do congelamento, onde `false` significa que o
+        conteúdo gravado deixou de bater com o que foi assinado."""
+        return obj.verify_hash()
+
+    @staticmethod
+    def resolve_has_pdf(obj: ExaminationRecord) -> bool:
+        return bool(obj.pdf)
+
+    @staticmethod
+    def resolve_signatures(obj: ExaminationRecord) -> Any:
+        return obj.signatures.all()
+
+    @staticmethod
+    def resolve_pending_signatures(obj: ExaminationRecord) -> int:
+        return sum(1 for a in obj.signatures.all() if not a.is_signed)
+
+
+class RecordFreezeIn(Schema):
+    """Congelamento da ata, com o titular impedido quando houver.
+
+    Só isso: o conteúdo da ata não vem do cliente em hipótese nenhuma —
+    ele é lido das notas no servidor, no instante do congelamento.
+    """
+
+    replaced_member_id: int | None = None

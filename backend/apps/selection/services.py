@@ -9,7 +9,10 @@ Quem escreve aqui chama `clean()` antes de `save()`: o Django não executa
 model nunca roda no caminho real.
 """
 
+import smtplib
 from datetime import datetime
+from functools import partial
+from typing import Any
 
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest
@@ -17,13 +20,20 @@ from django.utils import timezone
 from ninja import UploadedFile
 
 from apps.core import audit
-from apps.core.exceptions import DomainError
+from apps.core.exceptions import DomainError, InvalidStateTransition
 
+from .emails import enviar_token_de_assinatura
 from .models import (
     Application,
     ApplicationDocument,
     ApplicationDocumentKind,
+    Board,
+    ExaminationRecord,
+    RecordSignature,
+    RecordStatus,
     SelectionProcess,
+    SelectionStage,
+    StageScore,
     Vacancy,
     gerar_protocolo,
 )
@@ -253,3 +263,311 @@ def submit_application(
         documents=exigidos,
     )
     return inscricao
+
+
+# ---------------------------------------------------------------------------
+# Ata da etapa
+# ---------------------------------------------------------------------------
+#
+# As quatro funções abaixo são o ciclo de vida da ata antes da assinatura:
+# gerar (rascunho), atualizar, congelar e reabrir. Estão aqui, e não no
+# router, porque nenhuma delas toca um model só — congelar escreve a ata,
+# cria as assinaturas e emite token; reabrir apaga assinaturas.
+#
+# Quem pode fazer o quê é da borda (`require_perm` + o papel na banca):
+# gerar e atualizar são de qualquer titular, congelar e reabrir são do
+# presidente. Estes services recebem a ata já resolvida.
+
+
+def _linhas_da_ata(record: ExaminationRecord) -> tuple[list[dict[str, Any]], list[str]]:
+    """As linhas da ata a partir das notas vivas, e quem ainda não tem nota.
+
+    A ata cobre as inscrições **vivas** do nível × alvo (`alive()`), não
+    as notas: quem foi eliminado numa etapa anterior não volta a aparecer,
+    e quem ainda não foi avaliado precisa ser contado como pendência — é
+    o que `freeze_record` cobra em `scores_incomplete`.
+    """
+    inscricoes = list(
+        Application.objects.for_process(record.process_id)
+        .alive()
+        .for_target(record.level, record.project, record.research_line)
+        .order_by("full_name", "protocol")
+    )
+    notas = {
+        nota.application_id: nota
+        for nota in StageScore.objects.for_stage(record.stage)
+        .filter(application__in=inscricoes)
+        .select_related("application")
+    }
+    linhas: list[dict[str, Any]] = []
+    faltando: list[str] = []
+    for inscricao in inscricoes:
+        nota = notas.get(inscricao.pk)
+        if nota is None:
+            faltando.append(inscricao.protocol)
+        else:
+            linhas.append(nota.as_record_row())
+    return linhas, faltando
+
+
+def _exigir_rascunho(record: ExaminationRecord) -> None:
+    if not record.is_draft:
+        raise InvalidStateTransition(
+            "A ata precisa estar em rascunho; está "
+            f"{record.get_status_display().lower()}.",
+            code="record_not_draft",
+        )
+
+
+def _exigir_etapa_anterior_assinada(*, board: Board, stage: SelectionStage) -> None:
+    """Etapa `k > 1` só abre ata depois que a `k-1` foi assinada.
+
+    A ata assinada é o que promove e elimina candidato (`_close_stage`):
+    montar a etapa 2 antes disso avaliaria gente que a etapa 1 já tinha
+    eliminado, e o resultado sairia errado sem ninguém notar.
+    """
+    anterior = (
+        board.process.stages.filter(order__lt=stage.order).order_by("-order").first()
+    )
+    if anterior is None:
+        return
+    assinada = (
+        ExaminationRecord.objects.for_process(board.process_id)
+        .for_key(anterior, board.level, board.project, board.research_line)
+        .filter(status=RecordStatus.SIGNED)
+        .exists()
+    )
+    if not assinada:
+        raise InvalidStateTransition(
+            f"A ata da etapa anterior ({anterior.name}) ainda não foi "
+            "assinada; ela é o que define quem segue para esta.",
+            code="previous_stage_open",
+        )
+
+
+@transaction.atomic
+def generate_record(
+    *,
+    board: Board,
+    stage: SelectionStage,
+    request: HttpRequest | None = None,
+) -> ExaminationRecord:
+    """Abre a ata em rascunho da (etapa × nível × alvo) da banca.
+
+    O `content` nasce das notas já lançadas — a ata em rascunho é a
+    prévia do que a banca vai assinar, e serve justamente para conferir
+    quem falta. Completá-lo é condição de `freeze_record`, não desta.
+
+    Ata já vigente na mesma chave é `record_already_exists`, do
+    `clean()` do model: uma chave tem no máximo uma ata corrente, e a
+    segunda versão nasce de retificação, não de um POST repetido.
+    """
+    if not board.process.is_published:
+        raise InvalidStateTransition(
+            "A ata só existe em edital publicado.", code="process_not_published"
+        )
+    _exigir_etapa_anterior_assinada(board=board, stage=stage)
+
+    ata = ExaminationRecord(
+        program=board.program,
+        process=board.process,
+        stage=stage,
+        level=board.level,
+        project=board.project,
+        research_line=board.research_line,
+        board=board,
+    )
+    linhas, _faltando = _linhas_da_ata(ata)
+    ata.content = ExaminationRecord.normalize_content(linhas)
+    ata.clean()
+    ata.save()
+    audit.record(
+        "selection.record.generate",
+        request=request,
+        target=ata,
+        stage_id=stage.pk,
+        board_id=board.pk,
+        rows=len(ata.content),
+    )
+    return ata
+
+
+@transaction.atomic
+def refresh_record(
+    *, record: ExaminationRecord, request: HttpRequest | None = None
+) -> ExaminationRecord:
+    """Regera o `content` do rascunho a partir das notas de agora.
+
+    Existe porque a ata é gerada antes de a banca terminar de lançar: o
+    rascunho é uma fotografia, e esta função tira outra. Depois de
+    congelada a ata não se atualiza — reabre-se (`reopen_record`).
+    """
+    _exigir_rascunho(record)
+    linhas, _faltando = _linhas_da_ata(record)
+    record.content = ExaminationRecord.normalize_content(linhas)
+    record.save(update_fields=["content", "updated_at"])
+    audit.record(
+        "selection.record.refresh",
+        request=request,
+        target=record,
+        stage_id=record.stage_id,
+        rows=len(record.content),
+    )
+    return record
+
+
+def _enviar_token(signature_id: int, token: str, request: HttpRequest | None) -> None:
+    """Envio do token, já **fora** da transação que congelou a ata.
+
+    Roda em `transaction.on_commit`: se o SMTP cair, a ata continua
+    congelada e as assinaturas continuam de pé — o que se perde é o
+    aviso, e ele é reemissível (`resend_signature_token`). O contrário
+    (enviar dentro do bloco) desfaria o congelamento por causa do
+    servidor de e-mail, e ainda assim o e-mail poderia ter saído.
+
+    Falha vira `token_sent_at = None` e evento próprio: é como a tela da
+    secretaria descobre que precisa reenviar.
+    """
+    assinatura = RecordSignature.objects.select_related(
+        "record__process", "record__stage", "signer__person"
+    ).get(pk=signature_id)
+    try:
+        enviar_token_de_assinatura(assinatura, token)
+    except (OSError, smtplib.SMTPException) as erro:
+        assinatura.token_sent_at = None
+        assinatura.save(update_fields=["token_sent_at", "updated_at"])
+        audit.record(
+            "selection.record.token_email_failed",
+            request=request,
+            target=assinatura.record,
+            signature_id=assinatura.pk,
+            signer_id=assinatura.signer_id,
+            error=str(erro),
+        )
+        return
+    assinatura.token_sent_at = timezone.now()
+    assinatura.save(update_fields=["token_sent_at", "updated_at"])
+    audit.record(
+        "selection.record.token_issued",
+        request=request,
+        target=assinatura.record,
+        signature_id=assinatura.pk,
+        signer_id=assinatura.signer_id,
+    )
+
+
+def _emitir_token(
+    signature: RecordSignature, at: datetime, request: HttpRequest | None
+) -> None:
+    """Emite o token da assinatura e agenda o e-mail para depois do commit."""
+    token = signature.issue_token(at)
+    signature.save(
+        update_fields=[
+            "token_hash",
+            "token_expires_at",
+            "token_sent_at",
+            "token_used_at",
+            "updated_at",
+        ]
+    )
+    transaction.on_commit(partial(_enviar_token, signature.pk, token, request))
+
+
+@transaction.atomic
+def freeze_record(
+    *,
+    record: ExaminationRecord,
+    replaced_member: Any | None = None,
+    request: HttpRequest | None = None,
+) -> ExaminationRecord:
+    """Fecha o rascunho para assinatura: fotografia, hash e signatários.
+
+    Congelar é o ponto sem volta editorial da etapa: daqui em diante as
+    notas da chave são só leitura (`record_frozen`, na rota de notas), o
+    `content_hash` é o que cada examinador confere ao assinar, e mudar
+    qualquer coisa exige reabrir (enquanto ninguém assinou) ou retificar.
+
+    Por isso a ata só congela **completa**: inscrição viva sem nota é
+    `scores_incomplete`, com os protocolos na mensagem — é a lista que a
+    banca precisa para terminar o trabalho.
+
+    `replaced_member` é o titular impedido; o suplente assina no lugar
+    dele (`expected_signers`). Ele entra no `canonical_document`, então
+    precisa ser decidido **antes** do hash, e não depois.
+    """
+    record.replaced_member = replaced_member
+    # Levanta `not_a_titular_member` se o impedido não for titular desta
+    # banca — antes de qualquer escrita.
+    signatarios = record.expected_signers()
+
+    linhas, faltando = _linhas_da_ata(record)
+    if faltando:
+        raise DomainError(
+            "Faltam notas nesta etapa para: " + ", ".join(faltando) + ".",
+            code="scores_incomplete",
+        )
+
+    agora = timezone.now()
+    record.freeze(linhas, at=agora)
+    record.clean()
+    record.save(
+        update_fields=[
+            "replaced_member",
+            "content",
+            "content_hash",
+            "frozen_at",
+            "status",
+            "updated_at",
+        ]
+    )
+
+    for signatario in signatarios:
+        assinatura = RecordSignature.for_signer(record, signatario)
+        assinatura.clean()
+        assinatura.save()
+        if assinatura.uses_token:
+            _emitir_token(assinatura, agora, request)
+
+    audit.record(
+        "selection.record.freeze",
+        request=request,
+        target=record,
+        stage_id=record.stage_id,
+        replaced_member_id=record.replaced_member_id,
+        content_hash=record.content_hash,
+        signers=[s.pk for s in signatarios],
+    )
+    return record
+
+
+@transaction.atomic
+def reopen_record(
+    *, record: ExaminationRecord, request: HttpRequest | None = None
+) -> ExaminationRecord:
+    """Volta a ata congelada para rascunho, se ninguém assinou ainda.
+
+    Uma assinatura dada já é declaração de um examinador sobre um
+    conteúdo: reabrir depois disso apagaria a declaração dele sem que ele
+    soubesse (`record_has_signatures`). Nesse caso o caminho é a
+    retificação, que cria a versão `n+1` e preserva a anterior.
+
+    É o **único `delete` do app**, e ele só alcança assinatura pendente —
+    linha que nunca significou nada além de "falta este aqui".
+    """
+    if record.signatures.filter(signed_at__isnull=False).exists():
+        raise InvalidStateTransition(
+            "Esta ata já tem assinatura; para corrigi-la, retifique-a "
+            "com uma versão nova.",
+            code="record_has_signatures",
+        )
+    record.reopen()
+    record.save(update_fields=["status", "content_hash", "frozen_at", "updated_at"])
+    apagadas, _detalhe = record.signatures.all().delete()
+    audit.record(
+        "selection.record.reopen",
+        request=request,
+        target=record,
+        stage_id=record.stage_id,
+        deleted_signatures=apagadas,
+    )
+    return record

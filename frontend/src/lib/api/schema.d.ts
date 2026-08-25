@@ -1353,6 +1353,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/boards/{board_id}/stages/{stage_id}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stage Record
+         * @description A ata vigente daquela etapa nesta banca.
+         */
+        get: operations["apps_selection_router_get_stage_record"];
+        put?: never;
+        /**
+         * Create Stage Record
+         * @description Abre a ata em rascunho, com as notas já lançadas.
+         */
+        post: operations["apps_selection_router_create_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Stage Record
+         * @description Regera o rascunho com as notas de agora.
+         */
+        post: operations["apps_selection_router_refresh_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Freeze Stage Record
+         * @description Fecha a ata para assinatura e emite o token do examinador externo.
+         */
+        post: operations["apps_selection_router_freeze_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Stage Record
+         * @description Devolve a ata congelada ao rascunho, se ninguém assinou.
+         */
+        post: operations["apps_selection_router_reopen_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/selection/public/processes": {
         parameters: {
             query?: never;
@@ -3378,6 +3462,162 @@ export interface components {
              * @default false
              */
             absent: boolean;
+        };
+        /**
+         * ExaminationRecordOut
+         * @description A ata de uma etapa, com conteúdo e assinaturas embutidos.
+         *
+         *     As assinaturas viajam dentro da ata, e não numa rota própria, pelo
+         *     mesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem
+         *     `view_recordsignature` (migration 0006), e a tela dele precisa
+         *     mostrar quem já assinou. Uma ata tem três assinaturas — não há o que
+         *     paginar.
+         *
+         *     `content_hash` sai inteiro porque é ele que o examinador confere
+         *     antes de assinar (a rota de assinatura o recebe de volta).
+         */
+        ExaminationRecordOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Board Id */
+            board_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            /** Replaced Member Id */
+            replaced_member_id: number | null;
+            /** Replaced Member Name */
+            replaced_member_name: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["RecordStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Content */
+            content: components["schemas"]["RecordRowOut"][];
+            /** Content Hash */
+            content_hash: string;
+            /** Hash Ok */
+            hash_ok: boolean;
+            /** Has Pdf */
+            has_pdf: boolean;
+            /** Frozen At */
+            frozen_at: string | null;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signatures */
+            signatures: components["schemas"]["RecordSignatureOut"][];
+            /** Pending Signatures */
+            pending_signatures: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * RecordRowOut
+         * @description Uma linha do `content` da ata — a nota como ela foi congelada.
+         *
+         *     Não é lida do `StageScore`: vem do JSON gravado na ata, que é o que o
+         *     `content_hash` cobre. Depois do congelamento a fonte da verdade da
+         *     ata é ela mesma, e não a tabela de notas, que pode ter sido corrigida
+         *     numa versão seguinte.
+         *
+         *     `score` é **string** de propósito (`"85.50"`): é assim que está no
+         *     JSON, porque `float` mudaria o hash entre gravações.
+         */
+        RecordRowOut: {
+            /** Application Id */
+            application_id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Quota Category */
+            quota_category: string;
+            /** Score */
+            score: string | null;
+            /** Absent */
+            absent: boolean;
+            /** Passed */
+            passed: boolean;
+        };
+        /**
+         * RecordSignatureOut
+         * @description Uma assinatura da ata, como as telas a mostram.
+         *
+         *     O `token_hash` **não** sai daqui, e nem o token: o que a secretaria
+         *     precisa saber é se o e-mail saiu (`token_sent_at`) e até quando o
+         *     link vale. Do hash assinado viajam só os 12 primeiros dígitos — o
+         *     suficiente para conferir a olho contra o rodapé do PDF, e nada além.
+         */
+        RecordSignatureOut: {
+            /** Id */
+            id: number;
+            /** Signer Id */
+            signer_id: number;
+            /** Signer Name */
+            signer_name: string;
+            /** Signer Category */
+            signer_category: string;
+            /** Signer Institution */
+            signer_institution: string;
+            method: components["schemas"]["SignatureMethod"];
+            /** Method Label */
+            method_label: string;
+            /** Signed */
+            signed: boolean;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signed Hash Prefix */
+            signed_hash_prefix: string;
+            /** Token Sent At */
+            token_sent_at: string | null;
+            /** Token Expires At */
+            token_expires_at: string | null;
+        };
+        /**
+         * RecordStatus
+         * @enum {string}
+         */
+        RecordStatus: "draft" | "awaiting_signatures" | "signed" | "superseded";
+        /**
+         * SignatureMethod
+         * @enum {string}
+         */
+        SignatureMethod: "login" | "token";
+        /**
+         * RecordFreezeIn
+         * @description Congelamento da ata, com o titular impedido quando houver.
+         *
+         *     Só isso: o conteúdo da ata não vem do cliente em hipótese nenhuma —
+         *     ele é lido das notas no servidor, no instante do congelamento.
+         */
+        RecordFreezeIn: {
+            /** Replaced Member Id */
+            replaced_member_id?: number | null;
         };
         /**
          * PublicOptionOut
@@ -5737,6 +5977,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StageScoreOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_refresh_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_freeze_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordFreezeIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_reopen_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
                 };
             };
         };

@@ -492,7 +492,7 @@
         "f1-email-settings-mailpit"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

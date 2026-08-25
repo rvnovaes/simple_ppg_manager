@@ -34,6 +34,7 @@ from .models import (
     Board,
     ExaminationRecord,
     QuotaCategory,
+    RecordSignature,
     RecordStatus,
     SelectionKind,
     SelectionLevel,
@@ -53,8 +54,10 @@ from .schemas import (
     BoardIn,
     BoardOut,
     BoardPatch,
+    ExaminationRecordOut,
     MyBoardOut,
     PublicProcessOut,
+    RecordFreezeIn,
     SelectionProcessIn,
     SelectionProcessOut,
     SelectionProcessPatch,
@@ -75,7 +78,11 @@ from .services import (
     LIMITE_DE_INSCRICAO_POR_IP,
     LIMITE_DE_LEITURA_PUBLICA,
     edital_com_inscricao_aberta,
+    freeze_record,
+    generate_record,
     publish_process,
+    refresh_record,
+    reopen_record,
     so_digitos,
     submit_application,
 )
@@ -840,6 +847,163 @@ def set_stage_scores(
             application_ids=sorted(linha.application_id for linha in payload),
         )
     return _candidatos_da_banca(banca, etapa)
+
+
+# ---------------------------------------------------------------------------
+# Ata da etapa — o ciclo antes da assinatura
+# ---------------------------------------------------------------------------
+#
+# A ata pende da banca, e não do edital, pelo mesmo motivo das notas: quem
+# a monta é quem examinou. O recorte de papel dentro da banca é mais fino
+# que nas notas, porém — gerar e atualizar são de qualquer titular,
+# congelar e reabrir são só do presidente. Congelar é o ponto sem volta
+# editorial da etapa (as notas viram só leitura e o hash passa a valer),
+# e reabrir apaga assinatura pendente: as duas são responsabilidade de
+# quem preside, não da banca inteira.
+#
+# O suplente compõe a banca (`_minha_banca` o aceita) mas não assina nem
+# monta ata, a menos que substitua um titular impedido — e aí quem o põe
+# lá é o `replaced_member_id` do congelamento, decidido pelo presidente.
+
+
+def _exigir_titular(banca: Board, docente: Teacher) -> None:
+    """Montar a ata é dos três titulares."""
+    if docente.pk not in {m.pk for m in banca.titular_members()}:
+        raise NotAllowed(
+            "Só um membro titular da banca monta a ata da etapa.",
+            code="not_a_titular_member",
+        )
+
+
+def _exigir_presidente(banca: Board, docente: Teacher) -> None:
+    """Congelar e reabrir são do presidente."""
+    if banca.president_id != docente.pk:
+        raise NotAllowed(
+            "Só o presidente da banca congela ou reabre a ata.",
+            code="not_the_board_president",
+        )
+
+
+def _atas_da_banca(banca: Board):
+    """As atas do nível × alvo da banca, com o que `ExaminationRecordOut`
+    expande — inclusive as assinaturas, que a tela mostra junto."""
+    return (
+        ExaminationRecord.objects.for_program(banca.program)
+        .select_related("process", "stage", "project", "research_line")
+        .select_related("replaced_member__person")
+        .prefetch_related(
+            Prefetch(
+                "signatures",
+                queryset=RecordSignature.objects.select_related("signer__person"),
+            )
+        )
+    )
+
+
+def _ata_corrente(banca: Board, etapa: SelectionStage) -> ExaminationRecord:
+    """A ata vigente da (etapa × nível × alvo), ou 404.
+
+    404 e não corpo vazio: "ainda não há ata" é exatamente a ausência do
+    recurso, e é assim que a tela do docente sabe que precisa gerar uma.
+    """
+    ata = (
+        _atas_da_banca(banca)
+        .current()
+        .for_key(etapa, banca.level, banca.project, banca.research_line)
+        .first()
+    )
+    if ata is None:
+        raise Http404("Esta etapa ainda não tem ata.")
+    return ata
+
+
+def _com_assinaturas(ata: ExaminationRecord) -> ExaminationRecord:
+    """Relê a ata recém-escrita pela consulta da listagem.
+
+    O objeto que volta do service tem as assinaturas em cache antigo (ou
+    nenhum), e `ExaminationRecordOut` as expõe embutidas — reler é o que
+    faz o POST devolver a mesma coisa que o GET seguinte.
+    """
+    return _atas_da_banca(ata.board).get(pk=ata.pk)
+
+
+@router.get(
+    "/boards/{int:board_id}/stages/{int:stage_id}/record",
+    response=ExaminationRecordOut,
+)
+def get_stage_record(request: HttpRequest, board_id: int, stage_id: int):
+    """A ata vigente daquela etapa nesta banca."""
+    require_perm(request, "selection.view_examinationrecord")
+    banca, _docente = _minha_banca(request, board_id)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    return _ata_corrente(banca, etapa)
+
+
+@router.post(
+    "/boards/{int:board_id}/stages/{int:stage_id}/record",
+    response={201: ExaminationRecordOut},
+)
+def create_stage_record(request: HttpRequest, board_id: int, stage_id: int):
+    """Abre a ata em rascunho, com as notas já lançadas."""
+    require_perm(request, "selection.add_examinationrecord")
+    banca, docente = _minha_banca(request, board_id)
+    _exigir_titular(banca, docente)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    ata = generate_record(board=banca, stage=etapa, request=request)
+    return Status(201, _com_assinaturas(ata))
+
+
+@router.post(
+    "/boards/{int:board_id}/stages/{int:stage_id}/record/refresh",
+    response=ExaminationRecordOut,
+)
+def refresh_stage_record(request: HttpRequest, board_id: int, stage_id: int):
+    """Regera o rascunho com as notas de agora."""
+    require_perm(request, "selection.change_examinationrecord")
+    banca, docente = _minha_banca(request, board_id)
+    _exigir_titular(banca, docente)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    ata = refresh_record(record=_ata_corrente(banca, etapa), request=request)
+    return _com_assinaturas(ata)
+
+
+@router.post(
+    "/boards/{int:board_id}/stages/{int:stage_id}/record/freeze",
+    response=ExaminationRecordOut,
+)
+def freeze_stage_record(
+    request: HttpRequest, board_id: int, stage_id: int, payload: RecordFreezeIn
+):
+    """Fecha a ata para assinatura e emite o token do examinador externo."""
+    require_perm(request, "selection.change_examinationrecord")
+    banca, docente = _minha_banca(request, board_id)
+    _exigir_presidente(banca, docente)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    impedido = (
+        None
+        if payload.replaced_member_id is None
+        else _professor_do_programa(banca.program, payload.replaced_member_id)
+    )
+    ata = freeze_record(
+        record=_ata_corrente(banca, etapa),
+        replaced_member=impedido,
+        request=request,
+    )
+    return _com_assinaturas(ata)
+
+
+@router.post(
+    "/boards/{int:board_id}/stages/{int:stage_id}/record/reopen",
+    response=ExaminationRecordOut,
+)
+def reopen_stage_record(request: HttpRequest, board_id: int, stage_id: int):
+    """Devolve a ata congelada ao rascunho, se ninguém assinou."""
+    require_perm(request, "selection.change_examinationrecord")
+    banca, docente = _minha_banca(request, board_id)
+    _exigir_presidente(banca, docente)
+    etapa = _etapa_do_edital(banca.process, stage_id)
+    ata = reopen_record(record=_ata_corrente(banca, etapa), request=request)
+    return _com_assinaturas(ata)
 
 
 # ---------------------------------------------------------------------------

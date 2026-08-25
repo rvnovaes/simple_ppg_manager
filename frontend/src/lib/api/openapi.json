@@ -3920,6 +3920,249 @@
         ]
       }
     },
+    "/selection/boards/{board_id}/stages/{stage_id}/record": {
+      "get": {
+        "operationId": "apps_selection_router_get_stage_record",
+        "summary": "Get Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A ata vigente daquela etapa nesta banca.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_stage_record",
+        "summary": "Create Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Abre a ata em rascunho, com as notas já lançadas.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/refresh": {
+      "post": {
+        "operationId": "apps_selection_router_refresh_stage_record",
+        "summary": "Refresh Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Regera o rascunho com as notas de agora.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/freeze": {
+      "post": {
+        "operationId": "apps_selection_router_freeze_stage_record",
+        "summary": "Freeze Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Fecha a ata para assinatura e emite o token do examinador externo.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordFreezeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/reopen": {
+      "post": {
+        "operationId": "apps_selection_router_reopen_stage_record",
+        "summary": "Reopen Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Devolve a ata congelada ao rascunho, se ninguém assinou.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/selection/public/processes": {
       "get": {
         "operationId": "apps_selection_router_list_public_processes",
@@ -8600,6 +8843,372 @@
           "application_id"
         ],
         "title": "StageScoreIn",
+        "type": "object"
+      },
+      "ExaminationRecordOut": {
+        "description": "A ata de uma etapa, com conteúdo e assinaturas embutidos.\n\nAs assinaturas viajam dentro da ata, e não numa rota própria, pelo\nmesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem\n`view_recordsignature` (migration 0006), e a tela dele precisa\nmostrar quem já assinou. Uma ata tem três assinaturas — não há o que\npaginar.\n\n`content_hash` sai inteiro porque é ele que o examinador confere\nantes de assinar (a rota de assinatura o recebe de volta).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "board_id": {
+            "title": "Board Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "replaced_member_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Member Id"
+          },
+          "replaced_member_name": {
+            "title": "Replaced Member Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRowOut"
+            },
+            "title": "Content",
+            "type": "array"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_ok": {
+            "title": "Hash Ok",
+            "type": "boolean"
+          },
+          "has_pdf": {
+            "title": "Has Pdf",
+            "type": "boolean"
+          },
+          "frozen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frozen At"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signatures": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSignatureOut"
+            },
+            "title": "Signatures",
+            "type": "array"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "stage_id",
+          "stage_name",
+          "board_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "replaced_member_id",
+          "replaced_member_name",
+          "version",
+          "status",
+          "status_label",
+          "content",
+          "content_hash",
+          "hash_ok",
+          "has_pdf",
+          "frozen_at",
+          "signed_at",
+          "signatures",
+          "pending_signatures",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExaminationRecordOut",
+        "type": "object"
+      },
+      "RecordRowOut": {
+        "description": "Uma linha do `content` da ata — a nota como ela foi congelada.\n\nNão é lida do `StageScore`: vem do JSON gravado na ata, que é o que o\n`content_hash` cobre. Depois do congelamento a fonte da verdade da\nata é ela mesma, e não a tabela de notas, que pode ter sido corrigida\nnuma versão seguinte.\n\n`score` é **string** de propósito (`\"85.50\"`): é assim que está no\nJSON, porque `float` mudaria o hash entre gravações.",
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "quota_category": {
+            "title": "Quota Category",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "absent": {
+            "title": "Absent",
+            "type": "boolean"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "application_id",
+          "protocol",
+          "full_name",
+          "quota_category",
+          "score",
+          "absent",
+          "passed"
+        ],
+        "title": "RecordRowOut",
+        "type": "object"
+      },
+      "RecordSignatureOut": {
+        "description": "Uma assinatura da ata, como as telas a mostram.\n\nO `token_hash` **não** sai daqui, e nem o token: o que a secretaria\nprecisa saber é se o e-mail saiu (`token_sent_at`) e até quando o\nlink vale. Do hash assinado viajam só os 12 primeiros dígitos — o\nsuficiente para conferir a olho contra o rodapé do PDF, e nada além.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "signer_id": {
+            "title": "Signer Id",
+            "type": "integer"
+          },
+          "signer_name": {
+            "title": "Signer Name",
+            "type": "string"
+          },
+          "signer_category": {
+            "title": "Signer Category",
+            "type": "string"
+          },
+          "signer_institution": {
+            "title": "Signer Institution",
+            "type": "string"
+          },
+          "method": {
+            "$ref": "#/components/schemas/SignatureMethod"
+          },
+          "method_label": {
+            "title": "Method Label",
+            "type": "string"
+          },
+          "signed": {
+            "title": "Signed",
+            "type": "boolean"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signed_hash_prefix": {
+            "title": "Signed Hash Prefix",
+            "type": "string"
+          },
+          "token_sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Sent At"
+          },
+          "token_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Expires At"
+          }
+        },
+        "required": [
+          "id",
+          "signer_id",
+          "signer_name",
+          "signer_category",
+          "signer_institution",
+          "method",
+          "method_label",
+          "signed",
+          "signed_at",
+          "signed_hash_prefix",
+          "token_sent_at",
+          "token_expires_at"
+        ],
+        "title": "RecordSignatureOut",
+        "type": "object"
+      },
+      "RecordStatus": {
+        "enum": [
+          "draft",
+          "awaiting_signatures",
+          "signed",
+          "superseded"
+        ],
+        "title": "RecordStatus",
+        "type": "string"
+      },
+      "SignatureMethod": {
+        "enum": [
+          "login",
+          "token"
+        ],
+        "title": "SignatureMethod",
+        "type": "string"
+      },
+      "RecordFreezeIn": {
+        "description": "Congelamento da ata, com o titular impedido quando houver.\n\nSó isso: o conteúdo da ata não vem do cliente em hipótese nenhuma —\nele é lido das notas no servidor, no instante do congelamento.",
+        "properties": {
+          "replaced_member_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Member Id"
+          }
+        },
+        "title": "RecordFreezeIn",
         "type": "object"
       },
       "PublicOptionOut": {
