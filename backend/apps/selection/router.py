@@ -57,7 +57,10 @@ from .schemas import (
     ExaminationRecordOut,
     MyBoardOut,
     PublicProcessOut,
+    PublicSignatureOut,
+    PublicSignatureReceiptOut,
     RecordFreezeIn,
+    RecordSignatureOut,
     RecordSignIn,
     SelectionProcessIn,
     SelectionProcessOut,
@@ -72,19 +75,25 @@ from .schemas import (
     VacancyPatch,
 )
 from .services import (
+    JANELA_DE_ASSINATURA_EM_SEGUNDOS,
     JANELA_DE_CONSULTA_EM_SEGUNDOS,
     JANELA_DE_INSCRICAO_EM_SEGUNDOS,
     JANELA_DE_LEITURA_EM_SEGUNDOS,
+    LIMITE_DE_ASSINATURA_POR_TOKEN,
     LIMITE_DE_CONSULTA_DE_PROTOCOLO,
     LIMITE_DE_INSCRICAO_POR_IP,
+    LIMITE_DE_LEITURA_DE_TOKEN,
     LIMITE_DE_LEITURA_PUBLICA,
+    assinatura_por_token,
     edital_com_inscricao_aberta,
     freeze_record,
     generate_record,
     publish_process,
     refresh_record,
     reopen_record,
+    resend_signature_token,
     sign_record,
+    sign_record_with_token,
     so_digitos,
     submit_application,
 )
@@ -1040,6 +1049,53 @@ def sign_stage_record(
 
 
 # ---------------------------------------------------------------------------
+# Assinatura da ata (secretaria)
+# ---------------------------------------------------------------------------
+#
+# A secretaria não assina ata — mas é ela que atende o telefone quando o
+# examinador externo diz que o link não chegou, caiu no spam ou expirou.
+# Reemitir é o único poder dela sobre a assinatura, e ele não decide nada
+# sobre o conteúdo: manda de novo, para o mesmo e-mail, invalidando o link
+# anterior.
+
+
+def _ata_do_programa(request: HttpRequest, record_id: int) -> ExaminationRecord:
+    """A ata do programa da sessão, ou 404 — id de outro tenant não existe."""
+    program = current_program(request)
+    return get_object_or_404(
+        ExaminationRecord.objects.for_program(program).select_related(
+            "process", "stage"
+        ),
+        pk=record_id,
+    )
+
+
+@router.post(
+    "/records/{int:record_id}/signatures/{int:signature_id}/resend-token",
+    response=RecordSignatureOut,
+)
+def resend_signature_token_endpoint(
+    request: HttpRequest, record_id: int, signature_id: int
+):
+    """Emite um token novo para o examinador externo e reenvia o e-mail.
+
+    O link anterior morre na hora: `issue_token` sorteia outro segredo e
+    sobrescreve o hash. É de propósito — dois links vivos para a mesma
+    assinatura significam que um deles, o que se perdeu, continua
+    assinando por alguém.
+    """
+    require_perm(request, "selection.change_recordsignature")
+    ata = _ata_do_programa(request, record_id)
+    assinatura = get_object_or_404(
+        ata.signatures.select_related("signer__person"), pk=signature_id
+    )
+    # A instância da ata já lida é a que o service confere: sem isto, o
+    # `signature.record` dispararia outra consulta para o mesmo objeto.
+    assinatura.record = ata
+    return resend_signature_token(signature=assinatura, request=request)
+
+
+# ---------------------------------------------------------------------------
 # Rotas públicas — candidato sem login
 # ---------------------------------------------------------------------------
 #
@@ -1169,6 +1225,66 @@ def get_public_application(request: HttpRequest, protocol: str):
     return get_object_or_404(
         Application.objects.select_related("process"),
         protocol=protocol.strip().upper(),
+    )
+
+
+@router.get("/public/signatures/{token}", auth=None, response=PublicSignatureOut)
+def get_public_signature(request: HttpRequest, token: str):
+    """A ata que o link do e-mail abre, para conferência antes de assinar.
+
+    # público: o examinador externo não tem conta (é professor de outra
+    # instituição, convidado para uma banca). O token do e-mail é o que
+    # substitui a sessão: ele identifica o signatário, vale uma vez e
+    # expira — ver `assinatura_por_token`.
+    #
+    # Sem escopo de tenant, e sem `program_id` no caminho: o programa sai
+    # da ata que o token encontrou. Token inexistente, expirado, já usado
+    # ou de ata reaberta dão o mesmo 404 genérico — distinguir os casos
+    # diria a quem chuta link se ele existiu algum dia.
+    """
+    enforce_rate_limit(
+        request,
+        scope="selection-signature-read",
+        limit=LIMITE_DE_LEITURA_DE_TOKEN,
+        window_seconds=JANELA_DE_CONSULTA_EM_SEGUNDOS,
+    )
+    return assinatura_por_token(token=token, at=timezone.now())
+
+
+@router.post(
+    "/public/signatures/{token}/sign", auth=None, response=PublicSignatureReceiptOut
+)
+@decorate_view(csrf_protect)
+def sign_public_signature(request: HttpRequest, token: str, payload: RecordSignIn):
+    """Assina a ata pelo link do e-mail; na terceira, fecha a etapa.
+
+    # público: mesma justificativa da rota acima. O `csrf_protect`
+    # explícito é obrigatório aqui — `auth=None` desliga junto a checagem
+    # que o SessionAuth faria, e sem ele o link viraria alvo de CSRF.
+    #
+    # `content_hash` é o hash que a tela de conferência mostrou: se a ata
+    # foi reaberta e recongelada nesse meio-tempo, a assinatura é recusada
+    # com `record_changed` em vez de valer sobre um texto que o examinador
+    # não leu.
+    """
+    enforce_rate_limit(
+        request,
+        scope="selection-signature-sign",
+        limit=LIMITE_DE_ASSINATURA_POR_TOKEN,
+        window_seconds=JANELA_DE_ASSINATURA_EM_SEGUNDOS,
+    )
+    sign_record_with_token(
+        token=token,
+        ip=client_ip(request) or None,
+        content_hash=payload.content_hash,
+        request=request,
+    )
+    # O hash do token não muda ao ser consumido: reler por ele é o jeito
+    # de devolver o comprovante já com a ata no estado de agora.
+    return get_object_or_404(
+        RecordSignature.objects.select_related("record", "signer__person").by_token(
+            token
+        )
     )
 
 

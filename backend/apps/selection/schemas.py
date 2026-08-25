@@ -1037,3 +1037,118 @@ class RecordSignIn(Schema):
     """
 
     content_hash: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Assinatura por token (examinador externo, sem conta)
+# ---------------------------------------------------------------------------
+
+
+class PublicSignatureOut(Schema):
+    """A ata como o examinador externo a vê antes de assinar.
+
+    Cabeçalho, conteúdo e hash: é o mesmo documento que os examinadores
+    logados conferem, com o que o link precisa dizer a quem chegou por
+    e-mail (para quem é, e até quando vale).
+
+    O que **não** sai daqui, e sai em `ExaminationRecordOut`: os ids de
+    banca e programa, as outras assinaturas e o hash das demais. Quem tem
+    o link é examinador de uma ata, não usuário do sistema — ele confere
+    o texto que assina, e nada sobre o resto do processo.
+    """
+
+    signer_name: str
+    signer_institution: str
+    process_title: str
+    stage_name: str
+    level_label: str
+    target_label: str
+    version: int
+    content: list[RecordRowOut]
+    content_hash: str
+    hash_ok: bool
+    frozen_at: datetime.datetime | None
+    token_expires_at: datetime.datetime | None
+    pending_signatures: int
+
+    @staticmethod
+    def resolve_signer_name(obj: RecordSignature) -> str:
+        return obj.signer.person.full_name
+
+    @staticmethod
+    def resolve_signer_institution(obj: RecordSignature) -> str:
+        return obj.signer.home_institution
+
+    @staticmethod
+    def resolve_process_title(obj: RecordSignature) -> str:
+        return str(obj.record.process)
+
+    @staticmethod
+    def resolve_stage_name(obj: RecordSignature) -> str:
+        return obj.record.stage.name
+
+    @staticmethod
+    def resolve_level_label(obj: RecordSignature) -> str:
+        return obj.record.get_level_display()
+
+    @staticmethod
+    def resolve_target_label(obj: RecordSignature) -> str:
+        alvo = obj.record.project or obj.record.research_line
+        return str(alvo) if alvo is not None else ""
+
+    @staticmethod
+    def resolve_version(obj: RecordSignature) -> int:
+        return obj.record.version
+
+    @staticmethod
+    def resolve_content(obj: RecordSignature) -> Any:
+        return obj.record.content
+
+    @staticmethod
+    def resolve_content_hash(obj: RecordSignature) -> str:
+        return obj.record.content_hash
+
+    @staticmethod
+    def resolve_hash_ok(obj: RecordSignature) -> bool:
+        return obj.record.verify_hash()
+
+    @staticmethod
+    def resolve_frozen_at(obj: RecordSignature) -> Any:
+        return obj.record.frozen_at
+
+    @staticmethod
+    def resolve_pending_signatures(obj: RecordSignature) -> int:
+        return obj.record.signatures.pending().count()
+
+
+class PublicSignatureReceiptOut(Schema):
+    """O comprovante da assinatura por token.
+
+    O equivalente do `ApplicationReceiptOut` do candidato: quem assinou,
+    quando, sobre qual hash e o que falta. Depois disto o link não abre
+    mais (uso único), então a confirmação precisa vir na própria resposta
+    — não há tela para onde voltar.
+    """
+
+    signer_name: str
+    signed_at: datetime.datetime | None
+    signed_hash: str
+    record_status: RecordStatus
+    record_status_label: str
+    pending_signatures: int
+
+    @staticmethod
+    def resolve_signer_name(obj: RecordSignature) -> str:
+        return obj.signer.person.full_name
+
+    @staticmethod
+    def resolve_record_status(obj: RecordSignature) -> str:
+        return obj.record.status
+
+    @staticmethod
+    def resolve_record_status_label(obj: RecordSignature) -> str:
+        return obj.record.get_status_display()
+
+    @staticmethod
+    def resolve_pending_signatures(obj: RecordSignature) -> int:
+        return obj.record.signatures.pending().count()

@@ -17,7 +17,7 @@ from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
-from django.http import HttpRequest
+from django.http import Http404, HttpRequest
 from django.utils import timezone
 from ninja import UploadedFile
 
@@ -88,14 +88,20 @@ def publish_process(
 # Inscrição pública
 # ---------------------------------------------------------------------------
 
-# Limites por IP das três rotas públicas (apps.core.ratelimit). Sem sessão
-# não há conta para responsabilizar: o contador é o que sobra.
+# Limites por IP das rotas públicas (apps.core.ratelimit). Sem sessão não
+# há conta para responsabilizar: o contador é o que sobra.
 LIMITE_DE_LEITURA_PUBLICA = 60
 JANELA_DE_LEITURA_EM_SEGUNDOS = 60
 LIMITE_DE_INSCRICAO_POR_IP = 5
 JANELA_DE_INSCRICAO_EM_SEGUNDOS = 60 * 60
 LIMITE_DE_CONSULTA_DE_PROTOCOLO = 20
 JANELA_DE_CONSULTA_EM_SEGUNDOS = 60
+# Assinatura por token: a leitura acompanha a consulta de protocolo (o
+# examinador recarrega a tela enquanto confere), e a assinatura é rara —
+# dez por hora cobre erro de digitação e nada mais.
+LIMITE_DE_LEITURA_DE_TOKEN = 20
+LIMITE_DE_ASSINATURA_POR_TOKEN = 10
+JANELA_DE_ASSINATURA_EM_SEGUNDOS = 60 * 60
 
 # Colisão de protocolo é rara (32 bits), não impossível; cinco tentativas
 # tornam a falha astronômica sem virar laço infinito.
@@ -801,3 +807,151 @@ def sign_record(
     if not ata.signatures.pending().exists():
         _close_stage(ata, request=request)
     return ata
+
+
+# ---------------------------------------------------------------------------
+# Assinatura por token (examinador externo, sem conta)
+# ---------------------------------------------------------------------------
+#
+# O examinador externo compõe a banca mas não é da instituição: não tem
+# conta, e criar uma para ele assinar uma ata seria pedir cadastro a quem
+# passa por aqui uma vez. O que substitui a sessão é o token que saiu por
+# e-mail no congelamento — pessoal, de uso único e com prazo.
+#
+# Três cuidados que valem para as duas funções daqui:
+#
+#   1. **O texto do token nunca é gravado.** O banco guarda só o sha256
+#      (`hash_do_token`); quem lê a tabela não assina por ninguém. O
+#      lookup é sempre `RecordSignature.objects.by_token(raw)`.
+#   2. **Nada distingue os casos ruins.** Token inexistente, de outro
+#      programa, já assinado ou de ata reaberta dão o mesmo 404 na
+#      leitura — a rota é pública, e responder diferente para cada um a
+#      transformaria num oráculo para quem chuta link.
+#   3. **A auditoria leva `program=` explícito** (armadilha 12): não há
+#      sessão de onde tirar tenant, e sem a chave o AuditLog fica órfão.
+
+
+def assinatura_por_token(*, token: str, at: datetime) -> RecordSignature:
+    """A assinatura pendente que o token em texto abre, ou 404 genérico.
+
+    É o `edital_com_inscricao_aberta` desta rota: o tenant sai do que o
+    token encontrou, e não de nada que o chamador escolha. Só passa
+    assinatura pendente, com token no prazo e ata ainda aguardando
+    assinaturas — as três condições da tela de conferência.
+    """
+    assinatura = (
+        RecordSignature.objects.by_token(token)
+        .select_related(
+            "record__process",
+            "record__stage",
+            "record__project",
+            "record__research_line",
+            "signer__person",
+        )
+        .first()
+    )
+    if (
+        assinatura is None
+        or assinatura.is_signed
+        or not assinatura.token_valid_at(at)
+        or assinatura.record.status != RecordStatus.AWAITING_SIGNATURES
+    ):
+        raise Http404("Link de assinatura inválido ou expirado.")
+    return assinatura
+
+
+@transaction.atomic
+def sign_record_with_token(
+    *,
+    token: str,
+    ip: str | None = None,
+    content_hash: str = "",
+    request: HttpRequest | None = None,
+) -> ExaminationRecord:
+    """Assina a ata pelo link do e-mail; na última assinatura, fecha a etapa.
+
+    Aqui o token vale por identidade **e** por autorização: quem o tem é
+    o examinador a quem ele foi mandado, e ele só serve para esta ata.
+    Por isso `consume_token` e `sign` acontecem na mesma transação — o
+    token queima exatamente quando a assinatura entra, e não antes.
+
+    Ao contrário da leitura, os casos ruins aqui **têm código**:
+    `token_expired` e `token_already_used` são o que a tela precisa dizer
+    ao examinador ("peça um novo à secretaria"). O 404 genérico continua
+    valendo só para token que não existe.
+    """
+    encontrada = RecordSignature.objects.by_token(token).first()
+    if encontrada is None:
+        raise Http404("Link de assinatura inválido ou expirado.")
+
+    # `select_for_update()` sem `select_related` (o Postgres recusa
+    # `FOR UPDATE` sobre o lado nulável de um outer join) e ANTES de reler
+    # a assinatura: é o que serializa dois cliques simultâneos no mesmo
+    # link e impede o fechamento da etapa rodar duas vezes.
+    ata = ExaminationRecord.objects.select_for_update().get(pk=encontrada.record_id)
+    assinatura = RecordSignature.objects.select_related("signer__person").get(
+        pk=encontrada.pk
+    )
+    assinatura.record = ata
+
+    agora = timezone.now()
+    assinatura.consume_token(agora)
+    assinatura.sign(agora, content_hash or ata.content_hash, ip=ip)
+    assinatura.save(
+        update_fields=[
+            "token_used_at",
+            "signed_at",
+            "signed_hash",
+            "signed_by_user",
+            "ip_address",
+            "updated_at",
+        ]
+    )
+    audit.record(
+        "selection.record.sign",
+        request=request,
+        target=ata,
+        program=ata.program,
+        stage_id=ata.stage_id,
+        signature_id=assinatura.pk,
+        signer_id=assinatura.signer_id,
+        method=assinatura.method,
+    )
+
+    if not ata.signatures.pending().exists():
+        _close_stage(ata, request=request)
+    return ata
+
+
+@transaction.atomic
+def resend_signature_token(
+    *, signature: RecordSignature, request: HttpRequest | None = None
+) -> RecordSignature:
+    """Emite um token novo para o examinador externo e o manda de novo.
+
+    Existe porque o e-mail se perde: cai no spam, o SMTP estava fora do ar
+    no congelamento (`token_email_failed`) ou o prazo passou antes de o
+    examinador abrir. Reemitir **invalida o anterior** — `issue_token`
+    sorteia outro segredo e sobrescreve o hash, então o link velho deixa
+    de abrir a tela. É o que impede dois links vivos para a mesma
+    assinatura, um deles em caixa de e-mail que já vazou.
+
+    Recusas vêm dos métodos do model: `already_signed` (quem já assinou
+    não precisa de link), `token_not_applicable` (o professor do programa
+    assina logado).
+    """
+    if signature.record.status != RecordStatus.AWAITING_SIGNATURES:
+        raise InvalidStateTransition(
+            "A ata não está aguardando assinaturas.",
+            code="record_not_awaiting_signatures",
+        )
+    _emitir_token(signature, timezone.now(), request)
+    audit.record(
+        "selection.record.token_reissued",
+        request=request,
+        target=signature.record,
+        stage_id=signature.record.stage_id,
+        signature_id=signature.pk,
+        signer_id=signature.signer_id,
+    )
+    return signature

@@ -1466,6 +1466,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/records/{record_id}/signatures/{signature_id}/resend-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Signature Token Endpoint
+         * @description Emite um token novo para o examinador externo e reenvia o e-mail.
+         *
+         *     O link anterior morre na hora: `issue_token` sorteia outro segredo e
+         *     sobrescreve o hash. É de propósito — dois links vivos para a mesma
+         *     assinatura significam que um deles, o que se perdeu, continua
+         *     assinando por alguém.
+         */
+        post: operations["apps_selection_router_resend_signature_token_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/selection/public/processes": {
         parameters: {
             query?: never;
@@ -1547,6 +1572,65 @@ export interface paths {
         get: operations["apps_selection_router_get_public_application"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/signatures/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Public Signature
+         * @description A ata que o link do e-mail abre, para conferência antes de assinar.
+         *
+         *     # público: o examinador externo não tem conta (é professor de outra
+         *     # instituição, convidado para uma banca). O token do e-mail é o que
+         *     # substitui a sessão: ele identifica o signatário, vale uma vez e
+         *     # expira — ver `assinatura_por_token`.
+         *     #
+         *     # Sem escopo de tenant, e sem `program_id` no caminho: o programa sai
+         *     # da ata que o token encontrou. Token inexistente, expirado, já usado
+         *     # ou de ata reaberta dão o mesmo 404 genérico — distinguir os casos
+         *     # diria a quem chuta link se ele existiu algum dia.
+         */
+        get: operations["apps_selection_router_get_public_signature"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/signatures/{token}/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Public Signature
+         * @description Assina a ata pelo link do e-mail; na terceira, fecha a etapa.
+         *
+         *     # público: mesma justificativa da rota acima. O `csrf_protect`
+         *     # explícito é obrigatório aqui — `auth=None` desliga junto a checagem
+         *     # que o SessionAuth faria, e sem ele o link viraria alvo de CSRF.
+         *     #
+         *     # `content_hash` é o hash que a tela de conferência mostrou: se a ata
+         *     # foi reaberta e recongelada nesse meio-tempo, a assinatura é recusada
+         *     # com `record_changed` em vez de valer sobre um texto que o examinador
+         *     # não leu.
+         */
+        post: operations["apps_selection_router_sign_public_signature"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3862,6 +3946,69 @@ export interface components {
             process_title: string;
         };
         /**
+         * PublicSignatureOut
+         * @description A ata como o examinador externo a vê antes de assinar.
+         *
+         *     Cabeçalho, conteúdo e hash: é o mesmo documento que os examinadores
+         *     logados conferem, com o que o link precisa dizer a quem chegou por
+         *     e-mail (para quem é, e até quando vale).
+         *
+         *     O que **não** sai daqui, e sai em `ExaminationRecordOut`: os ids de
+         *     banca e programa, as outras assinaturas e o hash das demais. Quem tem
+         *     o link é examinador de uma ata, não usuário do sistema — ele confere
+         *     o texto que assina, e nada sobre o resto do processo.
+         */
+        PublicSignatureOut: {
+            /** Signer Name */
+            signer_name: string;
+            /** Signer Institution */
+            signer_institution: string;
+            /** Process Title */
+            process_title: string;
+            /** Stage Name */
+            stage_name: string;
+            /** Level Label */
+            level_label: string;
+            /** Target Label */
+            target_label: string;
+            /** Version */
+            version: number;
+            /** Content */
+            content: components["schemas"]["RecordRowOut"][];
+            /** Content Hash */
+            content_hash: string;
+            /** Hash Ok */
+            hash_ok: boolean;
+            /** Frozen At */
+            frozen_at: string | null;
+            /** Token Expires At */
+            token_expires_at: string | null;
+            /** Pending Signatures */
+            pending_signatures: number;
+        };
+        /**
+         * PublicSignatureReceiptOut
+         * @description O comprovante da assinatura por token.
+         *
+         *     O equivalente do `ApplicationReceiptOut` do candidato: quem assinou,
+         *     quando, sobre qual hash e o que falta. Depois disto o link não abre
+         *     mais (uso único), então a confirmação precisa vir na própria resposta
+         *     — não há tela para onde voltar.
+         */
+        PublicSignatureReceiptOut: {
+            /** Signer Name */
+            signer_name: string;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signed Hash */
+            signed_hash: string;
+            record_status: components["schemas"]["RecordStatus"];
+            /** Record Status Label */
+            record_status_label: string;
+            /** Pending Signatures */
+            pending_signatures: number;
+        };
+        /**
          * ApplicationOut
          * @description A inscrição como a lista da secretaria a vê.
          *
@@ -6172,6 +6319,29 @@ export interface operations {
             };
         };
     };
+    apps_selection_router_resend_signature_token_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: number;
+                signature_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordSignatureOut"];
+                };
+            };
+        };
+    };
     apps_selection_router_list_public_processes: {
         parameters: {
             query?: never;
@@ -6294,6 +6464,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplicationStatusOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_public_signature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSignatureOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_sign_public_signature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSignIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSignatureReceiptOut"];
                 };
             };
         };

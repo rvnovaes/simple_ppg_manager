@@ -4220,6 +4220,53 @@
         ]
       }
     },
+    "/selection/records/{record_id}/signatures/{signature_id}/resend-token": {
+      "post": {
+        "operationId": "apps_selection_router_resend_signature_token_endpoint",
+        "summary": "Resend Signature Token Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "schema": {
+              "title": "Record Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "signature_id",
+            "schema": {
+              "title": "Signature Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordSignatureOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Emite um token novo para o examinador externo e reenvia o e-mail.\n\nO link anterior morre na hora: `issue_token` sorteia outro segredo e\nsobrescreve o hash. É de propósito — dois links vivos para a mesma\nassinatura significam que um deles, o que se perdeu, continua\nassinando por alguém.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/selection/public/processes": {
       "get": {
         "operationId": "apps_selection_router_list_public_processes",
@@ -4452,6 +4499,82 @@
         "tags": [
           "selection"
         ]
+      }
+    },
+    "/selection/public/signatures/{token}": {
+      "get": {
+        "operationId": "apps_selection_router_get_public_signature",
+        "summary": "Get Public Signature",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSignatureOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A ata que o link do e-mail abre, para conferência antes de assinar.\n\n# público: o examinador externo não tem conta (é professor de outra\n# instituição, convidado para uma banca). O token do e-mail é o que\n# substitui a sessão: ele identifica o signatário, vale uma vez e\n# expira — ver `assinatura_por_token`.\n#\n# Sem escopo de tenant, e sem `program_id` no caminho: o programa sai\n# da ata que o token encontrou. Token inexistente, expirado, já usado\n# ou de ata reaberta dão o mesmo 404 genérico — distinguir os casos\n# diria a quem chuta link se ele existiu algum dia.",
+        "tags": [
+          "selection"
+        ]
+      }
+    },
+    "/selection/public/signatures/{token}/sign": {
+      "post": {
+        "operationId": "apps_selection_router_sign_public_signature",
+        "summary": "Sign Public Signature",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSignatureReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Assina a ata pelo link do e-mail; na terceira, fecha a etapa.\n\n# público: mesma justificativa da rota acima. O `csrf_protect`\n# explícito é obrigatório aqui — `auth=None` desliga junto a checagem\n# que o SessionAuth faria, e sem ele o link viraria alvo de CSRF.\n#\n# `content_hash` é o hash que a tela de conferência mostrou: se a ata\n# foi reaberta e recongelada nesse meio-tempo, a assinatura é recusada\n# com `record_changed` em vez de valer sobre um texto que o examinador\n# não leu.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordSignIn"
+              }
+            }
+          },
+          "required": true
+        }
       }
     },
     "/selection/applications/": {
@@ -9664,6 +9787,145 @@
           "process_title"
         ],
         "title": "ApplicationStatusOut",
+        "type": "object"
+      },
+      "PublicSignatureOut": {
+        "description": "A ata como o examinador externo a vê antes de assinar.\n\nCabeçalho, conteúdo e hash: é o mesmo documento que os examinadores\nlogados conferem, com o que o link precisa dizer a quem chegou por\ne-mail (para quem é, e até quando vale).\n\nO que **não** sai daqui, e sai em `ExaminationRecordOut`: os ids de\nbanca e programa, as outras assinaturas e o hash das demais. Quem tem\no link é examinador de uma ata, não usuário do sistema — ele confere\no texto que assina, e nada sobre o resto do processo.",
+        "properties": {
+          "signer_name": {
+            "title": "Signer Name",
+            "type": "string"
+          },
+          "signer_institution": {
+            "title": "Signer Institution",
+            "type": "string"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRowOut"
+            },
+            "title": "Content",
+            "type": "array"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_ok": {
+            "title": "Hash Ok",
+            "type": "boolean"
+          },
+          "frozen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frozen At"
+          },
+          "token_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Expires At"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "signer_name",
+          "signer_institution",
+          "process_title",
+          "stage_name",
+          "level_label",
+          "target_label",
+          "version",
+          "content",
+          "content_hash",
+          "hash_ok",
+          "frozen_at",
+          "token_expires_at",
+          "pending_signatures"
+        ],
+        "title": "PublicSignatureOut",
+        "type": "object"
+      },
+      "PublicSignatureReceiptOut": {
+        "description": "O comprovante da assinatura por token.\n\nO equivalente do `ApplicationReceiptOut` do candidato: quem assinou,\nquando, sobre qual hash e o que falta. Depois disto o link não abre\nmais (uso único), então a confirmação precisa vir na própria resposta\n— não há tela para onde voltar.",
+        "properties": {
+          "signer_name": {
+            "title": "Signer Name",
+            "type": "string"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signed_hash": {
+            "title": "Signed Hash",
+            "type": "string"
+          },
+          "record_status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "record_status_label": {
+            "title": "Record Status Label",
+            "type": "string"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "signer_name",
+          "signed_at",
+          "signed_hash",
+          "record_status",
+          "record_status_label",
+          "pending_signatures"
+        ],
+        "title": "PublicSignatureReceiptOut",
         "type": "object"
       },
       "ApplicationOut": {

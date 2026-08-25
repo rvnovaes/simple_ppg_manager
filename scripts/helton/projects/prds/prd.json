@@ -552,9 +552,10 @@
       "title": "implementa `sign_record_with_token`, `resend_signature_token` e as rotas públicas de assinatura, com testes",
       "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:287-288 e scripts/helton/projects/plans/processo-seletivo.md:344-345. `sign_record_with_token(*, token, ip, request)` público: lookup por sha256 (`RecordSignature.objects.by_token`), `consume_token(at)` + `sign(...)` na mesma transação, chama `_close_stage` na 3ª; `audit.record(program=record.program)` explícito (armadilha 12). `resend_signature_token(*, signature, request)`: invalida o anterior (novo `issue_token`), reenvia e-mail no `on_commit`, evento `selection.record.token_reissued`. Rotas: `GET public/signatures/{token}` (cabeçalho + `content` + hash para conferência; pendente e não expirado; 404 genérico; rate limit) e `POST public/signatures/{token}/sign` (`csrf_protect`; rate limit 10/h) — ambas `auth=None` com `# público` justificado; `records/{id}/signatures/{sid}/resend-token` POST (secretaria). Testes: expirado, reuso, reemissão invalida o anterior, `record_changed`, token de outro programa não vaza dado, fechamento quando o externo é o 3º.",
       "files": [
-        "backend/apps/selection/services.py",
+        "backend/apps/selection/migrations/0007_secretaria_reenvia_token.py",
         "backend/apps/selection/router.py",
         "backend/apps/selection/schemas.py",
+        "backend/apps/selection/services.py",
         "backend/apps/selection/tests/test_api_assinatura_token.py",
         "frontend/src/lib/api/openapi.json",
         "frontend/src/lib/api/schema.d.ts"
@@ -570,7 +571,7 @@
         "f3-sign-close-stage"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
