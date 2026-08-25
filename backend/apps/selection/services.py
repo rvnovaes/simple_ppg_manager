@@ -364,6 +364,35 @@ def _exigir_etapa_anterior_assinada(*, board: Board, stage: SelectionStage) -> N
         )
 
 
+def _exigir_etapa_seguinte_aberta(record: ExaminationRecord) -> None:
+    """Retificar a etapa `k` exige que a `k+1` ainda não tenha congelado.
+
+    O desfecho da etapa `k+1` foi decidido sobre quem a `k` promoveu:
+    reintegrar alguém aqui depois que a etapa seguinte já fechou deixaria
+    uma pessoa viva que a etapa seguinte nunca avaliou, e sem ninguém
+    notar. O caminho é retificar de trás para frente — a `k+1` primeiro.
+    """
+    seguintes = record.process.stages.filter(order__gt=record.stage.order)
+    fechada = (
+        ExaminationRecord.objects.for_process(record.process_id)
+        .current()
+        .filter(
+            stage__in=seguintes,
+            level=record.level,
+            project=record.project,
+            research_line=record.research_line,
+        )
+        .exclude(status=RecordStatus.DRAFT)
+        .first()
+    )
+    if fechada is not None:
+        raise InvalidStateTransition(
+            f"A ata da etapa seguinte ({fechada.stage.name}) já foi congelada; "
+            "retifique-a antes desta.",
+            code="next_stage_closed",
+        )
+
+
 @transaction.atomic
 def generate_record(
     *,
@@ -955,3 +984,96 @@ def resend_signature_token(
         signer_id=signature.signer_id,
     )
     return signature
+
+
+# ---------------------------------------------------------------------------
+# Retificação (versão n+1 da ata)
+# ---------------------------------------------------------------------------
+#
+# Ata assinada não se reabre: apagar assinatura dada seria desfazer a
+# declaração de um examinador sem que ele soubesse (`reopen_record` recusa
+# por isso). O que existe é a **versão nova** — a v1 fica no banco como
+# `superseded`, com o PDF que os três assinaram, e a v2 nasce em rascunho
+# para a banca corrigir a nota e assinar de novo.
+#
+# Duas coisas que a ordem aqui esconde e que custam caro se invertidas:
+#
+#   1. **A anterior é substituída ANTES de a nova ser salva.** O `clean()`
+#      da ata não admite duas correntes na mesma chave; com a v1 ainda
+#      `signed`, o `save()` da v2 morreria em `record_already_exists`.
+#      `_close_stage` sabe disso e só chama `supersede()` se a anterior
+#      ainda estiver assinada.
+#   2. **A edição das notas volta sozinha.** `_recusar_ata_congelada`
+#      olha a ata **corrente** da chave; corrente passa a ser a v2, que
+#      está em rascunho — nada mais a liberar.
+
+
+@transaction.atomic
+def rectify_record(
+    *,
+    record: ExaminationRecord,
+    reason: str,
+    request: HttpRequest | None = None,
+) -> ExaminationRecord:
+    """Abre a versão `n+1` da ata assinada, preservando a anterior.
+
+    O `content` da v2 nasce das inscrições que a v1 julgou, com as notas
+    de agora (`_linhas_da_ata` faz essa distinção quando há `supersedes`):
+    filtrar por `alive()` deixaria de fora quem a v1 eliminou, que é
+    justamente quem a retificação costuma existir para reintegrar.
+
+    Quem re-sincroniza os desfechos é `_close_stage`, na última assinatura
+    da versão nova — até lá nada muda para candidato nenhum.
+    """
+    motivo = reason.strip()
+    if not motivo:
+        raise DomainError(
+            "A retificação precisa de um motivo — ele vai no PDF da versão nova.",
+            code="rectification_reason_required",
+        )
+
+    # Trava a ata antes de ler a versão: duas retificações simultâneas
+    # criariam duas v2 para a mesma chave, e só a UniqueConstraint
+    # separaria as duas — tarde demais, com a v1 já substituída.
+    # Sem `select_related`: `supersedes`, `project` e `research_line` são
+    # nuláveis e o Postgres recusa `FOR UPDATE` sobre outer join.
+    anterior = ExaminationRecord.objects.select_for_update().get(pk=record.pk)
+    if anterior.status != RecordStatus.SIGNED:
+        raise InvalidStateTransition(
+            "Só ata assinada se retifica; a que ainda não foi assinada se reabre.",
+            code="record_not_signed",
+        )
+    _exigir_etapa_seguinte_aberta(anterior)
+
+    anterior.supersede()
+    anterior.save(update_fields=["status", "updated_at"])
+
+    nova = ExaminationRecord(
+        program=anterior.program,
+        process=anterior.process,
+        stage=anterior.stage,
+        level=anterior.level,
+        project=anterior.project,
+        research_line=anterior.research_line,
+        board=anterior.board,
+        replaced_member=anterior.replaced_member,
+        version=anterior.version + 1,
+        supersedes=anterior,
+        rectification_reason=motivo,
+    )
+    linhas, _faltando = _linhas_da_ata(nova)
+    nova.content = ExaminationRecord.normalize_content(linhas)
+    nova.clean()
+    nova.save()
+
+    audit.record(
+        "selection.record.rectify",
+        request=request,
+        target=nova,
+        stage_id=nova.stage_id,
+        version=nova.version,
+        supersedes_id=anterior.pk,
+        reason=motivo,
+        rows=len(nova.content),
+    )
+    return nova

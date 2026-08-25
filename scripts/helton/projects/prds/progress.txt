@@ -417,3 +417,21 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `get_object_or_404(qs)` sem kwargs funciona (`qs.get()`), e é o jeito de devolver o comprovante relendo pelo token: o `token_hash` **não** muda ao ser consumido.
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
 ---
+## 2026-08-25 - f3-rectify-record
+- `services.py`, seção nova "Retificação (versão n+1 da ata)": `rectify_record(*, record, reason, request)` e o auxiliar `_exigir_etapa_seguinte_aberta` (junto de `_exigir_etapa_anterior_assinada`). Sem rota e sem tela, como a story pede — a fase 2 só precisa do service para o `_close_stage` da v2 ter quem o alimente.
+- `rectify_record` trava a ata com `select_for_update()` (sem `select_related`, armadilha do outer join nulável) antes de ler a versão: duas retificações simultâneas criariam duas v2 para a mesma chave, e só a UniqueConstraint separaria — tarde demais, com a v1 já substituída. Exige `SIGNED` (`record_not_signed`: congelada sem assinatura se **reabre**) e motivo não-vazio (`rectification_reason_required`, com `strip()`).
+- **A v1 é substituída no ato de criar a v2**, não quando a v2 fica assinada: o `clean()` da ata não admite duas correntes na mesma chave (foi a descoberta 2 de `f3-sign-close-stage`, e é o que ela previa que esta story faria). O `_close_stage` já sabia disso — só chama `supersede()` se a anterior ainda estiver `signed`.
+- O `content` da v2 nasce de `_linhas_da_ata`, que com `supersedes` presente usa **as mesmas inscrições da v1** com as notas de agora — filtrar por `alive()` deixaria de fora quem a v1 eliminou, que é justamente quem a retificação existe para reintegrar.
+- A edição das notas volta **sozinha**: `_recusar_ata_congelada` olha a ata *corrente* da chave, e corrente passa a ser a v2 em rascunho. Nada de liberação explícita — tem teste afirmando isso (409 antes, 200 depois).
+- Evento `selection.record.rectify` com `stage_id`, `version`, `supersedes_id`, `reason` e `rows`.
+- **Decisão para o revisor (além do que a story pediu)**: `_exigir_etapa_seguinte_aberta` recusa retificar a etapa `k` quando a `k+1` já tem ata corrente fora de rascunho (`next_stage_closed`). O desfecho da `k+1` foi decidido sobre quem a `k` promoveu; reintegrar aqui deixaria viva uma pessoa que a etapa seguinte nunca avaliou, sem nada acusar. O caminho passa a ser retificar de trás para frente. Rascunho da seguinte não barra (tem teste dos dois lados).
+- 7 testes em `apps/selection/tests/test_retificacao.py`: ponta a ponta (retificar → corrigir nota → congelar → assinar → v1 `superseded` com PDF preservado, eliminada de volta a `homologated`), liberação da nota, auditoria com o motivo, ata não assinada, motivo vazio, etapa seguinte congelada e etapa seguinte em rascunho. O ciclo de congelar/assinar vai pela API (nível (b)); só `rectify_record` é chamado direto, porque rota não existe.
+- `make ready` verde, 1116 testes, mypy limpo, svelte-check 0 erros. Sem migration, sem rota, sem `make gen-api`.
+- **Verificado no canteiro**: `rectify_record` na ata 1 real (assinada, edital 5) → v2 rascunho com a linha `PS2099R-8AABB03C` (88.50, `passed`), v1 `superseded` com o PDF intacto, `AuditLog` com `reason`/`version`/`supersedes_id` e `program=1`. **Desfeito depois** (v2 apagada, v1 de volta a `signed`) para não estragar o cenário que `f3-sign-token-public` deixou pronto para as telas.
+- Files: backend/apps/selection/services.py, backend/apps/selection/tests/test_retificacao.py, scripts/helton/projects/prds/{prd.json,progress.txt}
+- **Learnings for future iterations:**
+  - **O PUT de notas recebe uma lista nua no corpo** (`data=[]`), não um objeto com chave: `{"scores": [...]}` volta 422, e não o 409 `record_frozen` que o teste esperava.
+  - Helper de teste de outro módulo do mesmo pacote se importa (`from .test_fechamento_de_etapa import ...`), mas **fixture não** — `clients_da_banca` teve de ser redefinida no arquivo novo (7 linhas) porque fixture só é herdada por `conftest.py`.
+  - Ao criar a versão `n+1`, copie também `replaced_member` da anterior: é o titular impedido daquela sessão, e o `clean()` o valida contra a banca.
+  - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
+---
