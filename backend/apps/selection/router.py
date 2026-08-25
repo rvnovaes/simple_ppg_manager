@@ -62,6 +62,7 @@ from .schemas import (
     RecordFreezeIn,
     RecordSignatureOut,
     RecordSignIn,
+    RecordSummaryOut,
     SelectionProcessIn,
     SelectionProcessOut,
     SelectionProcessPatch,
@@ -1049,14 +1050,34 @@ def sign_stage_record(
 
 
 # ---------------------------------------------------------------------------
-# Assinatura da ata (secretaria)
+# Atas do edital (secretaria)
 # ---------------------------------------------------------------------------
 #
-# A secretaria não assina ata — mas é ela que atende o telefone quando o
-# examinador externo diz que o link não chegou, caiu no spam ou expirou.
-# Reemitir é o único poder dela sobre a assinatura, e ele não decide nada
-# sobre o conteúdo: manda de novo, para o mesmo e-mail, invalidando o link
-# anterior.
+# A secretaria não assina ata nem lança nota — ela acompanha. O que ela
+# precisa é a fila de atas de um edital com a situação de cada uma e quem
+# ainda não assinou, para cobrar; o poder que ela tem sobre a assinatura é
+# um só, reemitir o link do examinador externo quando ele diz que não
+# chegou, caiu no spam ou expirou. Reemitir não decide nada sobre o
+# conteúdo: manda de novo, para o mesmo e-mail, invalidando o anterior.
+
+
+def _atas_do_programa(program: Program):
+    """As atas do programa, com o que `RecordSummaryOut` expande.
+
+    Espelho de `_atas_da_banca`, e escopado pelo programa em vez de pela
+    banca: aqui quem consulta é a secretaria, que vê o edital inteiro.
+    """
+    return (
+        ExaminationRecord.objects.for_program(program)
+        .select_related("process", "stage", "project", "research_line")
+        .select_related("replaced_member__person")
+        .prefetch_related(
+            Prefetch(
+                "signatures",
+                queryset=RecordSignature.objects.select_related("signer__person"),
+            )
+        )
+    )
 
 
 def _ata_do_programa(request: HttpRequest, record_id: int) -> ExaminationRecord:
@@ -1067,6 +1088,77 @@ def _ata_do_programa(request: HttpRequest, record_id: int) -> ExaminationRecord:
             "process", "stage"
         ),
         pk=record_id,
+    )
+
+
+@router.get("/records/", response=list[RecordSummaryOut])
+@paginate
+def list_records(
+    request: HttpRequest,
+    process_id: int,
+    stage_id: int | None = None,
+    status: RecordStatus | None = None,
+):
+    """As atas de um edital, da primeira etapa à última.
+
+    `process_id` é obrigatório: a tela é sempre "as atas deste edital", e
+    uma listagem de todas as atas do programa misturaria anos e não
+    responderia a pergunta de ninguém. O edital passa por
+    `_edital_do_programa`, então id de outro tenant dá 404 antes de a
+    consulta rodar.
+
+    Devolve **todas as versões**, inclusive as substituídas: a retificação
+    guarda a anterior como histórico, e é justamente a secretaria quem
+    precisa enxergar que houve uma. A versão vigente de cada chave é a de
+    maior `version`, e vem primeiro.
+    """
+    require_perm(request, "selection.view_examinationrecord")
+    program: Program = current_program(request)
+    edital = _edital_do_programa(request, process_id)
+    atas = _atas_do_programa(program).for_process(edital)
+    if stage_id is not None:
+        atas = atas.filter(stage=_etapa_do_edital(edital, stage_id))
+    if status is not None:
+        atas = atas.filter(status=status)
+    return atas.order_by(
+        "stage__order",
+        "level",
+        "project__name",
+        "research_line__name",
+        "-version",
+    )
+
+
+@router.get("/records/{int:record_id}/pdf")
+def download_record_pdf(request: HttpRequest, record_id: int):
+    """O PDF da ata assinada — pelo Django, nunca por URL direta do MEDIA.
+
+    Só existe depois da terceira assinatura: é `_close_stage` que o grava.
+    Antes disso a resposta é 404, e não um PDF de rascunho — ata que não
+    foi assinada não é documento, e entregá-la como arquivo convida a
+    imprimi-la como se fosse.
+
+    A leitura é auditada. Auditar leitura é exceção no projeto (Seção 3),
+    e aqui vale pelo mesmo motivo do anexo da inscrição: o PDF é o
+    documento que registra a decisão da banca sobre pessoas, com as notas
+    de cada uma, e quem o baixou é parte do rastro.
+    """
+    require_perm(request, "selection.view_examinationrecord")
+    ata = _ata_do_programa(request, record_id)
+    if not ata.pdf:
+        raise Http404("Esta ata ainda não tem PDF.")
+    with transaction.atomic():
+        audit.record(
+            "selection.record.pdf_download",
+            request=request,
+            target=ata,
+            version=ata.version,
+            stage_id=ata.stage_id,
+        )
+    return FileResponse(
+        ata.pdf.open("rb"),
+        as_attachment=True,
+        filename=Path(ata.pdf.name or "").name,
     )
 
 

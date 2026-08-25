@@ -239,6 +239,28 @@ export function formatarCpf(cpf: string): string {
 export type SituacaoDaAta = components['schemas']['RecordStatus'];
 
 /**
+ * As situações da ata na ordem em que ela as percorre.
+ *
+ * Mesma razão de `SITUACOES_DA_INSCRICAO`: o rótulo curto vem do servidor
+ * (`status_label`) em toda linha que tenha uma ata na mão, e esta tabela
+ * existe para o `<select>` do filtro, que escreve a situação sem ter ata
+ * nenhuma para perguntar.
+ */
+export const SITUACOES_DA_ATA: SituacaoDaAta[] = [
+	'draft',
+	'awaiting_signatures',
+	'signed',
+	'superseded'
+];
+
+export const ROTULO_DA_SITUACAO_DA_ATA: Record<SituacaoDaAta, string> = {
+	draft: 'Rascunho',
+	awaiting_signatures: 'Aguardando assinaturas',
+	signed: 'Assinada',
+	superseded: 'Substituída'
+};
+
+/**
  * O que cada situação da ata significa para quem está na banca.
  *
  * O rótulo curto vem do servidor (`status_label`), como em toda parte deste

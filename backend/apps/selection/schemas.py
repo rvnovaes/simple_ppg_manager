@@ -930,8 +930,15 @@ class RecordSignatureOut(Schema):
         return obj.signed_hash[:12]
 
 
-class ExaminationRecordOut(Schema):
-    """A ata de uma etapa, com conteúdo e assinaturas embutidos.
+class RecordSummaryOut(Schema):
+    """A ata sem o conteúdo: cabeçalho, situação e assinaturas.
+
+    É o que a listagem da secretaria (`GET /records/`) devolve. O
+    `content` fica de fora porque a lista traz **todas** as atas de um
+    edital — etapa × nível × alvo, mais as versões antigas —, e cada
+    conteúdo é a planilha inteira daquele alvo. Quem precisa das notas
+    abre a ata (ou o PDF); quem acompanha o edital precisa de situação e
+    de quem falta assinar.
 
     As assinaturas viajam dentro da ata, e não numa rota própria, pelo
     mesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem
@@ -960,7 +967,6 @@ class ExaminationRecordOut(Schema):
     version: int
     status: RecordStatus
     status_label: str
-    content: list[RecordRowOut]
     content_hash: str
     hash_ok: bool
     has_pdf: bool
@@ -1015,6 +1021,18 @@ class ExaminationRecordOut(Schema):
     @staticmethod
     def resolve_pending_signatures(obj: ExaminationRecord) -> int:
         return sum(1 for a in obj.signatures.all() if not a.is_signed)
+
+
+class ExaminationRecordOut(RecordSummaryOut):
+    """A ata de uma etapa, com o conteúdo congelado embutido.
+
+    É o schema das rotas que tratam de **uma** ata — a da banca, a do
+    examinador, a retificação. O `content` é a fotografia das notas no
+    instante do congelamento, e é sobre ele que o `content_hash` (herdado
+    do resumo) é calculado.
+    """
+
+    content: list[RecordRowOut]
 
 
 class RecordFreezeIn(Schema):

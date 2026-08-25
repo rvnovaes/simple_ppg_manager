@@ -21,6 +21,8 @@ Started: ter. 25 ago 2026 11:00:21 -03
 - **`openapi-fetch`: leia `error` por desestruturação, nunca por `resp.error`.** Rota que só documenta o 200 tipa `error` como `never`, e dentro do `if (resp.error)` o objeto colapsa para `never` (`svelte-check` acusa "Property 'error' does not exist on type 'never'"). Use `const { data, error, response } = await api.GET(...)` e teste `data === undefined`.
 - **Verificação de UI segue impossível neste canteiro**: o plugin browser-use trava no consentimento "Allow remote debugging?" do Chrome (cinco iterações seguidas) e não existe binário `browser-use` no host. O substituto aceito é exercer pelo Nginx todas as chamadas que a tela dispara (curl com cookie de CSRF) e registrar isso no relatório.
 - Resposta de rota que dispara e-mail é montada **antes** do `on_commit`: campos gravados pelo envio (ex.: `token_sent_at`) saem nulos na resposta e só aparecem no `refresh_from_db()`.
+- **Listagem que reusa schema de detalhe: separe o resumo.** Quando a lista traz muitos objetos e o schema de detalhe carrega um campo pesado (o `content` da ata), crie a base sem ele (`RecordSummaryOut`) e faça o detalhe herdar (`ExaminationRecordOut(RecordSummaryOut)`). Os `resolve_*` são herdados; nada é duplicado.
+- **`new Map()` em `$derived` não passa no lint do front**: `svelte/prefer-svelte-reactivity` manda usar `SvelteMap`. Para agrupamento puro (sem reatividade sobre o próprio mapa), o caminho mais curto é `Record<string, T[]>` + um array que guarda a ordem.
 ---
 ## 2026-08-25 - f0-app-selection
 - Criado o app `backend/apps/selection/` vazio: `apps.py` (name `apps.selection`, verbose "Processo seletivo"), `models.py`/`admin.py`/`schemas.py` só com docstring, `router.py` com `Router(tags=["selection"])`, `migrations/` e `tests/` com `conftest.py`.
@@ -473,4 +475,20 @@ Started: ter. 25 ago 2026 11:00:21 -03
   - `PublicSignatureOut` traz `pending_signatures` **contando a do próprio leitor** (a dele ainda está pendente): "falta só a sua" é `<= 1`, não `=== 0`. No comprovante, já consumido, o `0` é que significa ata fechada.
   - O `browser-use` do PATH não existe como binário no host desta worktree — o caminho é o plugin MCP (`browser_exec`), e é ele que está travado no consentimento do Chrome.
   - `scripts/helton/obra/montar-canteiro.sh` continua modificado na worktree desde antes destas stories; segue fora dos commits.
+---
+
+## 2026-08-25 - f3-records-api-tela-atas
+- Backend: `GET /selection/records/` (paginada, `process_id` obrigatório, filtros `stage_id` e `status`) e `GET /selection/records/{id}/pdf` (`FileResponse` como anexo, 404 antes de existir PDF, leitura auditada em `selection.record.pdf_download`). Helper `_atas_do_programa(program)` espelhando `_atas_da_banca`, mas escopado pelo programa.
+- Schemas: `ExaminationRecordOut` foi partido em `RecordSummaryOut` (tudo menos `content`) + `ExaminationRecordOut(RecordSummaryOut)` que acrescenta `content`. A listagem devolve o resumo; as rotas de uma ata só continuam devolvendo o detalhe, com o mesmo conjunto de campos de antes.
+- A listagem devolve **todas as versões** (inclusive `superseded`), ordenadas por etapa, nível, alvo e `-version` — é a secretaria quem precisa enxergar que houve retificação.
+- Front: `(app)/selecao/atas/+page.svelte` deixou de ser marcador. Filtros edital/etapa/situação, atas agrupadas por chave (etapa × nível × alvo) com a versão vigente em cima e o histórico recolhido, assinaturas com nome/método/`signed_at`/`token_sent_at`, botão "Reenviar link" (só para `method === 'token'` pendente, com `change_recordsignature`), "Baixar PDF" quando `has_pdf`, e aviso vermelho quando `hash_ok` é falso.
+- `lib/selecao.ts`: `SITUACOES_DA_ATA` e `ROTULO_DA_SITUACAO_DA_ATA` (o `<select>` do filtro escreve a situação sem ter ata para perguntar, como em `SITUACOES_DA_INSCRICAO`).
+- 18 testes em `test_api_atas_secretaria.py`: conteúdo fora da lista, versões antigas, ordem por etapa, os dois filtros, etapa de outro edital 404, edital de outro programa 404, `process_id` ausente 422, 403/401; PDF como anexo, auditoria, 404 sem PDF, 404 de outro tenant, 403/401.
+- `make ready` verde, 1134 testes. `make gen-api` rodado e `openapi.json`/`schema.d.ts` commitados.
+- Files: backend/apps/selection/{router,schemas}.py, backend/apps/selection/tests/test_api_atas_secretaria.py, frontend/src/routes/(app)/selecao/atas/+page.svelte, frontend/src/lib/selecao.ts, frontend/src/lib/api/{openapi.json,schema.d.ts}
+- **Learnings for future iterations:**
+  - Partir um schema de saída em base + subclasse **não muda** o corpo das rotas que usam a subclasse (o conjunto de campos é o mesmo), mas muda a ordem deles no OpenAPI: o campo herdado vem antes do declarado. Teste que compare o corpo inteiro com `==` continua passando; teste que dependa de ordem, não.
+  - `GET` com parâmetro de query obrigatório responde **422** quando ele falta, e o 422 vem **antes** do `require_perm` — o Ninja resolve os parâmetros primeiro. Não dá para testar "sem permissão" omitindo o parâmetro.
+  - Para provar tenant numa rota de leitura de objeto, `Model.objects.filter(pk=...).update(program=outro)` é mais curto e mais honesto que montar o objeto inteiro no outro programa: o `program` é exatamente o que `for_program` filtra.
+  - Verificação de UI no browser segue impossível neste canteiro (sem binário `browser-use` no host, e o plugin trava no consentimento do Chrome). O substituto aceito foi exercer pelo Nginx (`localhost:8970`) todas as chamadas que a tela dispara, logado como `secretaria@ppgd.test`: `processes/`, `processes/2/stages/`, `records/?process_id=2` (+ `stage_id`, + `status`), `records/5/pdf` (200, `Content-Disposition: attachment; filename="ata-5-v1.pdf"`, `AuditLog` gravado) e os 404/422 de borda.
 ---

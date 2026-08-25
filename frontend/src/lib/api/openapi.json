@@ -4220,6 +4220,128 @@
         ]
       }
     },
+    "/selection/records/": {
+      "get": {
+        "operationId": "apps_selection_router_list_records",
+        "summary": "List Records",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "stage_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RecordStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedRecordSummaryOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "As atas de um edital, da primeira etapa à última.\n\n`process_id` é obrigatório: a tela é sempre \"as atas deste edital\", e\numa listagem de todas as atas do programa misturaria anos e não\nresponderia a pergunta de ninguém. O edital passa por\n`_edital_do_programa`, então id de outro tenant dá 404 antes de a\nconsulta rodar.\n\nDevolve **todas as versões**, inclusive as substituídas: a retificação\nguarda a anterior como histórico, e é justamente a secretaria quem\nprecisa enxergar que houve uma. A versão vigente de cada chave é a de\nmaior `version`, e vem primeiro.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/records/{record_id}/pdf": {
+      "get": {
+        "operationId": "apps_selection_router_download_record_pdf",
+        "summary": "Download Record Pdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "schema": {
+              "title": "Record Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "O PDF da ata assinada — pelo Django, nunca por URL direta do MEDIA.\n\nSó existe depois da terceira assinatura: é `_close_stage` que o grava.\nAntes disso a resposta é 404, e não um PDF de rascunho — ata que não\nfoi assinada não é documento, e entregá-la como arquivo convida a\nimprimi-la como se fosse.\n\nA leitura é auditada. Auditar leitura é exceção no projeto (Seção 3),\ne aqui vale pelo mesmo motivo do anexo da inscrição: o PDF é o\ndocumento que registra a decisão da banca sobre pessoas, com as notas\nde cada uma, e quem o baixou é parte do rastro.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/selection/records/{record_id}/signatures/{signature_id}/resend-token": {
       "post": {
         "operationId": "apps_selection_router_resend_signature_token_endpoint",
@@ -9026,7 +9148,7 @@
         "type": "object"
       },
       "ExaminationRecordOut": {
-        "description": "A ata de uma etapa, com conteúdo e assinaturas embutidos.\n\nAs assinaturas viajam dentro da ata, e não numa rota própria, pelo\nmesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem\n`view_recordsignature` (migration 0006), e a tela dele precisa\nmostrar quem já assinou. Uma ata tem três assinaturas — não há o que\npaginar.\n\n`content_hash` sai inteiro porque é ele que o examinador confere\nantes de assinar (a rota de assinatura o recebe de volta).",
+        "description": "A ata de uma etapa, com o conteúdo congelado embutido.\n\nÉ o schema das rotas que tratam de **uma** ata — a da banca, a do\nexaminador, a retificação. O `content` é a fotografia das notas no\ninstante do congelamento, e é sobre ele que o `content_hash` (herdado\ndo resumo) é calculado.",
         "properties": {
           "id": {
             "title": "Id",
@@ -9115,13 +9237,6 @@
             "title": "Status Label",
             "type": "string"
           },
-          "content": {
-            "items": {
-              "$ref": "#/components/schemas/RecordRowOut"
-            },
-            "title": "Content",
-            "type": "array"
-          },
           "content_hash": {
             "title": "Content Hash",
             "type": "string"
@@ -9178,6 +9293,13 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRowOut"
+            },
+            "title": "Content",
+            "type": "array"
           }
         },
         "required": [
@@ -9198,7 +9320,6 @@
           "version",
           "status",
           "status_label",
-          "content",
           "content_hash",
           "hash_ok",
           "has_pdf",
@@ -9207,7 +9328,8 @@
           "signatures",
           "pending_signatures",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "content"
         ],
         "title": "ExaminationRecordOut",
         "type": "object"
@@ -9401,6 +9523,206 @@
           }
         },
         "title": "RecordSignIn",
+        "type": "object"
+      },
+      "PagedRecordSummaryOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedRecordSummaryOut",
+        "type": "object"
+      },
+      "RecordSummaryOut": {
+        "description": "A ata sem o conteúdo: cabeçalho, situação e assinaturas.\n\nÉ o que a listagem da secretaria (`GET /records/`) devolve. O\n`content` fica de fora porque a lista traz **todas** as atas de um\nedital — etapa × nível × alvo, mais as versões antigas —, e cada\nconteúdo é a planilha inteira daquele alvo. Quem precisa das notas\nabre a ata (ou o PDF); quem acompanha o edital precisa de situação e\nde quem falta assinar.\n\nAs assinaturas viajam dentro da ata, e não numa rota própria, pelo\nmesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem\n`view_recordsignature` (migration 0006), e a tela dele precisa\nmostrar quem já assinou. Uma ata tem três assinaturas — não há o que\npaginar.\n\n`content_hash` sai inteiro porque é ele que o examinador confere\nantes de assinar (a rota de assinatura o recebe de volta).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "board_id": {
+            "title": "Board Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "replaced_member_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Member Id"
+          },
+          "replaced_member_name": {
+            "title": "Replaced Member Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_ok": {
+            "title": "Hash Ok",
+            "type": "boolean"
+          },
+          "has_pdf": {
+            "title": "Has Pdf",
+            "type": "boolean"
+          },
+          "frozen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frozen At"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signatures": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSignatureOut"
+            },
+            "title": "Signatures",
+            "type": "array"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "stage_id",
+          "stage_name",
+          "board_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "replaced_member_id",
+          "replaced_member_name",
+          "version",
+          "status",
+          "status_label",
+          "content_hash",
+          "hash_ok",
+          "has_pdf",
+          "frozen_at",
+          "signed_at",
+          "signatures",
+          "pending_signatures",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecordSummaryOut",
         "type": "object"
       },
       "PublicOptionOut": {

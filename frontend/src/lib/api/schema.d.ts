@@ -1466,6 +1466,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/records/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Records
+         * @description As atas de um edital, da primeira etapa à última.
+         *
+         *     `process_id` é obrigatório: a tela é sempre "as atas deste edital", e
+         *     uma listagem de todas as atas do programa misturaria anos e não
+         *     responderia a pergunta de ninguém. O edital passa por
+         *     `_edital_do_programa`, então id de outro tenant dá 404 antes de a
+         *     consulta rodar.
+         *
+         *     Devolve **todas as versões**, inclusive as substituídas: a retificação
+         *     guarda a anterior como histórico, e é justamente a secretaria quem
+         *     precisa enxergar que houve uma. A versão vigente de cada chave é a de
+         *     maior `version`, e vem primeiro.
+         */
+        get: operations["apps_selection_router_list_records"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/records/{record_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Record Pdf
+         * @description O PDF da ata assinada — pelo Django, nunca por URL direta do MEDIA.
+         *
+         *     Só existe depois da terceira assinatura: é `_close_stage` que o grava.
+         *     Antes disso a resposta é 404, e não um PDF de rascunho — ata que não
+         *     foi assinada não é documento, e entregá-la como arquivo convida a
+         *     imprimi-la como se fosse.
+         *
+         *     A leitura é auditada. Auditar leitura é exceção no projeto (Seção 3),
+         *     e aqui vale pelo mesmo motivo do anexo da inscrição: o PDF é o
+         *     documento que registra a decisão da banca sobre pessoas, com as notas
+         *     de cada uma, e quem o baixou é parte do rastro.
+         */
+        get: operations["apps_selection_router_download_record_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/selection/records/{record_id}/signatures/{signature_id}/resend-token": {
         parameters: {
             query?: never;
@@ -3578,16 +3639,12 @@ export interface components {
         };
         /**
          * ExaminationRecordOut
-         * @description A ata de uma etapa, com conteúdo e assinaturas embutidos.
+         * @description A ata de uma etapa, com o conteúdo congelado embutido.
          *
-         *     As assinaturas viajam dentro da ata, e não numa rota própria, pelo
-         *     mesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem
-         *     `view_recordsignature` (migration 0006), e a tela dele precisa
-         *     mostrar quem já assinou. Uma ata tem três assinaturas — não há o que
-         *     paginar.
-         *
-         *     `content_hash` sai inteiro porque é ele que o examinador confere
-         *     antes de assinar (a rota de assinatura o recebe de volta).
+         *     É o schema das rotas que tratam de **uma** ata — a da banca, a do
+         *     examinador, a retificação. O `content` é a fotografia das notas no
+         *     instante do congelamento, e é sobre ele que o `content_hash` (herdado
+         *     do resumo) é calculado.
          */
         ExaminationRecordOut: {
             /** Id */
@@ -3622,8 +3679,6 @@ export interface components {
             status: components["schemas"]["RecordStatus"];
             /** Status Label */
             status_label: string;
-            /** Content */
-            content: components["schemas"]["RecordRowOut"][];
             /** Content Hash */
             content_hash: string;
             /** Hash Ok */
@@ -3648,6 +3703,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Content */
+            content: components["schemas"]["RecordRowOut"][];
         };
         /**
          * RecordRowOut
@@ -3747,6 +3804,91 @@ export interface components {
              * @default
              */
             content_hash: string;
+        };
+        /** PagedRecordSummaryOut */
+        PagedRecordSummaryOut: {
+            /** Items */
+            items: components["schemas"]["RecordSummaryOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * RecordSummaryOut
+         * @description A ata sem o conteúdo: cabeçalho, situação e assinaturas.
+         *
+         *     É o que a listagem da secretaria (`GET /records/`) devolve. O
+         *     `content` fica de fora porque a lista traz **todas** as atas de um
+         *     edital — etapa × nível × alvo, mais as versões antigas —, e cada
+         *     conteúdo é a planilha inteira daquele alvo. Quem precisa das notas
+         *     abre a ata (ou o PDF); quem acompanha o edital precisa de situação e
+         *     de quem falta assinar.
+         *
+         *     As assinaturas viajam dentro da ata, e não numa rota própria, pelo
+         *     mesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem
+         *     `view_recordsignature` (migration 0006), e a tela dele precisa
+         *     mostrar quem já assinou. Uma ata tem três assinaturas — não há o que
+         *     paginar.
+         *
+         *     `content_hash` sai inteiro porque é ele que o examinador confere
+         *     antes de assinar (a rota de assinatura o recebe de volta).
+         */
+        RecordSummaryOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Board Id */
+            board_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            /** Replaced Member Id */
+            replaced_member_id: number | null;
+            /** Replaced Member Name */
+            replaced_member_name: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["RecordStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Hash Ok */
+            hash_ok: boolean;
+            /** Has Pdf */
+            has_pdf: boolean;
+            /** Frozen At */
+            frozen_at: string | null;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signatures */
+            signatures: components["schemas"]["RecordSignatureOut"][];
+            /** Pending Signatures */
+            pending_signatures: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * PublicOptionOut
@@ -6316,6 +6458,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ExaminationRecordOut"];
                 };
+            };
+        };
+    };
+    apps_selection_router_list_records: {
+        parameters: {
+            query: {
+                process_id: number;
+                stage_id?: number | null;
+                status?: components["schemas"]["RecordStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedRecordSummaryOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_download_record_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
