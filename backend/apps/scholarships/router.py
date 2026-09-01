@@ -33,6 +33,7 @@ from .models import (
     BaremeItem,
     CommitteeMember,
     ItemReview,
+    ScholarshipAppeal,
     ScholarshipApplication,
     ScholarshipEdition,
     ScholarshipEditionStatus,
@@ -55,6 +56,9 @@ from .schemas import (
     FumpLevelIn,
     ItemReviewIn,
     ItemReviewOut,
+    ScholarshipAppealIn,
+    ScholarshipAppealJudgeIn,
+    ScholarshipAppealOut,
     ScholarshipApplicationIn,
     ScholarshipApplicationOut,
     ScholarshipApplicationPatch,
@@ -1362,3 +1366,118 @@ def override_band(request: HttpRequest, application_id: int, payload: BandOverri
             reason=inscricao.band_override_reason,
         )
     return inscricao
+
+
+# ---------------------------------------------------------------------------
+# Recurso contra o resultado preliminar
+# ---------------------------------------------------------------------------
+#
+# Duas rotas e dois papéis: o candidato interpõe (`add_scholarshipappeal`,
+# só o Discente a tem) e a comissão julga (`change_scholarshipappeal`, só
+# ela a tem). É a separação que faz "o aluno não julga o próprio recurso"
+# ser 403 de permissão, e não uma checagem escrita à mão que alguém pode
+# esquecer na rota seguinte.
+#
+# **Não há rota de anexo aqui, e a ausência é o edital.** O item 1.3 veta
+# postagem de documento fora do prazo de inscrição — ver a docstring de
+# `ScholarshipAppeal`.
+#
+# O deferimento também não dispara recálculo: a nota da inscrição é
+# derivada dos lançamentos, e `committee_can_review()` já vale em
+# `appeals_under_review`. Deferir é decidir; refazer o lançamento atacado
+# é o ato seguinte da comissão, pela rota de avaliação que já existe.
+
+
+def _recursos(program: Program):
+    return ScholarshipAppeal.objects.for_program(program).select_related(
+        # `application__edition` porque as duas escritas cobram o estado da
+        # edição (`ensure_appealable`, `judge`).
+        "application__edition",
+        "application__student__person",
+    )
+
+
+@router.post(
+    "/applications/{int:application_id}/appeal", response={201: ScholarshipAppealOut}
+)
+def create_appeal(
+    request: HttpRequest, application_id: int, payload: ScholarshipAppealIn
+):
+    """O candidato interpõe recurso contra o resultado preliminar.
+
+    A guarda é do model (`ensure_appealable`): fase fechada é 409
+    `appeals_closed`, inscrição alheia é 403 `not_application_owner`, e o
+    segundo recurso é 400 `duplicate_appeal` do `clean()`. Publicar o
+    preliminar não abre a fase — quem abre é `open_appeals()`, e é por
+    isso que a janela é conferida pelo estado e não pela data.
+    """
+    require_perm(request, "scholarships.add_scholarshipappeal")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    inscricao.ensure_appealable(request.user)
+    recurso = ScholarshipAppeal(application=inscricao, text=payload.text)
+    with transaction.atomic():
+        recurso.clean()
+        recurso.save()
+        audit.record(
+            "scholarships.appeal.create",
+            request=request,
+            target=recurso,
+            program=program,
+            edition_id=inscricao.edition_id,
+            application_id=inscricao.pk,
+            student_id=inscricao.student_id,
+        )
+    return Status(201, recurso)
+
+
+@router.get("/applications/{int:application_id}/appeal", response=ScholarshipAppealOut)
+def get_appeal(request: HttpRequest, application_id: int):
+    """O recurso de uma inscrição, para a tela da comissão e a do dono.
+
+    404 quando não há recurso — "não recorreu" é o caso normal, e é assim
+    que a tela sabe que deve oferecer o formulário em branco. Quem não é
+    o dono passa pelo mesmo porteiro dos lançamentos
+    (`_garantir_acesso_a_inscricao`): `view_scholarshipappeal` sozinha não
+    serve, porque o Discente também a tem — é com ela que lê o próprio.
+    """
+    require_perm(request, "scholarships.view_scholarshipappeal")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    _garantir_acesso_a_inscricao(request, inscricao, program)
+    recurso = inscricao.submitted_appeal()
+    if recurso is None:
+        raise Http404("Esta inscrição não tem recurso interposto.")
+    return recurso
+
+
+@router.patch("/appeals/{int:appeal_id}/judge", response=ScholarshipAppealOut)
+def judge_appeal(
+    request: HttpRequest, appeal_id: int, payload: ScholarshipAppealJudgeIn
+):
+    """A comissão julga o recurso, com fundamentação.
+
+    Rota nomeada pelo ato, e não um `PATCH` de `outcome`: julgar é
+    transição, e o model a cobra (fase aberta, recurso ainda não julgado,
+    fundamentação não vazia). O instante vai explícito, como nas demais
+    transições deste app.
+    """
+    require_perm(request, "scholarships.change_scholarshipappeal")
+    program: Program = current_program(request)
+    recurso = get_object_or_404(_recursos(program), pk=appeal_id)
+    recurso.judge(
+        outcome=payload.outcome, reasoning=payload.reasoning, at=timezone.now()
+    )
+    with transaction.atomic():
+        recurso.save(update_fields=["outcome", "reasoning", "decided_at", "updated_at"])
+        audit.record(
+            "scholarships.appeal.judge",
+            request=request,
+            target=recurso,
+            program=program,
+            edition_id=recurso.application.edition_id,
+            application_id=recurso.application_id,
+            student_id=recurso.application.student_id,
+            outcome=recurso.outcome,
+        )
+    return recurso

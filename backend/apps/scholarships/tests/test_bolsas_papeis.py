@@ -130,6 +130,10 @@ def test_secretaria_recebe_exatamente_o_que_opera_o_edital() -> None:
         # por item — mas não a escreve (migration 0009).
         "view_itemreview",
         "download_applicationdocument",
+        # Ela acompanha o recurso para responder ao candidato que pergunta
+        # pelo andamento — julgar continua sendo só da comissão
+        # (migration 0010).
+        "view_scholarshipappeal",
         "publish_scholarshipedition",
         "set_fump_level",
         "override_band",
@@ -169,6 +173,9 @@ def test_comissao_le_o_que_precisa_para_avaliar_e_nada_mais() -> None:
         # não existe para papel nenhum (migration 0009).
         "view_itemreview",
         "download_applicationdocument",
+        # Quem julga precisa ler o que vai julgar: o `change_` sem o
+        # `view_` daria 403 na própria tela de decisão (migration 0010).
+        "view_scholarshipappeal",
         "change_scholarshipappeal",
     }
 

@@ -22,6 +22,7 @@ from .models import (
     CommitteeMember,
     ItemReview,
     PriorityBand,
+    ScholarshipAppeal,
     ScholarshipApplication,
     ScholarshipEdition,
     ScholarshipEditionStatus,
@@ -396,13 +397,83 @@ class PendingDocumentOut(Schema):
     kind_label: str
 
 
+# ---------------------------------------------------------------------------
+# Recurso contra o resultado preliminar
+# ---------------------------------------------------------------------------
+#
+# Declarado **antes** da inscrição porque `ScholarshipApplicationOut` o
+# embute: a tela do candidato precisa, na mesma resposta, do recurso que
+# ele já interpôs e do bool que diz se ainda dá para interpor. Duas
+# chamadas para isso deixariam a tela desenhar o botão de recorrer para
+# quem já recorreu, no intervalo entre elas.
+
+
+class ScholarshipAppealIn(Schema):
+    """As razões do candidato — **um campo, e sem anexo**.
+
+    A ausência do anexo é do edital, não do esquecimento: o item 1.3 veta
+    a postagem de documento fora do prazo de inscrição, e o recurso ataca
+    a pontuação com argumento sobre o que já foi entregue. Ver a docstring
+    de `ScholarshipAppeal`.
+    """
+
+    text: str
+
+
+class ScholarshipAppealJudgeIn(Schema):
+    """O julgamento da comissão: resultado e fundamentação.
+
+    A fundamentação vazia é recusada pelo `judge()` do model
+    (`appeal_reasoning_required`) e não aqui — decisão sem fundamentação é
+    o que o próprio candidato recorreria, e isso é regra do domínio.
+    """
+
+    outcome: AppealOutcome
+    reasoning: str
+
+
+class ScholarshipAppealOut(Schema):
+    """O recurso como as duas telas o leem: a do candidato e a da comissão.
+
+    `outcome_label` viaja resolvido porque o rótulo ("Parcialmente
+    deferido") é do edital, e montá-lo no front seria a segunda cópia da
+    tabela de resultados.
+    """
+
+    id: int
+    application_id: int
+    text: str
+    submitted_at: datetime.datetime
+    outcome: AppealOutcome | None
+    outcome_label: str | None
+    reasoning: str
+    decided_at: datetime.datetime | None
+    judged: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_outcome_label(obj: ScholarshipAppeal) -> str | None:
+        return obj.get_outcome_display() if obj.outcome else None
+
+    @staticmethod
+    def resolve_judged(obj: ScholarshipAppeal) -> bool:
+        return obj.judged()
+
+
+# ---------------------------------------------------------------------------
+# Inscrição do discente (saída)
+# ---------------------------------------------------------------------------
+
+
 class ScholarshipApplicationOut(Schema):
     """A inscrição como a tela do discente e a da comissão a veem.
 
-    Três derivações viajam resolvidas, e nenhuma delas é recalculável no
+    As derivações viajam resolvidas, e nenhuma delas é recalculável no
     front: `submission_open` (a janela, que decide se a tela desenha os
-    botões de edição), `pending_docs` (o "Sim - Não enviado" do legado) e
-    `band` (a faixa, hoje só a sobrescrita da secretaria).
+    botões de edição), `pending_docs` (o "Sim - Não enviado" do legado),
+    `band` (a faixa efetiva) e o par do recurso — `can_appeal` (o botão de
+    recorrer) e `appeal` (o que já foi interposto e como foi julgado).
 
     Os campos de snapshot da publicação não estão aqui: eles entram com a
     tela do resultado (f18/f24), e expô-los antes daria à tela de
@@ -432,6 +503,8 @@ class ScholarshipApplicationOut(Schema):
     band_override_reason: str
     band: PriorityBand | None
     submission_open: bool
+    can_appeal: bool
+    appeal: ScholarshipAppealOut | None
     documents: list[ApplicationDocumentOut]
     pending_docs: list[PendingDocumentOut]
     created_at: datetime.datetime
@@ -454,6 +527,16 @@ class ScholarshipApplicationOut(Schema):
     @staticmethod
     def resolve_submission_open(obj: ScholarshipApplication) -> bool:
         return obj.edition.submission_open()
+
+    @staticmethod
+    def resolve_can_appeal(obj: ScholarshipApplication) -> bool:
+        """O bool que desenha o botão de recorrer; quem cobra é
+        `ensure_appealable`."""
+        return obj.can_appeal()
+
+    @staticmethod
+    def resolve_appeal(obj: ScholarshipApplication) -> "ScholarshipAppeal | None":
+        return obj.submitted_appeal()
 
     @staticmethod
     def resolve_documents(obj: ScholarshipApplication) -> list[ApplicationDocument]:

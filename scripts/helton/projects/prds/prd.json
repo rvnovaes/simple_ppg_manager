@@ -405,7 +405,7 @@
         "f16-classificacao-ordenacao-e-desempate"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

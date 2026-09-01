@@ -1383,6 +1383,37 @@ class ScholarshipApplication(models.Model):
                 code="not_application_owner",
             )
 
+    def can_appeal(self) -> bool:
+        """A tela do candidato desenha o botão de recorrer por este bool.
+
+        Duas condições, e as duas são do domínio: a fase precisa estar
+        aberta (`open_appeals()` a abre; publicar o preliminar não basta)
+        e o candidato não pode já ter recorrido — o recurso é um por
+        inscrição (Q14), e a réplica do indeferimento não é recurso novo.
+        """
+        return self.edition.appeal_open() and self.submitted_appeal() is None
+
+    def ensure_appealable(self, user: Any) -> None:
+        """Guarda de escrita do recurso — o par cobrador de `can_appeal`.
+
+        Mesmo desenho de `ensure_editable`, e com as mesmas duas exceções
+        de propósito diferentes: o estado errado é 409 (a fase abre para
+        todo mundo ao mesmo tempo) e a pessoa errada é 403. A duplicata
+        não é conferida aqui: quem a recusa é o `clean()` do recurso
+        (400 `duplicate_appeal`), que é onde ela também é conferida
+        quando a escrita não passa por esta rota.
+        """
+        if not self.edition.appeal_open():
+            raise InvalidStateTransition(
+                "O recurso só pode ser interposto com a fase de recursos aberta.",
+                code="appeals_closed",
+            )
+        if not self._user_is_owner(user):
+            raise NotAllowed(
+                "Só o próprio discente pode recorrer da sua inscrição.",
+                code="not_application_owner",
+            )
+
     def _user_is_owner(self, user: Any) -> bool:
         if user is None or not getattr(user, "pk", None):
             return False
@@ -2241,7 +2272,19 @@ class ScholarshipAppeal(models.Model):
 
     def clean(self) -> None:
         super().clean()
+        self._validar_razoes()
         self._validar_duplicata()
+
+    def _validar_razoes(self) -> None:
+        """Recurso sem razões não é recurso — é o mesmo raciocínio do
+        `reasoning` exigido por `judge()`, do outro lado da mesa: a
+        comissão precisa saber o que está sendo contestado para poder
+        responder, e um texto em branco não pede nada."""
+        if not self.text.strip():
+            raise DomainError(
+                "O recurso exige as razões do candidato.",
+                code="appeal_text_required",
+            )
 
     def _validar_duplicata(self) -> None:
         """Espelho do `unique` do `OneToOneField`, como nos demais models

@@ -98,6 +98,9 @@ Started: ter. 01 set 2026 11:06:15 -03
 - O que a comissão/secretaria **não** pode reescrever se resolve no **schema
   de entrada**, não em checagem: `BaremeEntryReviewIn` tem dois campos, e é
   por isso que `quantity` no corpo é ignorado sem erro.
+- **Rota de escrita nova exige conferir o `view_` do mesmo model** no papel que
+  a usa: `change_X` sem `view_X` dá 403 na tela de quem escreve, e a migration
+  de papéis distribuiu `view_` item a item (só a Coordenação recebeu tudo).
 
 ## 2026-09-01 - f1-app-scholarships-esqueleto
 - Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
@@ -871,4 +874,53 @@ Started: ter. 01 set 2026 11:06:15 -03
     critério I as três foram calibradas com o bônus da FUMP (15,00+15,00 =
     21,00+9,00 = 30,00), senão o bônus resolveria antes e o critério nunca
     rodaria.
+---
+
+## 2026-09-01 - f17-api-recurso
+- **Duas rotas e dois papéis**: `POST /applications/{id}/appeal`
+  (`add_scholarshipappeal`, só o Discente) e `PATCH /appeals/{id}/judge`
+  (`change_scholarshipappeal`, só a Comissão de Bolsas). "O aluno não julga o
+  próprio recurso" é 403 de `require_perm`, e não checagem escrita à mão na
+  rota — é a mesma separação que já existia entre `change_baremeentry` e
+  `review_baremeentry`. Mais o `GET /applications/{id}/appeal` para a tela.
+- **A guarda da interposição é do model**: `ScholarshipApplication.can_appeal()`
+  (bool para a tela) e `ensure_appealable(user)` (409 `appeals_closed` fora da
+  fase, 403 `not_application_owner` na inscrição alheia), par idêntico ao de
+  `ensure_editable`. Publicar o preliminar **não** abre a janela: quem abre é
+  `open_appeals()`, e o teste parametriza os quatro estados que recusam.
+- `ScholarshipAppeal.clean()` ganhou `_validar_razoes`
+  (`appeal_text_required`): recurso em branco não pede nada, e é o espelho do
+  `reasoning` que `judge()` já exigia do outro lado da mesa.
+- `ScholarshipApplicationOut` passou a embutir `can_appeal` e `appeal` — por
+  isso os schemas do recurso ficam **antes** da inscrição em `schemas.py`
+  (pydantic resolve na definição da classe). Uma chamada só: com duas, a tela
+  desenharia o botão de recorrer para quem já recorreu no intervalo entre elas.
+- **Migration `0010`**: a `0008` deu `change_scholarshipappeal` à comissão sem
+  o `view_` — quem julga tomava 403 na própria tela de decisão. Só leitura, e
+  a Secretaria entra junto (ela responde ao candidato); a Coordenação já lia.
+- Arquivos: `backend/apps/scholarships/{models,router,schemas}.py`,
+  `.../migrations/0010_leitura_do_recurso_pela_comissao.py`,
+  `.../tests/test_bolsas_api_recurso.py` (novo, 29 casos),
+  `.../tests/test_bolsas_papeis.py` (as duas listas exatas de papel).
+- `make ready` verde (1833 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`change_X` sem `view_X` é 403 na tela de quem escreve.** A `0008`
+    distribuiu `view_` "de todos os models" só para a Coordenação; para os
+    demais foi item a item, e é aí que o par escrita-sem-leitura passa
+    despercebido. Ao expor rota de escrita nova, confira se o papel tem o
+    `view_` do mesmo model — e lembre que as duas listas exatas de
+    `test_bolsas_papeis.py` (Secretaria e Comissão) quebram junto, de
+    propósito: é a asserção que obriga a decisão a ser escrita.
+  - Papel que precisa agir no mesmo teste ganha `Client()` **próprio**, e não
+    `force_login` na fixture `client` — duas fixtures disputam a mesma sessão.
+    Neste arquivo `client_da_comissao`/`client_da_secretaria` já nascem assim.
+  - O deferimento continua sem rotina de recálculo, e o teste ponta a ponta é
+    a prova: a comissão refaz o lançamento atacado pela rota de avaliação **de
+    sempre** (`committee_can_review()` já vale em `appeals_under_review`) e a
+    nota da inscrição muda na leitura seguinte.
+  - `outcome` inválido para em 422 do Ninja (o schema é `AppealOutcome`), e não
+    no `invalid_appeal_outcome` do model — aquele código só aparece a quem
+    chama `judge()` direto. Teste de borda espera 422.
+  - f18 herda daqui um schema publicado a mais em `ScholarshipApplicationOut`;
+    quem regenera `openapi.json`/`schema.d.ts` continua sendo a f20.
 ---
