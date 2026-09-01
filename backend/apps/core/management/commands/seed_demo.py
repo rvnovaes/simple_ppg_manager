@@ -54,6 +54,15 @@ from apps.programs.models import (
     Program,
     ResearchLine,
 )
+from apps.scholarships.models import (
+    BaremeItem,
+    BaremeSection,
+    BaremeUnit,
+    CommitteeMember,
+    ScholarshipEdition,
+    ScholarshipEditionStatus,
+    ScholarshipLevel,
+)
 from apps.selection import services as selecao
 from apps.selection.models import (
     Application,
@@ -95,6 +104,11 @@ PDF_MINIMO = (
 # o ano em que o edital saiu. Fixo de propósito: a janela de inscrição é
 # que é relativa ao instante da carga, para nunca nascer vencida.
 ANO_DA_SELECAO = 2027
+
+# Ano da edição do edital de bolsas — o ano da concessão, e não o da
+# assinatura do edital. Fixo, como o da seleção; o cronograma é que nasce
+# relativo ao instante da carga.
+ANO_DA_BOLSA = 2026
 
 # Onde a carga escreve as contas que criou. Fica na raiz do repositório
 # (o `BASE_DIR` é `backend/`) e é ignorado pelo git — são senhas conhecidas.
@@ -220,6 +234,7 @@ class Command(BaseCommand):
             ciclo, ofertas = self._ciclo(programa, disciplinas, docentes, periodos)
             self._requerimentos(programa, ciclo, ofertas, periodos)
             self._selecao(programa, linhas, projetos, docentes)
+            self._bolsas(programa, docentes)
 
         self._relatar(programa, equipe)
 
@@ -1386,6 +1401,101 @@ class Command(BaseCommand):
         self._contar("aluno", True)
 
     # ------------------------------------------------------------------
+    # Edital de bolsas
+    # ------------------------------------------------------------------
+
+    def _bolsas(self, programa: Program, docentes: list[Teacher]) -> None:
+        """Uma edição de bolsas com inscrições abertas, barema e comissão.
+
+        Roda para **todo** programa que a carga semeia, e é isso que
+        importa: com um tenant só, a listagem que esqueceu `for_program()`
+        devolve exatamente o mesmo resultado da que filtrou, e o vazamento
+        não aparece em teste nenhum.
+
+        O barema é uma amostra (dois itens por nível), não o do edital
+        real: o que a carga precisa é de item com `cap` para exercitar o
+        teto e de seções diferentes para a tela de lançamento ter o que
+        agrupar.
+        """
+        agora = timezone.now().date()
+        edicao, criada = ScholarshipEdition.objects.get_or_create(
+            program=programa,
+            year=ANO_DA_BOLSA,
+            defaults={
+                "title": f"Edital de Bolsas {programa.acronym} {ANO_DA_BOLSA}",
+                "submission_starts_on": agora - timedelta(days=7),
+                "submission_ends_on": agora + timedelta(days=21),
+                "preliminary_result_on": agora + timedelta(days=30),
+                "appeal_ends_on": agora + timedelta(days=35),
+                "final_result_on": agora + timedelta(days=40),
+            },
+        )
+        self._contar("edição de bolsas", criada)
+
+        definicoes = [
+            (
+                BaremeSection.FORMATION,
+                "1.1",
+                "Curso de especialização concluído",
+                BaremeUnit.UNIT,
+                Decimal("5.00"),
+                Decimal("10.00"),
+            ),
+            (
+                BaremeSection.BIBLIOGRAPHIC,
+                "2.1",
+                "Artigo publicado em periódico Qualis A",
+                BaremeUnit.UNIT,
+                Decimal("8.00"),
+                Decimal("24.00"),
+            ),
+        ]
+        for nivel in ScholarshipLevel.values:
+            for secao, codigo, texto, unidade, pontos, teto in definicoes:
+                _, criado_item = BaremeItem.objects.get_or_create(
+                    edition=edicao,
+                    level=nivel,
+                    code=codigo,
+                    defaults={
+                        "section": secao,
+                        "text": texto,
+                        "unit": unidade,
+                        "points_per_unit": pontos,
+                        "cap": teto,
+                    },
+                )
+                self._contar("item do barema", criado_item)
+
+        for docente in docentes[:2]:
+            _, criado_membro = CommitteeMember.objects.get_or_create(
+                edition=edicao,
+                teacher=docente,
+                defaults={
+                    "appointed_on": agora - timedelta(days=30),
+                    "ordinance": f"Portaria {ANO_DA_BOLSA}/01",
+                },
+            )
+            self._contar("membro da comissão de bolsas", criado_membro)
+
+        # Quem avalia é quem está no Group, e não quem está em
+        # `CommitteeMember` (ver a docstring do model): a conta abaixo é o
+        # avaliador da carga, e os `CommitteeMember` acima são o registro
+        # histórico da portaria. São propositalmente pessoas diferentes.
+        self._pessoa(
+            programa,
+            nome="Marta Vilela",
+            email="comissao.bolsas@ppgd.test",
+            papel="Comissão de Bolsas",
+        )
+
+        # Só na primeira carga: `open_submissions()` congela o barema, e
+        # numa segunda rodada a edição já saiu do rascunho — o
+        # `get_or_create` acima adota a que existe e nada é reescrito.
+        if edicao.status == ScholarshipEditionStatus.DRAFT:
+            edicao.open_submissions()
+            edicao.save(update_fields=["status", "updated_at"])
+
+    # ------------------------------------------------------------------
     # Relato
     # ------------------------------------------------------------------
 
@@ -1420,6 +1530,7 @@ class Command(BaseCommand):
             ("Secretaria", "secretaria@ppgd.test"),
             ("Coordenação", "coordenacao@ppgd.test"),
             ("Comissão de Seleção (realoca vaga)", "comissao@ppgd.test"),
+            ("Comissão de Bolsas (avalia barema)", "comissao.bolsas@ppgd.test"),
             ("Docente / orientador", "ana.matos@ppgd.test"),
             ("Docente de oferta", "bruno.rocha@ppgd.test"),
             ("Docente presidente de banca", "nubia.prates@ppgd.test"),

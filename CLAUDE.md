@@ -536,3 +536,68 @@ As que já custaram iteração aqui:
   interno do container (`backend:8000`) ou o de quem disparou, e o link chegaria
   quebrado. `SITE_URL` já vem sem barra final (`rstrip("/")` no settings) —
   monte como `f"{settings.SITE_URL}/selecao/assinatura/{token}"`.
+- **Duas fixtures que fazem `force_login` na fixture `client` do pytest-django
+  disputam a MESMA sessão**, e a última a ser resolvida vence — em silêncio. O
+  teste de "papel X não pode" então roda como o papel Y e passa por 200 onde
+  devia dar 403 (ou o contrário). Fixture que só precisa do dado grava pelo ORM;
+  quando dois papéis precisam mesmo agir no mesmo teste, cada um recebe um
+  `Client()` próprio.
+- **Upload só funciona em `POST`: o Django não parseia `multipart/form-data` em
+  `PUT` nem em `PATCH`.** `HttpRequest._load_post_and_files` devolve `POST` e
+  `FILES` vazios quando o método não é POST, então uma rota Ninja com
+  `Form(...)`/`File(...)` sob `@router.patch` recebe corpo vazio — 422 por campo
+  faltando, ou pior, os defaults aplicados como se o cliente tivesse mandado.
+  Não há erro que aponte a causa. Rota que recebe arquivo é `POST`, sempre; a
+  retificação dos demais campos fica no `PATCH` em JSON, ao lado
+  (`POST .../entries/{id}/proof` × `PATCH .../entries/{id}/`).
+- **`filter(<relação>__<campo>__isnull=True)` casa também quem não tem
+  relação nenhuma.** O Django promove o join a LEFT OUTER, e a coluna vem
+  nula porque a *linha* não existe — não porque o campo esteja vazio. Numa
+  fila de "itens ainda não avaliados" isso traz justamente quem não tem item
+  algum, que é o caso oposto, e o teste só pega se houver um registro sem
+  filhos no cenário. Quando a pergunta é "existe filho com campo nulo", use
+  `Exists(Filho.objects.filter(pai=OuterRef("pk"), campo__isnull=True))` — de
+  quebra a subconsulta não multiplica linha e dispensa o `distinct()`.
+- **`prefetch_related` só vale se o método filho usar `.all()`.** Qualquer
+  `.filter()`, `.select_related()` ou `.order_by()` sobre o gerente reverso
+  monta um QuerySet novo e vai ao banco de novo — o cache do prefetch fica
+  intacto e inútil, sem erro nenhum e sem diferença de resultado. Só a conta
+  de consultas muda, e ela não aparece em teste que não a mede: uma lista de
+  44 candidatos passa de 1 consulta para 176. Método de model que soma filhos
+  lê `self.<related>.all()` e filtra **em Python**; quem carrega usa
+  `Prefetch("<related>", queryset=Filho.objects.select_related(...))`, e o
+  método cai no `.select_related()` só quando não há cache
+  (`"<related>" in self._prefetched_objects_cache`).
+- **Procurar texto dentro de um PDF do ReportLab exige desfazer três camadas.**
+  O fluxo de página vem comprimido (Flate) e às vezes em ASCII85, e — a parte
+  que engana — dentro do operador de texto **o acento é escape octal**
+  (`\351` para "é", `\347` para "ç"): a asserção `"décima" in texto` falha com a
+  palavra impressa no papel. Pior, `Paragraph` **quebra a linha em `Tj`
+  separados**, então frase longa nunca casa como substring contínua. O helper
+  que funciona junta só os trechos `(...) Tj` com espaço e converte os escapes
+  octais de volta (`texto_do_pdf` em `apps/scholarships/tests/test_bolsas_pdf.py`).
+- **Valor em real no papel precisa de `force_grouping=True`.**
+  `USE_THOUSAND_SEPARATOR` é falso por padrão no Django, e
+  `formats.number_format(v, decimal_pos=2, use_l10n=True)` publica `3200,00` em
+  vez de `3.200,00` — sem erro nenhum, só um documento oficial mal escrito.
+- **Rota nova no front quebra o `make typecheck` do host com `EACCES` em
+  `.svelte-kit/`.** O serviço `frontend` do Compose roda como root sobre o
+  mesmo bind mount, e o Vite dele regenera `.svelte-kit/generated/` e
+  `.svelte-kit/types/` assim que o arquivo de rota aparece — os artefatos da
+  rota nova nascem `root:root`, e o `svelte-kit sync` do host não consegue
+  reescrevê-los. A mensagem aponta um `$types.d.ts` ou um `nodes/NN.js` e não
+  diz nada sobre Docker. Conserto: apagar os artefatos de dentro do container,
+  que é quem tem o dono
+  (`docker compose exec -T frontend sh -c 'rm -rf "/app/.svelte-kit/types/src/routes/<rota>"'`),
+  e rodar o `make typecheck` de novo. `find frontend/.svelte-kit -user root`
+  lista o que ficou.
+- **Desestruturar a resposta do `openapi-fetch` no `const` estreita o objeto
+  inteiro para `never` dentro do `if (error)`.** `const { data, error,
+  response } = await api.GET(...)`, e dentro do ramo de falha o
+  `response.status` deixa de existir — a mensagem é
+  `Property 'status' does not exist on type 'never'`, e não diz nada sobre
+  união discriminada. Quem precisa do código HTTP (o 404 de "ainda não se
+  inscreveu", que **não** é erro de tela) guarda a resposta inteira numa
+  const e lê `resposta.response.status` **antes** do `if`. Mesmo motivo pelo
+  qual `const falha = resposta.error` sai antes do `if` nas telas já
+  escritas.

@@ -272,6 +272,64 @@
 								</div>
 							</details>
 						{/if}
+						<!-- Bolsas: por permissão, e não por papel. `view_committeemember`
+						é de quem opera o edital — Secretaria (monta) e Coordenação
+						(acompanha), por `scholarships.0008_papeis_da_bolsa`. O Discente e a
+						Comissão de Bolsas não a têm: os dois leem a edição e o barema, mas
+						a composição da portaria não é assunto deles, e as telas de cada um
+						são outras. -->
+						{#if sessao.pode('scholarships.view_committeemember')}
+							<a class="item-menu" href={resolve('/bolsas/edital')}>
+								<Icone nome="edital" tamanho={14} />
+								Bolsas
+							</a>
+						{/if}
+						<!-- A tela de quem analisa. `review_baremeentry` é exclusiva da
+						Comissão de Bolsas (`scholarships.0008_papeis_da_bolsa`) e é ela que
+						abre os formulários; Secretaria e Coordenação entram por papel,
+						porque acompanham a análise em leitura e não há permissão que as
+						reúna sem alcançar o Discente — ele lê a observação da própria
+						inscrição em "Minha bolsa", não aqui. O superusuário continua vendo
+						o item pela permissão. -->
+						{#if sessao.pode('scholarships.review_baremeentry') || sessao.temPapel('Secretaria', 'Coordenação')}
+							<a class="item-menu" href={resolve('/bolsas/analise')}>
+								<Icone nome="analise" tamanho={14} />
+								Análise de bolsas
+							</a>
+						{/if}
+						<!-- A outra ponta do mesmo edital: a tela do próprio candidato.
+						`add_scholarshipapplication` é exclusiva do Discente
+						(`scholarships.0008_papeis_da_bolsa`) — Secretaria, Coordenação e
+						Comissão de Bolsas leem a inscrição alheia, mas nenhuma delas se
+						inscreve. Os dois itens nunca aparecem juntos, exceto para o
+						superusuário, que enxerga tudo. -->
+						{#if sessao.pode('scholarships.add_scholarshipapplication')}
+							<a class="item-menu" href={resolve('/bolsas/inscricao')}>
+								<Icone nome="inscricao" tamanho={14} />
+								Minha bolsa
+							</a>
+						{/if}
+						<!-- O resultado é a lista publicada, e ela é assunto dos quatro
+						papéis: `view_scholarshipedition` é justamente a permissão que todos
+						receberam em `scholarships.0008_papeis_da_bolsa`. Quem chega cedo
+						não vê lista nenhuma — é o servidor que recusa a prévia ao candidato
+						(403 `result_not_published`), e a tela transforma isso em espera. -->
+						{#if sessao.pode('scholarships.view_scholarshipedition')}
+							<a class="item-menu" href={resolve('/bolsas/resultado')}>
+								<Icone nome="classificacao" tamanho={14} />
+								Resultado da bolsa
+							</a>
+						{/if}
+						<!-- Recorrer é do candidato e de mais ninguém:
+						`add_scholarshipappeal` é exclusiva do Discente, e é a mesma
+						separação que faz "o aluno não julga o próprio recurso" ser 403 de
+						permissão. A Comissão julga na tela de análise. -->
+						{#if sessao.pode('scholarships.add_scholarshipappeal')}
+							<a class="item-menu" href={resolve('/bolsas/recurso')}>
+								<Icone nome="acerto" tamanho={14} />
+								Recurso da bolsa
+							</a>
+						{/if}
 						{#if sessao.pode('programs.view_discipline')}
 							<a class="item-menu" href={resolve('/disciplinas')}>
 								<Icone nome="disciplinas" tamanho={14} />

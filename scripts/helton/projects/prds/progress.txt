@@ -1,0 +1,1427 @@
+# Helton Progress Log
+Started: ter. 01 set 2026 11:06:15 -03
+---
+
+## Codebase Patterns
+- App novo do backend: `backend/apps/<app>/` com `__init__.py`, `apps.py`
+  (`AppConfig` com `default_auto_field = BigAutoField`, `name = "apps.<app>"`,
+  `verbose_name` em português), `models.py`, `admin.py`, `router.py`,
+  `schemas.py`, `migrations/__init__.py`, `tests/__init__.py`. Registro em
+  `INSTALLED_APPS` (`backend/config/settings/base.py`) e router montado em
+  `backend/api.py` com `api.add_router("/<prefixo>/", <app>_router)`.
+- `make ready` = `lint` → `typecheck` → `test`, nessa ordem, e o `lint` roda
+  `ruff format`/`ruff check --fix` e `prettier --write`: ele **altera arquivos**
+  antes de checar. Rode-o antes de olhar o `git status` final.
+- `make ready` completo leva vários minutos (a suíte de `selection` é grande);
+  rode em background e acompanhe o log, não no timeout curto do shell.
+- Todo `TextChoices` deste projeto vai no **nível do módulo** com nome único —
+  enum aninhado de nome repetido colide no gerador de OpenAPI e o último
+  registrado sobrescreve o outro sem erro no backend.
+- Ordem dos imports segue `ruff`/isort: `apps.scholarships` vem antes de
+  `apps.selection`.
+- `clean()` de model deste projeto **espelha toda `UniqueConstraint`** com um
+  `DomainError(code=...)`: `.save()` não roda `clean()`, e sem o espelho a
+  violação vira `IntegrityError` → 500 em vez de 400 com código.
+- Filho de agregado (sem FK `program`) leva `for_program()` no QuerySet
+  filtrando pelo pai (`edition__program`) — a regra do CLAUDE.md é
+  `for_program()` como primeiro filtro de toda busca, inclusive aí.
+- Teste de model **sem banco** exige FK **sem pk**: o espelho da
+  `UniqueConstraint` dentro de `clean()` consulta o banco assim que
+  `<fk>_id` está preenchido. Monte `Modelo(edition=Edicao(program_id=1))`,
+  não `Edicao(pk=1, ...)`.
+- Não crie fixture `program` local: `backend/conftest.py` já tem uma
+  (`Program.objects.get(acronym="PPGD")`, da data migration). Um segundo
+  PPGD estoura o unique e derruba o arquivo inteiro.
+- `SimpleNamespace` **não** substitui FK (`ValueError` do descriptor). Para
+  montar uma cadeia de relações em memória, atribua instâncias reais não
+  salvas: `Student(person=Person(pk=5, user_id=7))`.
+- Método derivado que lê relação reversa (`self.<related_name>`) precisa de
+  guarda `if self.pk is None` — o gerente reverso não existe em instância não
+  salva, e os testes de invariante deste projeto são em memória.
+- Data migration de papéis deriva o content type do codename
+  (`codename.split("_", 1)[1]`): permissão própria cujo codename não é
+  `verbo_model` (`set_fump_level`, `override_band`) precisa de mapa explícito
+  na migration, senão nasce num content type fantasma e `require_perm` nunca
+  casa.
+- Teste de model e teste de API moram em **arquivos separados**:
+  `test_bolsas_<assunto>.py` é nível (a) (em memória, sem `django_db` no
+  módulo) e `test_bolsas_api_<assunto>.py` é nível (b) (`pytestmark =
+  pytest.mark.django_db`). Misturar torna o arquivo inteiro `django_db`.
+- Rota que transiciona estado: `require_perm` → `current_program` → busca já
+  escopada (404 para outro tenant, nunca 403) → método do model (409 com
+  `code`) → `save(update_fields=[..., "updated_at"])` + `audit.record`, tudo
+  no mesmo `transaction.atomic()`. Uma rota nomeada por transição, nunca um
+  `PATCH` de `status`.
+- `audit.record` infere `program` de `target.program`: filho de agregado (sem
+  FK `program`) precisa de `program=` explícito, senão o `AuditLog` nasce sem
+  chave de tenant.
+- Campo de schema Ninja com o mesmo nome de um método do model exige
+  `resolve_<campo>` explícito — sem ele o método ligado é serializado.
+- Guarda de escrita é **método do model** (`ensure_<coisa>()` levantando
+  `InvalidStateTransition` com `code`), ao lado do predicado de leitura
+  (`<coisa>()` devolvendo bool) que o schema de saída expõe para a tela:
+  a tela desenha o botão pelo bool, o backend recusa pelo `ensure_`.
+- `bulk_create` **não roda `clean()`** — quem escreve em lote confere o
+  espelho da `UniqueConstraint` à mão antes, senão a violação vira
+  `IntegrityError` → 500 em vez do `code` do domínio.
+- Rota de ato com nome literal (`.../bareme/clone`) só convive com
+  `.../bareme/{item_id}/` porque o conversor é `int:`. Sem o conversor
+  tipado a ordem de registro decide, em silêncio.
+- **Upload é sempre `POST`.** O Django só monta `request.POST`/`request.FILES`
+  em requisição POST, então `Form(...)`/`File(...)` sob `@router.patch` recebe
+  corpo vazio, em silêncio. Arquivo entra por rota `POST` própria; o `PATCH`
+  dos demais campos é JSON, ao lado. Registrado no `CLAUDE.md`.
+- `view_<model>` sozinha não é porteiro de dado de candidato: o papel Discente
+  tem `view_` de quase tudo (é com ela que lê o próprio). A porta de "material
+  de candidato alheio" é `download_applicationdocument` (Secretaria e Comissão;
+  a Coordenação não tem) — checada **depois** da posse, que é a regra, e não a
+  exceção. Helper `_garantir_acesso_a_inscricao` em `scholarships/router.py`.
+- Nota derivada (`candidate_score = item.raw_score(quantity)`) **não entra no
+  schema de entrada**: é assim que "o candidato não escolhe a própria nota"
+  vira código. Campo extra no corpo é ignorado pelo pydantic, sem erro — o
+  teste que prova isso manda o campo e confere o gravado.
+- Upload de teste cai em `tmp_path` pela fixture autouse `media_temporaria`
+  (`backend/conftest.py`) — não montar `MEDIA_ROOT` local. E teste de "o
+  arquivo antigo sumiu do storage" precisa de **nomes diferentes** nos dois
+  envios: com o mesmo nome o caminho é liberado no delete e reocupado pelo
+  novo upload, e o `exists()` volta True sem nada estar errado.
+
+- **`filter(<relação>__<campo>__isnull=True)` traz também quem não tem
+  relação nenhuma** — o join vira LEFT OUTER e a coluna é nula porque a linha
+  não existe. "Tem filho com campo nulo" se escreve com
+  `Exists(Filho.objects.filter(pai=OuterRef("pk"), campo__isnull=True))`, que
+  ainda dispensa o `distinct()`. Registrado no `CLAUDE.md`.
+- Permissão `view_<model>` **não** é porteiro de "quais registros": quem
+  recorta é `visible_to(user, program)` no QuerySet, chamado logo depois de
+  `for_program` (precedente em `academic/models.py`). Lista de papéis com
+  visão ampla é constante de módulo (`PAPEIS_COM_VISAO_DA_FILA`).
+- O que a comissão/secretaria **não** pode reescrever se resolve no **schema
+  de entrada**, não em checagem: `BaremeEntryReviewIn` tem dois campos, e é
+  por isso que `quantity` no corpo é ignorado sem erro.
+- **Rota de escrita nova exige conferir o `view_` do mesmo model** no papel que
+  a usa: `change_X` sem `view_X` dá 403 na tela de quem escreve, e a migration
+  de papéis distribuiu `view_` item a item (só a Coordenação recebeu tudo).
+- **Rota nomeada como o service que ela chama exige importar o módulo**
+  (`from . import services`), e não `from .services import publish_final`: o
+  `def` da rota, mais abaixo no arquivo, sombreia o nome importado e a rota
+  passa a chamar a si mesma. Não há erro de importação — o estouro é em
+  runtime, na primeira chamada.
+- **Snapshot de publicação é `bulk_update`, e `auto_now` não dispara nele**:
+  `updated_at` entra na lista de campos com o instante da publicação
+  atribuído à mão, senão a coluna fica mentindo a data da última alteração.
+- **Teste que procura texto em PDF do ReportLab precisa desfazer o escape
+  octal e a quebra de linha.** Acento vira `\351`/`\347` dentro do operador
+  de texto, e `Paragraph` parte a frase em `Tj` separados: substring longa
+  nunca casa. O helper que funciona (`texto_do_pdf` em
+  `test_bolsas_pdf.py`) junta os trechos `(...) Tj` com espaço e converte os
+  escapes de volta. Registrado no `CLAUDE.md`.
+- **Dinheiro no papel: `formats.number_format(..., force_grouping=True)`.**
+  Sem ele sai `3200,00` em vez de `3.200,00` — `USE_THOUSAND_SEPARATOR` é
+  falso por padrão. Registrado no `CLAUDE.md`.
+- **Rota nova no front quebra o `make typecheck` com `EACCES` em
+  `.svelte-kit/`**: o Vite do container `frontend` roda como root sobre o
+  mesmo bind mount e gera os artefatos da rota nova com dono errado.
+  `find frontend/.svelte-kit -user root` acha; `docker compose exec -T
+  frontend rm -rf ...` apaga. Registrado no `CLAUDE.md`.
+- **Tela desenha pelo bool que o schema já traz resolvido**
+  (`bareme_editable`, `submission_open`, `appeal_open`), nunca por uma cópia
+  da máquina de estados no front. O servidor continua recusando com 409; a
+  tela só evita o clique perdido.
+- **Item de menu do módulo é escolhido pela permissão que separa o público
+  daquela tela**, e não pela mais óbvia: os quatro papéis têm
+  `view_scholarshipedition`; quem separa a Secretaria/Coordenação do Discente
+  e da Comissão é `view_committeemember`. Confira pela `/auth/me` das contas
+  do `make seed` antes de fechar a story.
+- **Decimal do Ninja viaja como string no `schema.d.ts`** — estado de
+  formulário é `string`, senão `2.50` volta `2.5` na tela.
+- **Papel novo de um módulo só tem permissões daquele app**: a Comissão de
+  Bolsas não tem `programs.view_researchline` nem `academic.view_teacher`, e
+  filtro que depende de catálogo de outro app é condicional na tela
+  (`podeVerLinhas`, `podeVerDocentes`), nunca chamada certa de 403.
+- **Rota nova com `{id}` no caminho exige entrada em `CASOS`** de
+  `test_bolsas_tenant.py`: `test_a_lista_de_casos_cobre_todas_as_rotas_com_id`
+  varre o `router` e falha quando alguma fica de fora. É o guarda que impede
+  rota nascer sem teste de tenant — a falha aparece só na suíte inteira.
+- **Conta derivada que a tela exibe vira rota, não aritmética no front.** O
+  total por item com o teto aplicado é `item_totals()` no model +
+  `GET /applications/{id}/item-totals/`; somar e cortar pelo `cap` publicado
+  reescreveria `apply_cap` do outro lado do fio.
+- **Teste de escopo de tenant precisa do estado que PERMITE a operação.** Num
+  estado restritivo o vazamento se esconde atrás do 409 da guarda de fase, e a
+  asserção passa sem nunca ter tocado o objeto do outro programa. E a asserção
+  é **404 estrito**: 403 ou 409 significam que a rota chegou ao objeto.
+- **Lista de rotas de um app se audita por `router.path_operations`**
+  (`{caminho: PathView}`, cada `operation` com `.methods`) — é assim que o
+  teste cobra que rota nova entre também no teste de tenant, em vez de manter
+  a lista à mão.
+- **Regra de visibilidade compartilhada entre a rota JSON e a rota do PDF é
+  uma função só** (`_garantir_resultado_visivel`): duas cópias divergem, e a
+  que vaza é sempre a versão imprimível, que é a que circula.
+
+
+## 2026-09-01 - f1-app-scholarships-esqueleto
+- Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
+  arquivos, registro em `INSTALLED_APPS` depois de `apps.selection` e router
+  vazio montado em `/api/v1/scholarships/`.
+- Em `models.py`, só enums e constantes de módulo (Seção 1 do plano):
+  `ScholarshipEditionStatus`, `ScholarshipLevel`, `BaremeSection`,
+  `BaremeUnit`, `PriorityBand` (10 valores na ordem canônica),
+  `AppealOutcome`, `ApplicationDocumentKind` (7 tipos) e as constantes
+  `ORDEM_DAS_FAIXAS`, `BONUS_FUMP`, `ORDENACAO_DA_FAIXA`. Nenhum model.
+- Arquivos: `backend/apps/scholarships/{__init__,apps,models,admin,router,schemas}.py`,
+  `.../migrations/__init__.py`, `.../tests/__init__.py`,
+  `backend/config/settings/base.py`, `backend/api.py`.
+- **Learnings for future iterations:**
+  - `BONUS_FUMP` só tem as chaves 1 e 2 — o nível 0 ("sem nível") não pontua e
+    deve ser lido com `.get(fump_level, Decimal("0.00"))`, nunca com `[]`.
+  - `ORDENACAO_DA_FAIXA` só lista as duas faixas com regra própria; faixa
+    ausente ordena por nota decrescente. Não preencher as outras oito.
+  - `PriorityBand.B24_I` e `B24_II` não são deriváveis do questionário: só
+    entram por `band_override` da secretaria (decisão B6 do plano).
+  - `ScholarshipLevel` repete os valores de `Student.Level`
+    (`apps/academic/models.py`) de propósito — a inscrição copia e congela o
+    nível; não trocar por reuso do enum aninhado.
+---
+
+## 2026-09-01 - f2-edicao-e-comissao
+- `ScholarshipEdition`: FK `program` PROTECT, `year`, `title`, `status`,
+  `notice_file`, as cinco datas do cronograma como `DateField(null=True)`
+  (informação, nunca gatilho), `draw_seed`, `published_preliminary_at`,
+  `published_final_at`; unique `(program, year)` espelhado em `clean()` como
+  `duplicate_edition`. Cinco transições sempre para frente
+  (`open_submissions`/`start_review`/`publish_preliminary`/`open_appeals`/
+  `publish_final`), cada uma exigindo o estado anterior e levantando
+  `InvalidStateTransition` (409); nenhuma salva. Guardas de leitura
+  `bareme_editable()`, `submission_open()`, `committee_can_review()` (verdadeiro
+  em `under_review` **e** em `appeals_under_review`), `appeal_open()` e
+  `results_visible_to_student()` (a partir do preliminar).
+- `CommitteeMember`: `edition` CASCADE, `teacher` PROTECT, `appointed_on`,
+  `ordinance`, unique `(edition, teacher)`; sem FK `program` — chega pelo pai,
+  e o `for_program()` do QuerySet filtra por `edition__program`. Docstring em
+  CAIXA ALTA avisando que é registro histórico, não autorização.
+- Migration `0001_initial` gerada, lida e aplicada no canteiro (`make migrate`).
+- Admin quebra-vidro com `AuditedModelAdmin`, inline da comissão na edição e
+  `draw_seed`/carimbos de publicação em `readonly_fields`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0001_initial.py`, `.../tests/test_bolsas_edital.py`.
+- `make ready` verde (1303 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - `appeal_open()` é `appeals_under_review`, não `preliminary_result`: quem
+    abre a fase é `open_appeals()`, e é nela que o discente interpõe e a
+    comissão julga (`ScholarshipAppeal.judge()` vai exigir o mesmo estado).
+  - Transição que carimba instante recebe `at` explícito
+    (`publish_preliminary`, `publish_final`); as outras três não recebem nada —
+    nada neste app olha o relógio para decidir.
+  - `docker compose exec backend python manage.py ...` **não funciona** neste
+    canteiro (a imagem não tem o venv no PATH do exec): use `make migrate`, que
+    roda `uv run` no host contra o banco do Compose.
+  - Teste de transição vale mais parametrizado pela matriz
+    (transição × todos os estados) do que um caso por vez: pega de graça o
+    "não repete o próprio destino".
+
+## 2026-09-01 - f3-barema-item
+- `BaremeItem`: `edition` CASCADE, `level`, `section`, `code`, `text`, `unit`,
+  `points_per_unit` `Decimal(6,2)`, `cap` `Decimal(7,2)`; unique
+  `(edition, level, code)` espelhado em `clean()` como `duplicate_bareme_item`.
+  Sem FK `program` — `for_program()` filtra por `edition__program`; `for_edition()`
+  e `for_level()` completam o QuerySet, porque o barema é por (edição, nível).
+- `raw_score(quantity)` e `apply_cap(total)` **separadas**, com o porquê
+  comentado no código: o teto é do item, aplicado sobre a soma dos lançamentos,
+  nunca sobre cada lançamento.
+- Migration `0002_baremeitem` gerada, lida (tabela nova, retrocompatível) e
+  aplicada no canteiro. Admin quebra-vidro com `AuditedModelAdmin`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0002_baremeitem.py`, `.../tests/test_bolsas_barema.py`.
+- `make ready` verde (1318 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - O congelamento do barema **não** está em `BaremeItem`: quem guarda é
+    `ScholarshipEdition.bareme_editable()`, chamado pelo router da story de
+    escrita. Não duplicar a guarda no `clean()` do item.
+  - `raw_score` devolve o Decimal com a escala do produto (2,50 × 0,50 =
+    1,250, três casas). O arredondamento para 2 casas é da nota final, não
+    do lançamento — se aparecer, é em `final_score()`/publicação.
+  - `pytest` neste canteiro imprime "Pytest: No tests collected" quando a
+    saída passa pelo filtro do shell; redirecione para arquivo
+    (`> /tmp/pt.log 2>&1`) para ver o resultado real.
+---
+
+## 2026-09-01 - f4-inscricao-e-questionario
+- `ScholarshipApplication`: FK `program` PROTECT direta (ADR-007), `edition`
+  CASCADE, `student` PROTECT, `level` copiado do `Student` no ato e congelado,
+  `submitted_at`; unique `(edition, student)` espelhado em `clean()` como
+  `duplicate_application`.
+- Questionário **fixo em código** (B7): os oito booleanos, com
+  `has_paid_activity` como a chave que joga do bloco 2.1 para o 2.4, mais
+  `cadastro_unico` (assunção marcada em `help_text`: é o critério II do
+  desempate e não existe na spec do questionário).
+- `monthly_income` `Decimal(10,2)` e `weekly_hours` obrigatórios quando
+  `has_paid_activity` → `income_required`; `band_override` +
+  `band_override_reason` com `override_reason_required` (B6); snapshot de
+  publicação (`published_band/score/position`, `draw_order`, `published_at`)
+  todo nulo até publicar; `fump_level` 0/1/2 com `NIVEIS_DA_FUMP`.
+- `ScholarshipApplication.for_student(edition=, student=)`: classmethod que
+  devolve instância **não salva** com `program` e `level` já copiados, e recusa
+  discente sem nível (`student_without_level`) — isolada e eletiva não têm.
+- `ensure_editable(user)`: janela aberta (409 `submissions_closed`) **e** o
+  próprio aluno (403 `not_application_owner`). `band()` devolve só a
+  sobrescrita; sem ela é `None` ("ainda não derivada"), nunca `residual`.
+- Migration `0003_scholarshipapplication` gerada, lida (tabela nova,
+  retrocompatível) e aplicada no canteiro. Admin quebra-vidro com o snapshot
+  em `readonly_fields`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0003_scholarshipapplication.py`,
+  `.../tests/test_bolsas_inscricao.py`.
+- `make ready` verde (1348 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - Teste de model sem banco só passa se as FKs forem **sem pk**: com
+    `edition_id`/`student_id` preenchidos, o espelho da `UniqueConstraint`
+    dentro de `clean()` consulta o banco e o teste sem `django_db` quebra. O
+    `_inscricao()` deste arquivo é o molde.
+  - Não crie fixture `program` local: já existe uma em `backend/conftest.py`
+    que faz `Program.objects.get(acronym="PPGD")` da data migration. Criar
+    outro PPGD estoura o unique e derruba a suíte inteira do arquivo.
+  - Substituir FK por `SimpleNamespace` **não funciona** (`ValueError` do
+    descriptor). Para montar `Student → Person → User` em memória, atribua
+    instâncias de verdade sem salvar: `Student(person=Person(pk=5, user_id=7))`.
+  - `Student` regular exige `project` e `admission_date` (CheckConstraint), e
+    isolada/eletiva exige `term` e **proíbe** `level`. Fixture de discente para
+    bolsas precisa de `ResearchLine` + `CollectiveProject`.
+  - Campo `null=True` em `CharField` com choices pede `# noqa: DJ001` — o
+    `ruff` cobra, e aqui nulo é semântico ("sem sobrescrita" ≠ "").
+---
+
+## 2026-09-01 - f5-documentos-da-inscricao
+- `ApplicationDocument`: `application` CASCADE, `kind` (os 7
+  `ApplicationDocumentKind`), `file`, `uploaded_at`; unique
+  `(application, kind)` espelhado em `clean()` como
+  `duplicate_application_document`. Sem FK `program` — `for_program()`
+  filtra por `application__program`; `for_application()` completa o QuerySet.
+  `Meta.permissions` com `download_applicationdocument`: baixar o anexo é mais
+  do que ver a inscrição (dados pessoais do candidato).
+- `validate_upload(filename, size)` como classmethod, mesmo contrato de
+  `RequestDocument.validate_upload` (PDF + imagem, 10 MB, `code`
+  `invalid_document` único para os dois casos).
+- `replace_for(application=, kind=, file=)` no model, devolvendo
+  `(documento, substituiu)`: apaga o arquivo do storage **antes** de escrever e
+  recria a linha em vez de editar o `file` (o `uploaded_at` é `auto_now_add` e
+  ficaria com a data do envio errado). A lógica ficou no model, e não no router
+  como nas isoladas, porque a story de router (f11) só vem depois e a
+  substituição é comportamento de um model só.
+- `caminho_do_documento_da_inscricao`: função de módulo particionando
+  `bolsas/edicao-{id}/inscricao-{id}/questionario/{filename}` — o subdiretório
+  separa do comprovante do barema, que vem na mesma inscrição.
+- `ScholarshipApplication.pending_docs()`: os "Sim" sem comprovante, na ordem
+  de declaração do enum, guiados pelo mapa de módulo
+  `RESPOSTA_QUE_EXIGE_DOCUMENTO` (kind → nome do booleano).
+- Migration `0004_applicationdocument` gerada, lida (tabela nova,
+  retrocompatível) e aplicada no canteiro. Admin quebra-vidro com
+  `ApplicationDocumentAdmin` + inline na inscrição.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0004_applicationdocument.py`,
+  `.../tests/test_bolsas_documentos.py`.
+- `make ready` verde (1384 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - `RESPOSTA_QUE_EXIGE_DOCUMENTO` existe para que a igualdade entre o nome do
+    `kind` e o do booleano seja decisão escrita, não coincidência. Model novo
+    que dependa do questionário deve ler dele, nunca reconstruir a lista.
+  - Dos 9 booleanos do questionário, 7 cobram comprovante: `has_paid_activity`
+    (chave de bloco) e `cadastro_unico` (critério de desempate) **não**. Não
+    completar o mapa "por simetria".
+  - `pending_docs()` em inscrição **sem pk** devolve tudo o que foi afirmado:
+    o manager reverso não existe antes do `save()`, e a guarda `self.pk is
+    None` é o que deixa o teste rodar sem banco.
+  - Teste de "o arquivo antigo sumiu do storage" precisa de **nomes de arquivo
+    diferentes** nos dois envios: com o mesmo nome, o storage libera o caminho
+    no delete e o segundo upload o reocupa — o `exists()` volta True e o teste
+    falha sem que nada esteja errado.
+  - `SimpleUploadedFile` cai em `tmp_path` por causa da fixture autouse
+    `media_temporaria` de `backend/conftest.py`; não montar MEDIA_ROOT local.
+
+## 2026-09-01 - f6-lancamento-e-observacao-por-item
+- `BaremeEntry`: `application` CASCADE (`bareme_entries`), `item` PROTECT,
+  `description`, `quantity` Decimal(6,2), `candidate_score` Decimal(7,2)
+  (gravado = `item.raw_score(quantity)`, **sem teto**), `committee_score`
+  Decimal(7,2) **null = não avaliado**, `committee_note` blank, `reviewed_at`,
+  `proof` FileField obrigatório (`caminho_do_comprovante`, função de módulo,
+  `bolsas/edicao-{id}/inscricao-{id}/{filename}` — sem o `questionario/` do
+  outro anexo). Sem `UniqueConstraint`: vários lançamentos no mesmo item são o
+  caso normal, e é a soma deles que enfrenta o `cap`.
+- `clean()` do lançamento: `bareme_item_mismatch` (item de outra edição **ou**
+  de outro nível), `invalid_quantity` (≤ 0) e `note_required` (comissão diverge
+  do candidato sem observação — B9). `validate_upload` de classe: **só PDF**,
+  10 MB (`EXTENSOES_DO_COMPROVANTE_DO_BAREMA`,
+  `TAMANHO_MAXIMO_DO_COMPROVANTE_DO_BAREMA`). `Meta.permissions` com
+  `review_baremeentry`, separada de `change_baremeentry`.
+- `ItemReview`: `application` CASCADE (`item_reviews`), `item` PROTECT, `note`,
+  unique `(application, item)` espelhado como `duplicate_item_review`, mais a
+  mesma checagem de edição/nível do lançamento.
+- Notas em `ScholarshipApplication`: `committee_score()`, `candidate_score()`,
+  `subtotal(section)` — todas pelo helper privado `_somar_por_item()`, que
+  agrupa por item, aplica `item.apply_cap()` em cada grupo e só então soma — e
+  `fully_reviewed()` derivado (`pending_review()` vazio).
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../migrations/0005_baremeentry_itemreview.py`, `.../admin.py`,
+  `.../tests/test_bolsas_barema.py`.
+- **Learnings for future iterations:**
+  - A seção de produção bibliográfica do enum chama-se
+    `BaremeSection.BIBLIOGRAPHIC`, não `PUBLICATION` — o plano usa o rótulo
+    do edital ("Produção Bibliográfica") e o código usa o valor do enum.
+  - Nota agregada **nunca** soma lançamentos já limitados: agrupe por
+    `item_id`, some o grupo e só depois chame `apply_cap()`. Somar
+    `apply_cap()` de cada lançamento dá a mesma resposta com um lançamento só
+    e a errada com dois — e é a diferença entre 24,00 e 18,00 no item 1.8.
+  - `committee_score` nulo é **não avaliado** e conta zero no total; quem
+    denuncia a lista imatura é `fully_reviewed()`, e não um total que se recusa
+    a existir. Inscrição sem lançamento nenhum é vacuamente `fully_reviewed()`.
+  - Método derivado que lê relação reversa precisa de guarda `if self.pk is
+    None`: o gerente reverso não existe em instância não salva, e os testes de
+    invariante deste app são em memória.
+  - `_validar_item()` só dispara com as duas FKs **gravadas** (`application_id`
+    e `item_id` preenchidos): teste de mismatch é `django_db`, ao contrário do
+    espelho de `UniqueConstraint`, que basta o `<fk>_id`.
+
+## 2026-09-01 - f7-recurso-model
+- `ScholarshipAppeal`: `application` `OneToOneField` CASCADE
+  (`related_name="appeal"` — um recurso por candidato por edição, Q14, porque a
+  inscrição já é única em `(edition, student)`), `text`, `submitted_at`
+  (`auto_now_add` — o recurso nasce interposto, não há rascunho), `outcome`
+  nulo até julgar, `reasoning` blank, `decided_at`. `clean()` espelha o
+  `unique` do OneToOne como `duplicate_appeal`. QuerySet com `for_program()`
+  (via `application__program`), `for_edition()` e `pending()`.
+- **Sem model de documento, e a ausência está comentada em CAIXA ALTA na
+  docstring da classe**: o item 1.3 do edital de bolsas veta postagem fora do
+  prazo de inscrição, ao contrário do recurso das isoladas. Um teste
+  (`test_o_recurso_nao_tem_model_de_anexo`) trava a regressão pelo
+  `_meta.related_objects` vazio.
+- `judge(*, outcome, reasoning, at)`: exige `edition.appeal_open()`
+  (`edition_not_appeals_under_review`, 409), recurso ainda não julgado
+  (`appeal_already_judged`, 409), `outcome` do enum
+  (`invalid_appeal_outcome`, 400) e fundamentação não vazia
+  (`appeal_reasoning_required`, 400). Não salva.
+- **Não há recálculo de nota, e a docstring diz por quê**: não existe campo a
+  recalcular — `committee_score()` da inscrição é derivada dos `BaremeEntry` a
+  cada leitura, e `committee_can_review()` já é verdadeiro em
+  `appeals_under_review`, de modo que o deferimento reabre o lançamento sem
+  código novo. O teste
+  `test_deferido_o_recurso_a_nota_muda_sozinha_ao_corrigir_o_lancamento`
+  prova isso ponta a ponta.
+- Migration `0006_scholarshipappeal` gerada, lida (tabela nova,
+  retrocompatível) e aplicada no canteiro. Admin quebra-vidro com
+  `submitted_at` em `readonly_fields`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0006_scholarshipappeal.py`,
+  `.../tests/test_bolsas_recurso.py`.
+- `make ready` verde (1438 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - Teste que precisa da edição em `appeals_under_review` **no banco** tem de
+    percorrer a escada inteira (`open_submissions` → `start_review` →
+    `publish_preliminary(at=)` → `open_appeals`): as transições exigem o estado
+    anterior e não há atalho. Em memória, é mais barato construir a
+    `ScholarshipEdition(status=...)` direto — foi o que o `_recurso()` deste
+    arquivo faz.
+  - Model sem FK própria além da do pai (`ScholarshipAppeal`) monta em memória
+    com `ScholarshipApplication(edition=ScholarshipEdition(program_id=1), ...)`:
+    o `clean()` só consulta o banco com `application_id` preenchido, e sem pk
+    na inscrição os testes de `judge()` rodam sem `django_db`.
+  - `ScholarshipEditionStatus.values` serve de matriz de parametrização para
+    "transição fora do estado" — o caso "o preliminar publicado ainda não abre
+    a fase de recursos" sai de graça.
+---
+
+## 2026-09-01 - f8-papeis-e-seed
+- Três permissões próprias novas em `Meta.permissions`:
+  `publish_scholarshipedition` (em `ScholarshipEdition` — publicar congela o
+  ano, não é mais uma transição de trabalho) e `set_fump_level` +
+  `override_band` (em `ScholarshipApplication` — os dois campos que a
+  Secretaria escreve na inscrição **alheia** sem receber `change` sobre ela).
+  Migration `0007_permissoes_proprias` é só `AlterModelOptions`.
+- `0008_papeis_da_bolsa`: espelho de `selection.0006_papeis_da_selecao` e de
+  `academic.0011_papeis_da_isolada`, docstring inclusive. Grupo novo:
+  **"Comissão de Bolsas"**. Secretaria monta edição/barema/comissão + lê
+  inscrição e lançamento + baixa comprovante + as três próprias; Comissão lê
+  os quatro models do fluxo, `review_baremeentry`, `download_...` e
+  `change_scholarshipappeal`; Discente add/view/change de inscrição e
+  lançamento, view de edição e barema, add/view de recurso; Coordenação só
+  `view` dos 8 models. Nenhum `delete_*`, nenhum `is_staff`/`is_superuser`.
+- `seed_demo` ganhou `_bolsas(programa, docentes)`, chamada dentro do
+  `transaction.atomic` do `handle` — roda para **todo** programa que a carga
+  semeia (conferido: PPGD e PPGA ficam com uma edição 2026 cada, em
+  `submissions_open`, com 4 itens de barema e 2 membros de comissão). Segunda
+  rodada não cria nada. Conta nova `comissao.bolsas@ppgd.test` no papel
+  Comissão de Bolsas, listada em `_contas()`/`CONTAS-DEMO.txt`.
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../migrations/{0007_permissoes_proprias,0008_papeis_da_bolsa}.py`,
+  `.../tests/test_bolsas_papeis.py`,
+  `backend/apps/core/management/commands/seed_demo.py`.
+- `make ready` verde (1475 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - O `criar()` dessas data migrations deriva o model do codename
+    (`codename.split("_", 1)[1]`). Permissão própria cujo codename **não** é
+    `verbo_model` — `set_fump_level`, `override_band` — precisa do mapa
+    `MODEL_DA_PERMISSAO`, senão nasce pendurada num content type fantasma
+    ("fump_level") e o `require_perm` nunca casa. Há teste travando isso.
+  - **O que o plano NÃO deu, e as stories de API vão sentir** (registrado
+    aqui de propósito, sem mexer no que a Seção 5 do plano lista):
+    - a Comissão **não** tem `add_itemreview`/`change_itemreview`. A leitura
+      coerente é que a observação por item é o mesmo ato de avaliar: f13 deve
+      exigir `scholarships.review_baremeentry` também na rota de `ItemReview`.
+    - a Comissão tem `change_scholarshipappeal` mas **não**
+      `view_scholarshipappeal`. f17 deve exigir `change_...` também na rota
+      que lista os recursos a julgar (é a fila de trabalho de quem julga), ou
+      abrir uma migration de papéis adicional. Vale conferir no merge.
+  - Anexar comprovante do questionário **não** tem permissão própria: é
+    `change_scholarshipapplication`, mesmo recorte de `RequestDocument` na
+    isolada. `download_applicationdocument` existe só para a leitura do dado
+    pessoal alheio (Secretaria e Comissão).
+  - `seed_demo` semeia **um** programa por invocação (`--acronym`); o segundo
+    tenant sai de uma segunda chamada com `--email-domain` próprio. O
+    `SEED_CMD` do `obra.conf` e o `make seed` só chamam a primeira — quem
+    quiser o PPGA no canteiro roda a segunda à mão (o comando está na
+    docstring do módulo). Pôr o seed novo no caminho por-programa é o que faz
+    ele valer para os dois.
+  - `_pessoa()` estoura `CommandError` se o Group não existe: papel novo em
+    data migration tem de estar **aplicado** antes do seed — daí `migrate` vir
+    antes do `seed_demo` no `SEED_CMD`.
+---
+
+## 2026-09-01 - f9-api-edicao-e-comissao
+- Borda HTTP da edição do edital de bolsas em `/api/v1/scholarships/editions/`:
+  `GET` (paginada, filtros `year`/`status`), `POST` (201), `GET {id}/`,
+  `PATCH {id}/`, as **cinco transições nomeadas**
+  (`open-submissions`, `start-review`, `publish-preliminary`, `open-appeals`,
+  `publish-final`) e a comissão (`GET`/`POST /editions/{id}/committee/`,
+  `DELETE /editions/{id}/committee/{member_id}/`).
+- Toda rota abre com `require_perm` e `current_program` logo depois; nenhuma
+  rota pública (o aluno já está logado). Escopo entra na **busca**
+  (`_edicao_do_programa`): edição de outro programa é 404, nunca 403.
+- As duas publicações exigem a permissão própria
+  `scholarships.publish_scholarshipedition`; as outras três,
+  `change_scholarshipedition`. O `DELETE` da comissão exige
+  `change_committeemember` (nenhum papel tem `delete_*` — mesmo precedente e
+  mesma justificativa do `delete_stage` de `selection/router.py:366`).
+- `_transicionar()` é o corpo comum das cinco: transiciona (o model levanta
+  409 com `code` próprio), salva com `update_fields` e grava o `AuditLog` no
+  mesmo `transaction.atomic()`.
+- Schemas explícitos: `ScholarshipEditionIn/Patch/Out`, `CommitteeMemberIn/Out`.
+  O `Out` da edição resolve as **cinco guardas de leitura** do model
+  (`bareme_editable`, `submission_open`, `committee_can_review`, `appeal_open`,
+  `results_visible_to_student`) — a tela desenha o que o servidor decidiu, e a
+  máquina de estados não é reimplementada no front.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_edital.py` (novo).
+- `make ready` verde (1543 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **O teste de API foi para um arquivo novo**, `test_bolsas_api_edital.py`, e
+    não para o `test_bolsas_edital.py` que o `prd.json` lista: aquele é nível
+    (a) da pirâmide (objeto em memória, sem `django_db` no módulo) e misturar
+    rota lá tornaria o `pytestmark` do arquivo inteiro `django_db`. É a mesma
+    divisão que `selection` faz (`test_models.py` × `test_api_editais.py`). As
+    stories f10–f20 devem seguir o par `test_bolsas_<assunto>.py` (model) +
+    `test_bolsas_api_<assunto>.py` (rota).
+  - O `PATCH` da edição **não** tem `ensure_editable`, de propósito: o
+    cronograma é informação divulgada e retificar data publicada é rotina do
+    edital. Quem congela o que muda nota já dada é `bareme_editable()`, na
+    story do barema — não repetir a guarda aqui.
+  - **`publish-preliminary` e `publish-final` ainda transicionam direto pelo
+    model.** f18 deve mover o corpo dessas duas rotas para o service de
+    publicação (snapshot de faixa/nota/posição + sorteio + `AuditLog` único)
+    **sem mudar o nome nem o contrato da rota** — o comentário na docstring de
+    `publish_preliminary` marca o ponto exato.
+  - **Nenhuma story cobre o upload do `notice_file` da edição** (nem esta, nem
+    f10–f21), e o model não tem `validate_notice_upload`. O `Out` já expõe
+    `notice_filename`/`notice_url`, mas hoje só o Admin preenche o campo. Se a
+    tela f21 precisar do PDF, é rota nova + validador no model, no molde de
+    `upload_notice_file` (`selection/router.py`) — fica registrado para o merge.
+  - `audit.record` infere `program` de `target.program`; filho de agregado
+    (`CommitteeMember`, que não tem FK `program`) precisa do `program=` explícito,
+    senão o `AuditLog` nasce sem chave de tenant.
+  - Matriz `transição × todos os estados` também vale no teste de API: um
+    `pytest.skip` quando o estado é o de origem cobre os 25 pares e pega de
+    graça "a transição não repete o próprio destino".
+  - Campo do schema com o **mesmo nome de um método do model**
+    (`submission_open`) só funciona com `resolve_<campo>` explícito — sem ele o
+    Ninja serializaria o método ligado.
+
+## 2026-09-01 - f10-api-barema-e-clonagem
+- CRUD do barema em `/api/v1/scholarships/editions/{id}/bareme/`: `GET`
+  (lista completa, filtro opcional `level`), `POST` (201), `PATCH {item_id}/`,
+  `DELETE {item_id}/` e `POST .../bareme/clone`.
+- **O congelamento virou método do model**: `ScholarshipEdition
+  .ensure_bareme_editable()` levanta `InvalidStateTransition` com
+  `code="bareme_frozen"` (409) fora do rascunho. O par leitura/cobrança é o
+  mesmo de `SelectionProcess.is_draft`/`ensure_editable`: `bareme_editable()`
+  desenha a tela, `ensure_` recusa a escrita. As três escritas e a clonagem
+  chamam a guarda; a **leitura fica aberta em qualquer estado** — o barema
+  publicado é o que o candidato lê para lançar.
+- `services.py` do app nasce com `clone_bareme(source=, target=, request=)`
+  (ADR-002: cruza dois agregados). Copia os dois níveis por
+  `CAMPOS_CLONADOS` explícito (não `model_to_dict` — campo novo no
+  `BaremeItem` deve exigir decisão consciente sobre viajar no clone),
+  confere as duplicatas `(level, code)` **antes** de escrever, usa
+  `bulk_create` e grava **um** `AuditLog` com `source_edition_id`/`created`.
+  Recusa origem igual ao destino (`same_edition`, 400).
+- O `DELETE` exige `change_baremeitem`, e não `delete_`: nenhum papel de
+  domínio recebe `delete_*` (migration `0008`, com teste guardando) — mesmo
+  precedente do `DELETE` da comissão.
+- Schemas: `BaremeItemIn/Patch/Out`, `BaremeCloneIn/Out`. O `Out` resolve os
+  três rótulos (`level_label`, `section_label`, `unit_label`) porque a tela
+  de lançamento agrupa por seção e o nome da seção é do edital.
+- Arquivos: `backend/apps/scholarships/{models,router,schemas}.py`,
+  `backend/apps/scholarships/services.py` (novo),
+  `backend/apps/scholarships/tests/test_bolsas_api_barema.py` (novo),
+  `backend/apps/scholarships/tests/test_bolsas_edital.py`.
+- `make ready` verde (1593 passed, 10 skipped). Sem migration (método novo
+  não altera schema).
+- **Learnings for future iterations:**
+  - **A rota `.../bareme/clone` convive com `.../bareme/{int:item_id}/`**
+    porque o conversor é `int:` e "clone" não casa. Rota de ato com nome
+    literal sob um prefixo que também tem id só é segura com o conversor
+    tipado — sem o `int:` a ordem de registro decidiria, em silêncio.
+  - `edicao.bareme_items.all()` devolve o `BaremeItemQuerySet` (o manager
+    reverso herda do manager padrão), então `for_level()` está disponível
+    ali — não é preciso um `BaremeItem.objects.for_edition(...)` para
+    filtrar dentro da edição já escopada.
+  - `bulk_create` **não roda `clean()`**: quem escreve em lote confere o
+    espelho da `UniqueConstraint` à mão antes. Foi o que permitiu o
+    "ou tudo ou nada" do clone com um `code` de domínio em vez de
+    `IntegrityError`.
+  - Rota que devolve schema composto pode retornar `dict` com os objetos do
+    ORM dentro (`{"created": n, "items": [<BaremeItem>]}`): o `Schema` do
+    Ninja resolve por atributo em cada nível.
+  - O teste de API foi de novo para arquivo próprio
+    (`test_bolsas_api_barema.py`), e não para o `test_bolsas_barema.py` que o
+    `prd.json` lista — aquele é nível (a) e continua sem `django_db`.
+    f11–f20 devem manter o par.
+  - `ESTADOS_CONGELADOS = todos menos DRAFT` parametriza as três escritas e
+    a clonagem de graça: 5 estados × 4 rotas, sem escrever caso a caso.
+
+## 2026-09-01 - f11-api-inscricao-e-documentos
+- Borda HTTP da inscrição do discente: `GET /editions/{id}/my-application`,
+  `POST /applications/`, `PATCH /applications/{id}/`,
+  `DELETE /applications/{id}/`, `POST /applications/{id}/documents`
+  (multipart) e `GET /documents/{id}/download`.
+- **A janela e a posse são do model, não da borda**: as quatro escritas do
+  candidato (criar, alterar, excluir, anexar) chamam
+  `ScholarshipApplication.ensure_editable(request.user)`, que devolve 409
+  `submissions_closed` fora de `submission_open()` e 403
+  `not_application_owner` para quem não é o dono. No POST a guarda roda
+  sobre a instância **ainda não salva** — ela só lê a edição e o dono, e é
+  antes de gravar que a janela precisa ser conferida.
+- O vínculo de aluno sai da sessão (`_aluno_da_sessao`, mesmo caminho de
+  `apps/academic/router.py`): nem `student_id` nem `level` existem no
+  schema de entrada, então não há como se inscrever em nome de outro nem
+  escolher a lista em que se compete. Quem só tem isolada cai em
+  `for_student` e recebe 400 `student_without_level`.
+- O `DELETE` exige `change_scholarshipapplication` (nenhum papel tem
+  `delete_*` — mesmo precedente do DELETE do barema e da comissão) e apaga
+  os arquivos dos comprovantes do storage antes do `delete()`, porque o
+  `CASCADE` leva as linhas mas não os arquivos.
+- Upload devolve **201 no primeiro envio e 200 quando substitui** — é o
+  `substituiu` que `ApplicationDocument.replace_for` já devolvia. Validação
+  de extensão/tamanho é `validate_upload` (400 `invalid_document`).
+- Download com **permissão própria**: dono por posse (Person ativa ×
+  `application.student.person_id`), qualquer outro precisa de
+  `scholarships.download_applicationdocument`. A Coordenação, que tem
+  `view_` de tudo, leva 403 — laudo e contracheque não são insumo de
+  acompanhamento. Leitura auditada, como no `RequestDocument`.
+- Schemas: `ScholarshipApplicationIn/Patch/Out`, `ApplicationDocumentOut`,
+  `PendingDocumentOut`. O `Out` da inscrição resolve `band` (método
+  homônimo), `submission_open` (da edição) e `pending_docs` (o
+  "Sim - Não enviado" do legado, já com rótulo). Nem `file` nem `file.url`
+  saem em lugar nenhum.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_inscricao.py` (novo),
+  `backend/apps/scholarships/tests/test_bolsas_api_documentos.py` (novo),
+  `CLAUDE.md` (armadilha do `force_login` duplicado).
+- `make ready` verde. Sem migration (nenhum model mudou).
+- **Learnings for future iterations:**
+  - **Duas fixtures que fazem `force_login` na fixture `client` do
+    pytest-django disputam a mesma sessão, e a última resolvida vence.** O
+    teste "Coordenação não baixa" passou por 200 porque a fixture do
+    documento logava a candidata depois. Fixture que só precisa do dado
+    grava pelo ORM; dois papéis atuando no mesmo teste pedem `Client()`
+    próprios. Está registrado no `CLAUDE.md` — custou uma rodada.
+  - `Student` tem dois `CheckConstraint` que derrubam fixture ingênua:
+    regular exige `project` e `admission_date`
+    (`student_regular_requires_degree_fields`), isolada/eletiva exigem
+    `term` e **proíbem** nível, projeto, orientador e data de ingresso
+    (`student_non_regular_requires_term`).
+  - `Path(x.file.name)` não passa no mypy (`str | None`): o padrão do
+    projeto é `Path(x.file.name or "")`. Idem `default_storage.exists()`.
+  - `streaming_content` não está no tipo do cliente de teste — o projeto
+    embrulha em `def conteudo(resposta: Any)` (precedente em
+    `selection/tests/test_api_atas_secretaria.py`).
+  - O `GET my-application` devolve **404 quando ainda não há inscrição**, e
+    é assim que a tela f22 decide entre formulário em branco e
+    questionário preenchido. Não trocar por 200 com corpo nulo.
+  - `ScholarshipApplicationOut` não expõe os campos de snapshot da
+    publicação (`published_*`, `draw_order`): eles entram com f18/f24. A
+    tela do resultado provavelmente quer um `Out` próprio, e não este.
+  - Nenhuma rota **lista** inscrições ainda — a fila da comissão, com os
+    filtros do legado, é f13. `ScholarshipApplicationOut` já serve a ela.
+---
+
+## 2026-09-01 - f12-api-lancamentos
+- CRUD dos lançamentos do barema em
+  `/api/v1/scholarships/applications/{id}/entries/`: `GET` (sem paginação — a
+  tela agrupa o barema inteiro por seção), `POST` **multipart** com o
+  comprovante junto, `PATCH {entry_id}/` (JSON), `DELETE {entry_id}/`, mais
+  `POST {entry_id}/proof` (troca do comprovante) e
+  `GET /entries/{id}/proof/download`.
+- **`candidate_score` é do servidor**: gravado como `item.raw_score(quantity)`
+  no POST e **recalculado** no PATCH quando item ou quantidade mudam.
+  `BaremeEntryIn` não tem o campo — nem `committee_score`/`committee_note`,
+  que são da rota de avaliação (f13, `review_baremeentry`).
+- Sem comprovante o lançamento não existe (Q11): `proof: UploadedFile =
+  File(...)` faz o 422 vir do Ninja, antes de qualquer regra — corpo
+  incompleto, e não estado que o domínio precise recusar.
+- As quatro escritas passam por `ScholarshipApplication.ensure_editable(user)`
+  (409 `submissions_closed` fora da janela, 403 `not_application_owner` para
+  quem não é o dono). Permissões: `add_baremeentry` no POST,
+  `change_baremeentry` no PATCH/DELETE/troca de comprovante (nenhum papel tem
+  `delete_*`), `view_baremeentry` na leitura.
+- Item de outro **programa** é 404 (`BaremeItem.objects.for_program`); item de
+  outra edição ou de outro nível existe no programa e é o `clean()` que recusa,
+  com `bareme_item_mismatch`.
+- Leitura do barema alheio: posse primeiro, e só depois
+  `download_applicationdocument` (`_garantir_acesso_a_inscricao`). O colega e a
+  Coordenação levam 403; Secretaria e Comissão passam. Mesma linha do download
+  do comprovante do questionário, e o download do comprovante do lançamento é
+  auditado pelo mesmo motivo.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_lancamentos.py` (novo),
+  `CLAUDE.md` (armadilha do multipart em PATCH).
+- `make ready` verde (1677 passed, 10 skipped). Sem migration.
+- **Learnings for future iterations:**
+  - **O `PATCH` não pode ser multipart.** Custou a primeira versão da rota:
+    `HttpRequest._load_post_and_files` devolve `POST`/`FILES` vazios quando o
+    método não é POST, e o Ninja não tem como saber — o corpo simplesmente
+    chega vazio. Por isso a troca do comprovante virou `POST .../proof` em vez
+    de um campo opcional no `PATCH`. Está no `CLAUDE.md`.
+  - O corpo multipart do front é **plano** (`comoFormData` em
+    `frontend/src/lib/api/client.ts` faz `append` chave a chave), então
+    `payload: BaremeEntryIn = Form(...)` serve: o Ninja achata o schema em
+    campos de formulário no OpenAPI (mesmo precedente de
+    `submit_public_application`, `selection/router.py`).
+  - **A rota de download do comprovante do lançamento entrou aqui, e não em
+    f13**, embora nenhuma story a peça: sem ela o comprovante seria
+    inalcançável (o `Out` não publica caminho nem URL, porque o Nginx serve o
+    MEDIA sem passar pelo Django) — e é justamente o comprovante que a comissão
+    lê para decidir a nota. f13 já a encontra pronta.
+  - `_garantir_acesso_a_inscricao` foi escrito para ser reusado por f13: a fila
+    da comissão tem o mesmo problema, porque `view_scholarshipapplication`
+    também está no papel Discente.
+  - Apagar arquivo do storage fica **fora** do `transaction.atomic`: o delete
+    não participa do rollback. Na troca do comprovante, guardar o
+    `proof.name` antigo antes de atribuir o novo, e conferir que mudou antes
+    de apagar (com o mesmo nome o caminho é reocupado e o delete levaria o
+    arquivo novo).
+  - `BaremeSection` não tem `TEACHING`: as seções são as seis do edital
+    (`FORMATION`, `BIBLIOGRAPHIC`, `EVENTS`, `PROFESSIONAL`, `BOARDS`,
+    `OTHER_TITLES`). Estágio em docência é `PROFESSIONAL`.
+---
+
+## 2026-09-01 - f13-api-analise-da-comissao
+- **A fila de trabalho da comissão**: `GET /editions/{id}/applications/`,
+  paginada, com `level` **obrigatório** (422 sem ele — a classificação corre
+  por nível, e uma lista com os dois juntos não é fila de ninguém) e os
+  filtros do legado: `research_line_id` (chega pelo projeto coletivo do
+  vínculo), `advisor_id`, `admission_year`, as **oito** respostas do
+  questionário, `appeal` (`AppealState`: none/pending/judged) e
+  `pending_review`.
+- **`view_scholarshipapplication` não é porteiro da fila.** O Discente também
+  a tem — é com ela que lê a própria inscrição. Quem recorta é
+  `ScholarshipApplicationQuerySet.visible_to(user, program)`, no molde de
+  `EnrollmentAdjustmentRequestQuerySet.visible_to`: Secretaria, Coordenação e
+  Comissão de Bolsas (constante `PAPEIS_COM_VISAO_DA_FILA`) veem a edição
+  inteira, o resto vê o que é seu.
+- `PATCH /entries/{id}/review` com `BaremeEntryReviewIn` de **dois campos**:
+  é o contrato, e não uma checagem, que impede a comissão de reescrever
+  `quantity`/`description`/`candidate_score`. Exige `review_baremeentry` e
+  passa por `BaremeEntry.review()`, que chama a guarda nova
+  `ScholarshipEdition.ensure_committee_can_review()` (409 `review_closed`
+  fora de `under_review`/`appeals_under_review`). A divergência sem
+  observação continua sendo o `clean()` (`note_required`).
+- `PUT /applications/{id}/item-review` faz upsert da `ItemReview` (uma por
+  (inscrição, item)) e `GET .../item-reviews/` a lê. Escrever exige
+  `review_baremeentry` — comentar o item é parte do ato de analisar, e um
+  papel que comentasse sem poder pontuar não existe no edital.
+- **Migration de dados `0009_leitura_das_observacoes_por_item`**: a `0008`
+  deu `view_itemreview` só à Coordenação, e ficaram sem ele justamente quem
+  escreve (Comissão), quem responde ao candidato (Secretaria) e o
+  destinatário do comentário (Discente, que recorre dele). Os três exact-set
+  de `test_bolsas_papeis.py` foram atualizados — **é permissão, então é
+  ponto de conferência no merge**. Nenhum `add_`/`change_itemreview` foi dado
+  a ninguém.
+- Invariante novo: `ItemReview` vazia é recusada
+  (`item_review_note_required`) — linha em branco fingiria item já comentado.
+- Arquivos: `backend/apps/scholarships/{models,router,schemas}.py`,
+  `.../migrations/0009_leitura_das_observacoes_por_item.py` (nova),
+  `.../tests/test_bolsas_api_analise.py` (novo, 50 casos),
+  `.../tests/test_bolsas_{barema,edital,papeis}.py`, `CLAUDE.md`.
+- `make ready` verde (1734 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`filter(bareme_entries__committee_score__isnull=True)` trazia também a
+    inscrição SEM lançamento nenhum**: o Django promove o join a LEFT OUTER e
+    a coluna vem nula porque a linha não existe. Custou uma rodada e é
+    exatamente o oposto do que `pending_review=true` quer dizer. Virou
+    `Exists(...OuterRef("pk")...)`, que ainda dispensa o `distinct()`. Está
+    no `CLAUDE.md`.
+  - `mypy` cobra `student.project` (`CollectiveProject | None`) antes do
+    `.research_line` **também no teste** — `assert projeto is not None`.
+  - A fila é **paginada de propósito**: cada linha soma as duas notas lendo
+    os lançamentos (o teto é do item, aplicado sobre a soma — não há SQL de
+    uma consulta só que faça isso). f15/f16 vão precisar da mesma soma sobre
+    a edição inteira; ali o caminho não é reusar o schema da fila.
+  - O teste de API foi de novo para `test_bolsas_api_analise.py`, e não para
+    o `test_bolsas_analise.py` do `prd.json`: o par (a)/(b) do app está
+    mantido desde f10.
+  - `ScholarshipApplication.appeal_state()`/`submitted_appeal()` já existem
+    para f17/f24 — o acesso direto a `self.appeal` levanta
+    `RelatedObjectDoesNotExist` quando não há recurso, e "não recorreu" é o
+    caso normal.
+  - `ScholarshipApplicationQueueOut` é schema próprio, e não o
+    `ScholarshipApplicationOut`: f24 (resultado) deve seguir o mesmo caminho
+    em vez de inchar o `Out` da inscrição com os campos de snapshot.
+---
+
+## 2026-09-01 - f14-api-fump-e-override-de-faixa
+- **Os dois campos que a Secretaria escreve na inscrição alheia**, cada um com
+  rota e permissão próprias: `PATCH /applications/{id}/fump`
+  (`scholarships.set_fump_level`) e `PATCH /applications/{id}/band`
+  (`scholarships.override_band`). O `PATCH /applications/{id}/` continua
+  exclusivo do dono — dar `change_scholarshipapplication` à Secretaria abriria
+  o questionário inteiro do candidato a quem não o respondeu.
+- `FumpLevelIn` tem **um** campo, com `Field(ge=0, le=2)`: nível fora de
+  `NIVEIS_DA_FUMP` para na borda com 422 em vez de virar linha gravada
+  ilegível. `BandOverrideIn` tem a faixa (nula = desfazer a sobrescrita) e a
+  justificativa; a exigência da justificativa continua sendo do `clean()` do
+  model (`override_reason_required`), não da borda.
+- **Nenhuma das duas tem guarda de estado da edição**, de propósito: o
+  resultado da FUMP chega fora do sistema, no calendário da FUMP, e travá-lo
+  por status obrigaria a secretaria a reabrir a edição para digitar um dado
+  recebido por e-mail. A válvula do B6 (2.4-I e 2.4-II, casos omissos) tem a
+  mesma razão.
+- `AuditLog` com o valor **anterior** e o novo nas duas
+  (`previous_fump_level`/`fump_level`, `previous_band`/`band`/`reason`): é
+  decisão sobre a vida acadêmica, e "qual era antes de a secretaria mexer" é a
+  pergunta que se faz depois.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `.../tests/test_bolsas_api_analise.py` (15 casos novos). Sem migration — as
+  permissões e os campos já existiam desde f4/f7/f8.
+- `make ready` verde (1747 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - As permissões `set_fump_level`/`override_band` já vinham prontas de f8 (com
+    o mapa explícito de content type na `0008`), e os campos, de f4. A story foi
+    só borda: quando o model chega antes da API neste app, a story de API não
+    toca `models.py`.
+  - `band()` do model devolve **só** a sobrescrita hoje. f15 vai preencher a
+    derivação do questionário lá dentro — e o `resolve_band` do
+    `ScholarshipApplicationOut`/`QueueOut` já lê o método, então a tela ganha a
+    faixa derivada sem mexer no schema.
+  - Desfazer a sobrescrita é `PATCH` com corpo `{}` (os dois campos têm default),
+    e não uma rota de DELETE: o schema não é `exclude_unset`, ele **sempre**
+    grava os dois campos. Foi escolha — "limpar a faixa" e "trocar a faixa" são
+    o mesmo ato para a secretaria, e um `exclude_unset` aqui deixaria o par
+    (faixa, justificativa) sair de sincronia.
+  - `Field` do Ninja precisa ser importado em `schemas.py` (`from ninja import
+    Field, Schema`) — foi o primeiro uso de validação de faixa numérica no app.
+---
+
+## 2026-09-01 - f15-classificacao-nota-e-faixa
+- **A nota que o resultado publica**: `ScholarshipApplication.final_score()` =
+  `committee_score()` + `BONUS_FUMP.get(fump_level, 0.00)` (item 3.2: nível 1
+  vale 15,00 e o nível 2, 9,00 — o 1 é o de maior vulnerabilidade). O teto do
+  item é aplicado **antes** do bônus, porque quem corta é `committee_score()`:
+  somar o bônus dentro do teto o comeria inteiro em quem já bateu o limite.
+- **A derivação da faixa** entrou em `derived_band()`, e `band()` virou
+  "sobrescrita **ou** derivada" — não devolve mais `None`. `has_paid_activity`
+  falso → 2.1-I se (ação afirmativa **ou** vulnerabilidade), senão 2.1-II (o
+  bloco 2.1 não tem residual); verdadeiro → **primeiro inciso aplicável** da
+  constante nova `INCISOS_DA_ATIVIDADE_REMUNERADA`; nenhum → residual.
+- **A ordem dos incisos é dado nomeado, não cadeia de `elif`**: é a linha que o
+  humano lê no merge contra o item 2.4 do edital. 2.4-I e 2.4-II ficam de fora
+  da lista de propósito — só chegam por sobrescrita (B6), e há um teste que
+  varre as 2⁶ combinações do questionário provando que nenhuma as deriva.
+- `derived_band()` existe separada de `band()` para a tela e o merge poderem
+  comparar "o que o questionário diz" com "o que a secretaria escreveu por
+  cima". Sem ela a sobrescrita apagaria a derivação sem rastro legível.
+- Duas assunções marcadas em docstring, como o `prd.json` pede: `subtotal()`
+  usa as notas **da comissão** (item 3.3 diz "maior pontuação na seção" e não
+  explicita de quem), e o `cadastro_unico` que já vinha de f4.
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../tests/test_bolsas_classificacao.py` (novo, 33 casos),
+  `.../tests/test_bolsas_inscricao.py` e `.../tests/test_bolsas_api_analise.py`
+  (os dois que assumiam `band()` nula). Sem migration — nenhum campo novo.
+- `make ready` verde (1780 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`band()` não devolve mais `None`**, mas os dois `resolve_band` de
+    `schemas.py` continuam tipados `str | None` e o campo do schema segue
+    anulável. Não é bug: é contrato publicado, e estreitá-lo é mexer em
+    `openapi.json`/`schema.d.ts` — f20 é a story que regenera os tipos, e o
+    lugar certo de decidir isso.
+  - O `AuditLog` de `override_band` grava `band_override` (a sobrescrita), e a
+    resposta da rota grava `band()` (a faixa efetiva). Os dois são "band" e
+    querem dizer coisas diferentes — o teste de desfazer a sobrescrita agora
+    espera `b21_ii` no corpo e `None` no payload.
+  - `_com_atividade()` no teste manda `monthly_income`/`weekly_hours` junto
+    mesmo sem a derivação lê-los: `clean()` os exige com `has_paid_activity`, e
+    teste que fabrica estado impossível de gravar engana quem o lê depois.
+  - f16 vai precisar da nota da edição inteira: `final_score()` é uma consulta
+    por inscrição (o teto por item não sai em SQL de uma passada só, como f13
+    já registrou). `classify()` deve carregar os lançamentos com
+    `prefetch_related`, não chamar o método N vezes cru.
+
+## 2026-09-01 - f16-classificacao-ordenacao-e-desempate
+- **`ScholarshipEdition.classify(level) -> list[BandResult]`**: o coração do
+  módulo. Uma chamada por nível; devolve **sempre as 10 faixas na ordem
+  canônica, inclusive as vazias** (Q8), cada uma com título, o rótulo "Ordem
+  de prioridade: <ordinal>" derivado da posição em `ORDEM_DAS_FAIXAS`, a regra
+  de ordenação escrita e as linhas (`ClassifiedRow`: nome, nota final,
+  posição, rendimento, carga horária, `draw_order`).
+- **Uma chave de ordenação só**, e não duas passadas: o critério da faixa
+  (`ORDENACAO_DA_FAIXA`) e, concatenado, o desempate geral do item 3.3 (FUMP →
+  CadÚnico → subtotal de Formação → subtotal de Publicações). Empate = chave
+  idêntica, e é esse conjunto que vai a sorteio — comparar "quem sobrou" com
+  uma chave diferente da que ordenou é como se perde um critério em silêncio.
+- **A inversão do nível da FUMP** virou constante nomeada
+  `ORDEM_DO_NIVEL_DA_FUMP = {1: 0, 2: 1, 0: 2}`: o critério é "menor nível",
+  mas 0 é "sem nível" e portanto o **pior**. Ler o campo cru como chave põe
+  justamente quem a FUMP não classificou na frente de todo mundo.
+- **Sorteio (B5)**: `random.Random(f"{pk}:{draw_seed}")`, uma instância só
+  consumida faixa a faixa na ordem canônica. Cada bloco empatado é reordenado
+  **por `pk` antes** do `shuffle` — sem isso a ordem em que o banco devolveu as
+  linhas mudaria a lista com a mesma semente, que é o oposto do que a semente
+  existe para garantir. `draw_order` nula = "não precisou de sorteio".
+- `classify()` **não grava nada** (teste explícito): `draw_order` e o snapshot
+  são do service de publicação (f18).
+- Constantes novas lidas pelo PDF e pelo schema: `TITULO_DA_FAIXA`,
+  `REGRA_DE_ORDENACAO_DA_FAIXA`/`_PADRAO`, `ORDINAIS_DA_PRIORIDADE`,
+  `ORDENACAO_PADRAO`. **Assunção marcada**: com 2.4-II e 2.4-III publicadas, a
+  residual é a **décima** (em 2026 era a oitava) — conferência de merge.
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../tests/test_bolsas_classificacao.py` (+24 casos), `CLAUDE.md`. Sem
+  migration — nada de novo no schema.
+- `make ready` verde (1804 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`prefetch_related` é jogado fora por `.filter()`/`.select_related()` no
+    gerente reverso.** `_somar_por_item` fazia `self.bareme_entries
+    .select_related("item")` e teria feito 4 consultas por candidato dentro do
+    `classify()`. Virou `_lancamentos_carregados()`, que devolve o cache
+    (`.all()`) quando `"bareme_entries" in self._prefetched_objects_cache`, e o
+    recorte por seção do `subtotal()` passou a ser em Python. Está no
+    `CLAUDE.md`.
+  - **Aluno regular exige `project` e `deadline`**, além de `level` e
+    `admission_date` (`student_regular_requires_degree_fields`, check
+    constraint — estoura como `IntegrityError` no `save`, não em `clean`).
+    Fábrica de candidato em teste tem de dar os quatro; a linha de pesquisa e o
+    projeto coletivo entram por `get_or_create` compartilhado.
+  - A saída são dois `dataclass` congelados (`BandResult`/`ClassifiedRow`), não
+    dicionários: f18 (snapshot), f19 (PDF) e f20 (schema Ninja) consomem o
+    mesmo objeto. O schema de saída da f20 é `BandOut` sobre `BandResult` — não
+    montar dicionário no router.
+  - A prévia antes da publicação sorteia com `draw_seed` nula
+    (`"{pk}:None"`): reprodutível, mas **não** igual à publicada. Foi decisão
+    consciente para a secretaria conseguir ver a lista antes de congelá-la; a
+    f18 gera a semente uma vez e nunca a regera.
+  - Cenário de teste que precisa de faixa monta o **questionário**
+    (`QUESTIONARIO_DA_FAIXA`), nunca `band_override` — o override só aparece
+    onde ele é o caminho real (2.4-I e 2.4-II, que não têm pergunta).
+  - Teste de desempate isolado só vale se as notas finais forem iguais: no
+    critério I as três foram calibradas com o bônus da FUMP (15,00+15,00 =
+    21,00+9,00 = 30,00), senão o bônus resolveria antes e o critério nunca
+    rodaria.
+---
+
+## 2026-09-01 - f17-api-recurso
+- **Duas rotas e dois papéis**: `POST /applications/{id}/appeal`
+  (`add_scholarshipappeal`, só o Discente) e `PATCH /appeals/{id}/judge`
+  (`change_scholarshipappeal`, só a Comissão de Bolsas). "O aluno não julga o
+  próprio recurso" é 403 de `require_perm`, e não checagem escrita à mão na
+  rota — é a mesma separação que já existia entre `change_baremeentry` e
+  `review_baremeentry`. Mais o `GET /applications/{id}/appeal` para a tela.
+- **A guarda da interposição é do model**: `ScholarshipApplication.can_appeal()`
+  (bool para a tela) e `ensure_appealable(user)` (409 `appeals_closed` fora da
+  fase, 403 `not_application_owner` na inscrição alheia), par idêntico ao de
+  `ensure_editable`. Publicar o preliminar **não** abre a janela: quem abre é
+  `open_appeals()`, e o teste parametriza os quatro estados que recusam.
+- `ScholarshipAppeal.clean()` ganhou `_validar_razoes`
+  (`appeal_text_required`): recurso em branco não pede nada, e é o espelho do
+  `reasoning` que `judge()` já exigia do outro lado da mesa.
+- `ScholarshipApplicationOut` passou a embutir `can_appeal` e `appeal` — por
+  isso os schemas do recurso ficam **antes** da inscrição em `schemas.py`
+  (pydantic resolve na definição da classe). Uma chamada só: com duas, a tela
+  desenharia o botão de recorrer para quem já recorreu no intervalo entre elas.
+- **Migration `0010`**: a `0008` deu `change_scholarshipappeal` à comissão sem
+  o `view_` — quem julga tomava 403 na própria tela de decisão. Só leitura, e
+  a Secretaria entra junto (ela responde ao candidato); a Coordenação já lia.
+- Arquivos: `backend/apps/scholarships/{models,router,schemas}.py`,
+  `.../migrations/0010_leitura_do_recurso_pela_comissao.py`,
+  `.../tests/test_bolsas_api_recurso.py` (novo, 29 casos),
+  `.../tests/test_bolsas_papeis.py` (as duas listas exatas de papel).
+- `make ready` verde (1833 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`change_X` sem `view_X` é 403 na tela de quem escreve.** A `0008`
+    distribuiu `view_` "de todos os models" só para a Coordenação; para os
+    demais foi item a item, e é aí que o par escrita-sem-leitura passa
+    despercebido. Ao expor rota de escrita nova, confira se o papel tem o
+    `view_` do mesmo model — e lembre que as duas listas exatas de
+    `test_bolsas_papeis.py` (Secretaria e Comissão) quebram junto, de
+    propósito: é a asserção que obriga a decisão a ser escrita.
+  - Papel que precisa agir no mesmo teste ganha `Client()` **próprio**, e não
+    `force_login` na fixture `client` — duas fixtures disputam a mesma sessão.
+    Neste arquivo `client_da_comissao`/`client_da_secretaria` já nascem assim.
+  - O deferimento continua sem rotina de recálculo, e o teste ponta a ponta é
+    a prova: a comissão refaz o lançamento atacado pela rota de avaliação **de
+    sempre** (`committee_can_review()` já vale em `appeals_under_review`) e a
+    nota da inscrição muda na leitura seguinte.
+  - `outcome` inválido para em 422 do Ninja (o schema é `AppealOutcome`), e não
+    no `invalid_appeal_outcome` do model — aquele código só aparece a quem
+    chama `judge()` direto. Teste de borda espera 422.
+  - f18 herda daqui um schema publicado a mais em `ScholarshipApplicationOut`;
+    quem regenera `openapi.json`/`schema.d.ts` continua sendo a f20.
+---
+
+## 2026-09-01 - f18-publicacao-e-snapshot
+- **`publish_preliminary`/`publish_final` viraram service** (`services.py`):
+  o ato escreve em dois agregados — a edição (situação, carimbo, semente) e
+  **toda** inscrição dela (os cinco campos `published_*` da decisão B10) —, e
+  por isso saiu do `_transicionar` das outras três transições. As duas rotas
+  não mudaram de nome nem de contrato, como a story anterior prometeu.
+- **A semente nasce uma vez e nunca é regerada** (`random.randrange(1, 2**63)`
+  só quando `draw_seed is None`): republicar o final depois do preliminar tem
+  de dar a mesma ordem de sorteio. Regerá-la embaralharia de novo quem
+  empatou, e o candidato veria a lista trocar sem nada ter sido julgado.
+- **Um `at` só para tudo**: o carimbo da edição e o `published_at` de cada
+  inscrição são o mesmo instante — é ele que permite ler depois "o que foi
+  publicado naquela hora". E **um `AuditLog`** por publicação, com
+  `published`, `by_level` e a semente no payload (desenho de
+  `close_isolated_cycle`).
+- **A transição vem antes de qualquer escrita**: é ela que recusa (409) o
+  estado errado, e recusar antes de gerar semente ou classificar tem teste
+  próprio (`test_publicar_fora_do_estado_recusa_e_nao_escreve_nada`).
+- **`ScholarshipEdition.result(level)`**: publicado o preliminar, lê o
+  **snapshot** (`published_result`); antes disso, a prévia (`classify`). É o
+  ponto do módulo: durante a fase de recursos a comissão refaz lançamento, e
+  sem o snapshot o preliminar publicado mudaria a cada deferimento. Dois
+  testes guardam os dois lados (a lista publicada não muda; a prévia já
+  mostra a nota nova).
+- **`GET /editions/{id}/result?level=`** devolve as dez faixas
+  (`BandOut`/`ResultRowOut` sobre os dataclass, não sobre model). O candidato
+  só a partir de `results_visible_to_student()` (403 `result_not_published`);
+  a prévia é de quem trabalha o edital — `PAPEIS_COM_VISAO_DA_FILA`, o mesmo
+  recorte de `visible_to`, e não uma lista nova.
+- Arquivos: `backend/apps/scholarships/{models,services,router,schemas}.py`,
+  `.../tests/test_bolsas_classificacao.py` (+12 casos de publicação),
+  `.../tests/test_bolsas_api_resultado.py` (novo, 16 casos). Sem migration —
+  os campos do snapshot e a permissão `publish_scholarshipedition` já vinham
+  de f4/f2.
+- `make ready` verde (1861 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`from .services import publish_final` no `router.py` é armadilha**: a
+    rota tem o nome do ato que chama, e o `def` de baixo sombreia o import —
+    a rota chamaria a si mesma, sem erro de importação. O módulo inteiro
+    (`from . import services`) resolve, e o `clone_bareme` passou junto.
+  - `bulk_update` **não dispara `auto_now`**: `updated_at` entra na lista de
+    campos com o `at` da publicação atribuído à mão.
+  - `published_band` é `str | None` no model, e o mypy cobra o `None` ao
+    indexar o dicionário das faixas. O `continue` que ele exige é honesto —
+    os cinco campos são gravados juntos, mas o Admin pode ter mexido.
+  - Nome de teste **duplicado no mesmo arquivo** não é erro de coleta: o
+    segundo simplesmente substitui o primeiro, que deixa de rodar. Quem pegou
+    foi o `ruff` (F811) no `make ready` — o `pytest` sozinho passaria verde
+    com um caso a menos.
+  - f19 (PDF) e f20 (schema) consomem `edition.result(level)`, e não
+    `classify()`: o documento imprime o que foi publicado.
+---
+
+## 2026-09-01 - f19-pdf-do-resultado
+- **`apps/scholarships/pdf.py`**, espelhando `apps/selection/pdf.py`: uma
+  função pública `montar_resultado(edition, level, kind) -> bytes`, que não
+  toca banco nem disco. Ela lê `edition.result(level)` — o **snapshot**
+  publicado, ou a prévia antes dele — e nunca `classify()`: se o papel
+  recalculasse, o PDF baixado durante a fase de recursos discordaria da tela
+  ao lado a cada deferimento.
+- **As dez seções saem sempre, inclusive as vazias** (Q8), cada uma com o
+  título do inciso, o rótulo "Ordem de prioridade: N" e a **regra de
+  ordenação escrita** — os três vêm prontos do `BandResult`, que os leu da
+  mesma constante que ordenou a faixa. Texto e algoritmo saem do mesmo lugar
+  justamente para não divergirem.
+- **A coluna "Remuneração" só aparece nas duas faixas em que o rendimento
+  ordenou** (2.4-V e 2.4-VI/VII/VIII), pela mesma chave `shows_income`: nas
+  outras oito o rendimento não entrou na conta, e imprimi-lo sugeriria que
+  entrou. São duas composições de largura (`COLUNAS_*`), somando os 170 mm
+  úteis do A4 — coluna estreita demais quebra a linha em silêncio.
+- **`GET /editions/{id}/result.pdf?level=`** só embrulha os bytes num
+  `FileResponse`. A permissão e a visibilidade saíram para
+  `_garantir_resultado_visivel`, **compartilhada com a rota JSON**: candidato
+  antes do preliminar toma 403 `result_not_published`, edição de outro
+  programa é 404. O tipo do documento (preliminar/final) sai do carimbo de
+  publicação (`pdf.tipo_do_resultado`), não de parâmetro do chamador.
+- **`docs/adr/010-pdf-do-resultado-de-bolsas.md`**: curto, referenciando o
+  ADR-008 em vez de reabrir a escolha do motor. O `reportlab` já estava no
+  `pyproject.toml` — **nenhuma dependência foi adicionada e o `pyproject.toml`
+  não foi tocado**, como a story exigia.
+- Arquivos: `backend/apps/scholarships/{pdf,router}.py`,
+  `.../tests/test_bolsas_pdf.py` (novo, 13 casos),
+  `docs/adr/010-pdf-do-resultado-de-bolsas.md`, `CLAUDE.md`.
+- `make ready` verde (1874 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - Este arquivo de teste é `django_db` inteiro, e não nível (a) como o
+    `test_pdf.py` da ata: o papel nasce de `result(level)`, que lê o banco.
+    A ata cabia em memória porque carrega o `content` congelado.
+  - Procurar texto no PDF do ReportLab: veja o helper `texto_do_pdf` — o
+    acento é escape octal e `Paragraph` parte a frase em `Tj` separados. Duas
+    asserções falharam por isso antes de o helper existir, com o documento
+    correto.
+  - `formats.number_format` precisa de `force_grouping=True` para o separador
+    de milhar; `use_l10n=True` sozinho não basta.
+  - A f20 é quem regenera `openapi.json`/`schema.d.ts` — a rota nova do PDF
+    entra no contrato publicado lá, não aqui.
+---
+
+## 2026-09-01 - f20-tenant-e-tipos-da-api
+- **`test_bolsas_tenant.py`** (novo, 51 casos): um cenário de bolsas
+  **completo nos dois programas** (edição, barema, comissão, inscrição,
+  comprovante, lançamento, observação e recurso) e um usuário do programa A
+  atacando cada objeto do programa B por cada rota do módulo.
+- **A asserção é 404 estrito**, não "não é 200": 403 ou 409 também reprovam,
+  porque os dois significam que a rota *chegou* ao objeto do outro programa e
+  só então recusou por outro motivo. O escopo tem de entrar na busca
+  (`for_program`), como em `_edicao_do_programa`.
+- **O usuário de teste acumula os quatro papéis** (Discente, Secretaria,
+  Comissão de Bolsas, Coordenação) para que nenhum 404 possa ser confundido
+  com o 403 de quem não tinha permissão nenhuma — e para expor a rota que
+  porventura dependesse da permissão para recortar o tenant.
+- **`test_a_lista_de_casos_cobre_todas_as_rotas_com_id`**: lê
+  `router.path_operations` e cobra que toda rota com `{id}` esteja na lista de
+  casos. Sem ela, rota nova nasce fora do teste de tenant e o arquivo segue
+  verde com uma rota a menos. Conferido com remoção deliberada de um caso: a
+  asserção falha nomeando a rota.
+- Sete testes do outro lado da moeda (o 404 não os pega, porque a resposta é
+  200 e o vazamento estaria **dentro** do corpo): edições, fila de análise,
+  barema, comissão, lançamentos, observações e o resultado só trazem linha do
+  próprio programa.
+- **Nenhum vazamento encontrado**: as 40 rotas já escopavam. O arquivo é a
+  prova, não o conserto.
+- `make gen-api` rodado: `frontend/src/lib/api/openapi.json` e `schema.d.ts`
+  regenerados (115 caminhos), agora com os tipos de
+  `/api/v1/scholarships/` — os dois são **gerados**, não editados à mão.
+- Arquivos: `backend/apps/scholarships/tests/test_bolsas_tenant.py` (novo),
+  `frontend/src/lib/api/openapi.json`, `frontend/src/lib/api/schema.d.ts`.
+- `make ready` verde (1925 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **Teste de tenant precisa escolher o estado da edição.** Num estado
+    restritivo o vazamento se esconde atrás do 409 da guarda de fase: o
+    cenário roda em `appeals_under_review` (quase tudo permitido), e o único
+    caso cruzado que exige janela aberta (`POST /applications/{minha}/entries/`
+    com `item_id` alheio) tem a edição levada a `submissions_open` antes da
+    chamada. Sem isso o teste passava sem nunca ter tocado o objeto de B.
+  - **Casos cruzados valem tanto quanto os diretos**: id do próprio programa na
+    URL e id alheio no corpo (`clone` com `source_edition_id` de B, `item_id`
+    de B no lançamento e na observação, `teacher_id` de B na comissão). É a
+    forma de vazamento que o `_edicao_do_programa` da URL não cobre sozinho.
+  - **Lista de casos parametrizada por `dict[str, lambda]`** dá ids legíveis no
+    pytest (`GET /editions/{id}/result.pdf`) e permite a asserção de cobertura
+    comparar a chave com `router.path_operations` — dois usos do mesmo texto.
+  - `router.path_operations` é `{caminho: PathView}`, e cada `operation` tem
+    `.methods`: é a forma de auditar o contrato publicado de dentro do teste,
+    sem reescrever a lista de rotas à mão.
+  - **`make gen-api` reescreve os dois arquivos inteiros** (14 mil linhas de
+    diff neste módulo): não misture com edição manual e não estranhe o
+    tamanho do diff — o `normalizar-openapi.mjs` tira o `/api/v1` dos
+    caminhos antes do `openapi-typescript`.
+---
+
+## 2026-09-01 - f21-tela-edital
+- **`frontend/src/routes/(app)/bolsas/edital/+page.svelte`** (novo): a tela da
+  Secretaria numa página só, com cinco blocos — seletor de edição, painel com
+  o cronograma, o ato de transição, o barema por nível e a comissão do ano.
+  Svelte 5 com runas; nenhuma chamada fora de `lib/api/client.ts`.
+- **A tela não remonta a máquina de estados.** O botão de escrita do barema
+  sai do `bareme_editable` que o `ScholarshipEditionOut` já traz resolvido, e
+  não de uma cópia de `status === 'draft'` no front — o servidor continua
+  recusando com 409 `edition_not_draft`, e a tela só evita o clique perdido.
+  Mesmo corte para a próxima transição: o mapa `TRANSICOES` é indexado pelo
+  `status` e cada entrada carrega **a permissão que aquele ato exige**
+  (`publish_scholarshipedition` nas duas publicações, `change_` nas outras
+  três), com o texto da consequência que o `alertdialog` mostra antes.
+- **O `switch` das cinco rotas é o preço do cliente tipado**: `openapi-fetch`
+  exige o caminho literal, então não dá para montar
+  `/editions/{id}/${acao}` — e ainda bem, porque é o literal que o
+  `schema.d.ts` confere.
+- **O nível do item do barema é a aba, não um campo do formulário.** Mestrado
+  e doutorado são listas independentes; um `<select>` a mais ali só criaria a
+  chance de gravar item de doutorado no mestrado.
+- **Item de menu por permissão: `scholarships.view_committeemember`.**
+  Conferido nas quatro contas do `make seed` pela `/auth/me`: Secretaria e
+  Coordenação `True`, Discente e Comissão de Bolsas `False` — que é
+  exatamente o público desta tela. `view_scholarshipedition` não serviria:
+  os quatro papéis a têm.
+- **`frontend/src/lib/bolsas.ts`** (novo, molde de `lib/selecao.ts`): só as
+  listas de opção que o formulário precisa desenhar **antes** de o objeto
+  existir (níveis, as seis seções, as unidades, os cinco campos do
+  cronograma) e o `formatarData` de data pura. Rótulo de coisa já existente
+  não entra: `status_label`, `level_label`, `section_label` e `unit_label`
+  vêm resolvidos do servidor.
+- Arquivos: `frontend/src/routes/(app)/bolsas/edital/+page.svelte` (novo),
+  `frontend/src/lib/bolsas.ts` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`, `CLAUDE.md`.
+- `make ready` verde (1925 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`make typecheck` quebra com `EACCES` em `.svelte-kit/` depois de criar
+    rota nova.** O Vite do container `frontend` roda como root sobre o mesmo
+    bind mount e gera `nodes/NN.js` e `types/.../$types.d.ts` da rota nova
+    como `root:root`; o `svelte-kit sync` do host não os reescreve. A
+    mensagem não cita Docker. `find frontend/.svelte-kit -user root` acha, e
+    `docker compose exec -T frontend rm -rf ...` apaga (quem tem o dono é o
+    container). Registrado no `CLAUDE.md`.
+  - **Verificação de UI ficou pendente**: o plugin browser-use pede que
+    alguém clique "Allow remote debugging?" no Chrome, e o consentimento não
+    chegou. No lugar dele, as quatro chamadas que a tela faz foram batidas
+    por `curl` na sessão da secretaria (`editions/`, `bareme/`, `committee/`,
+    `academic/teachers/`) e o critério do menu foi conferido pela `/auth/me`
+    dos quatro papéis. **Falta a conferência visual.**
+  - A edição semeada pelo `make seed` nasce em `submissions_open`, com o
+    barema **já congelado**: para exercitar "criar item / clonar / percorrer
+    as transições" é preciso abrir uma edição nova (outro ano — `year` é
+    unique por programa, `duplicate_edition`).
+  - Decimal do Ninja viaja como **string** no `schema.d.ts`
+    (`points_per_unit: string` na saída, `number | string` na entrada): o
+    estado do formulário é `string`, e não `number`, senão o `2.50` volta
+    `2.5` na tela.
+  - `formatarData` monta `new Date(`${iso}T00:00:00`)`: sem a hora o `Date`
+    lê `YYYY-MM-DD` como UTC e Brasília devolve o dia anterior — o cronograma
+    inteiro sairia adiantado.
+---
+
+## 2026-09-01 - f22-tela-inscricao
+- **`frontend/src/routes/(app)/bolsas/inscricao/+page.svelte`** (novo): a tela
+  do Discente numa página só — seletor de edição com o cronograma publicado,
+  o questionário do edital, os comprovantes de cada "Sim" e os lançamentos do
+  barema agrupados por seção. Svelte 5 com runas; nenhuma chamada fora de
+  `lib/api/client.ts`.
+- **A janela vem do servidor, sempre**: `janelaAberta` é
+  `inscricao.submission_open ?? edicao.submission_open`, os dois resolvidos
+  pelo mesmo método do model. A tela não compara `status === '...'` nem olha
+  data de cronograma — o cronograma é informação publicada, não gatilho.
+  Fechada a janela, o `fieldset` inteiro fica `disabled`, os botões de anexo
+  e de lançamento somem, e o texto explica por quê (é o material que a
+  Comissão analisa).
+- **404 em `my-application` não é erro de tela, é o formulário em branco.** É
+  a resposta de quem ainda não se inscreveu, e é ela que faz a tela oferecer o
+  questionário vazio com o botão "Inscrever-se" em vez de "Salvar".
+- **Rendimento e carga horária aparecem por `$derived` sobre
+  `has_paid_activity`**, logo abaixo da pergunta que os exige — e a validação
+  que vale continua sendo o `clean()` (`income_required`): o front só evita
+  que o candidato procure um campo que não é dele. Campo em branco vai `null`,
+  e não `0`.
+- **A faixa de prioridade é lida, nunca recalculada**: `band` vem resolvido no
+  `ScholarshipApplicationOut`. Copiar `derived_band()` para o front seria a
+  segunda porta que o CLAUDE.md proíbe.
+- **O barema é o índice da tela de lançamento**: seção (I..VI) → item →
+  lançamentos daquele item. O item **sem lançamento nenhum continua na
+  lista**, porque é sob o texto normativo dele que o candidato lança —
+  esconder o item vazio esconderia justamente o que ainda dá para pontuar. O
+  cabeçalho é `rotuloDoItem`, no formato do edital
+  (`1.1 - Curso de especialização concluído - 5,00 pts/unidade - Limite: 10,00`).
+- **Criar lançamento é multipart com o comprovante junto; corrigir é JSON e
+  trocar o PDF é a rota `POST .../proof`** — as três portas do backend
+  aparecem como três controles distintos ("Lançar", "Corrigir", "Trocar
+  comprovante"), e o formulário de correção diz em voz alta que o arquivo não
+  muda por ali.
+- **Nenhuma soma no front.** A tela mostra `candidate_score` de cada
+  lançamento (calculado pelo servidor) e o limite do item como texto
+  publicado; o teto sobre a soma é do model, e totalizar aqui seria
+  reimplementá-lo.
+- **`frontend/src/lib/bolsas.ts`**: entram `QUESTIONARIO` (as 8 afirmações +
+  o CadÚnico, cada uma com o `ApplicationDocumentKind` que o "Sim" passa a
+  exigir), `formatarNota`, `rotuloDoItem` e as duas listas de extensão
+  aceita. O valor de `documento` é o mesmo texto do campo **de propósito** —
+  é assim no backend (`RESPOSTA_QUE_EXIGE_DOCUMENTO`); quem diz que o anexo
+  falta continua sendo o `pending_docs` do servidor.
+- **Item de menu por permissão: `scholarships.add_scholarshipapplication`**,
+  exclusiva do Discente (`0008_papeis_da_bolsa`). Rotulado "Minha bolsa" para
+  não colidir com o "Bolsas" da Secretaria — os dois só aparecem juntos para
+  o superusuário.
+- Arquivos: `frontend/src/routes/(app)/bolsas/inscricao/+page.svelte` (novo),
+  `frontend/src/lib/bolsas.ts`, `frontend/src/routes/(app)/+layout.svelte`,
+  `CLAUDE.md`.
+- `make ready` verde (1925 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **Desestruturar a resposta do `openapi-fetch` estreita o objeto inteiro
+    para `never` dentro do `if (error)`**, e `response.status` some com a
+    mensagem `Property 'status' does not exist on type 'never'`. Quem precisa
+    do código HTTP guarda a resposta numa const e lê
+    `resposta.response.status` **antes** do `if`. Registrado no `CLAUDE.md`.
+  - O `EACCES` em `.svelte-kit/` reapareceu com a rota nova, exatamente como
+    a f21 registrou: `docker compose exec -T frontend rm -rf` nos artefatos
+    `root:root` (`types/src/routes/(app)/bolsas/inscricao` e o
+    `generated/client/nodes/NN.js`) e o `make typecheck` volta a passar.
+  - **Verificação visual continua pendente**: o binário `browser-use` não
+    existe nesta máquina (`No such file or directory`), então o plugin não
+    tem como subir. No lugar dela, o fluxo inteiro da tela foi exercitado por
+    `curl` na sessão do `daniel.prado@ppgd.test` com **as mesmas formas de
+    requisição que a tela monta**: `POST /applications/` (inscrição criada,
+    `band` = `b24_v` derivada pelo servidor), `POST .../documents` multipart
+    (comprovante do "Sim" de serviço público) e `POST .../entries/` multipart
+    (lançamento com PDF, `candidate_score` = 5,00 calculado pelo servidor). A
+    rota também compila no Vite do canteiro (o módulo `+page.svelte` responde
+    200 já transformado). **Falta a conferência visual.**
+  - Esse exercício **deixou dados no banco do canteiro**: a inscrição 1 de
+    Daniel Prado na edição 2026, com um comprovante e um lançamento. É útil
+    para a f23 (fila da comissão) ter o que analisar; quem quiser o cenário
+    limpo refaz o `make seed`.
+  - A edição semeada nasce em `submissions_open` com **4 itens de barema** (2
+    por nível): dá para ver o agrupamento por seção, mas com uma seção só
+    (I - Formação Acadêmica e II - Produção Bibliográfica).
+  - `quantity` volta do backend como `"1"`, e não `"1.00"`: quem exibe passa
+    por `formatarNota`, senão a coluna mistura `1` e `2,50` na mesma tabela.
+---
+
+## 2026-09-01 - f23-tela-analise
+- **`frontend/src/routes/(app)/bolsas/analise/+page.svelte`** (novo): a tela da
+  Comissão numa página só — fila com os filtros do legado e, no lugar dela, a
+  análise de um candidato item a item. Svelte 5 com runas; nenhuma chamada
+  fora de `lib/api/client.ts`.
+- **A "Nota total" por item virou rota do backend, e não soma no front.** O
+  teto é do edital e corta a SOMA dos lançamentos do item
+  (`BaremeItem.apply_cap`); repetir esse `min` na tela seria a segunda porta
+  que o CLAUDE.md proíbe. Entraram `ScholarshipApplication.item_totals()`
+  (models), `ApplicationItemTotalOut` (schemas) e
+  `GET /applications/{id}/item-totals/` (router), com o mesmo porteiro dos
+  lançamentos (`view_baremeentry` + `_garantir_acesso_a_inscricao`) e
+  `Prefetch` para a conta caber numa consulta.
+- **A fila e o detalhe alternam na mesma tela**: abrir um candidato substitui
+  a lista, e "Voltar à fila" não refaz a busca (a fila continua em memória).
+  Depois de cada escrita, `recarregarCandidato()` refaz **os dois**: as duas
+  notas do cabeçalho vêm da linha da fila, e elas são derivadas no servidor.
+- **A janela da análise é o bool do servidor** (`committee_can_review` para a
+  avaliação, `appeal_open` para o julgamento). A tela não compara `status`.
+- **Nota divergente exige observação na tela antes de tentar salvar**
+  (`faltaObservacao` desabilita o botão) — a regra que vale continua sendo o
+  `clean()` do lançamento (`note_required`, 400 conferido por curl).
+- **A Coordenação abre a tela e não abre candidato.** `list_applications` só
+  exige `view_scholarshipapplication`, mas ler o material de candidato alheio
+  é `download_applicationdocument`, que ela não tem (403 conferido). A tela
+  esconde o botão "Analisar" e diz por quê, em vez de deixar o clique virar
+  erro sem explicação.
+- **Item de menu**: `scholarships.review_baremeentry` (exclusiva da Comissão,
+  e o superusuário a tem) **ou** papel Secretaria/Coordenação. Não existe
+  permissão que reúna os três sem alcançar o Discente — ele lê a observação da
+  própria inscrição em "Minha bolsa".
+- **`frontend/src/lib/bolsas.ts`**: entram `ESTADOS_DO_RECURSO` e
+  `RESULTADOS_DO_RECURSO` — as duas listas que o filtro e o formulário de
+  julgamento desenham antes de o objeto existir. O rótulo do recurso julgado
+  continua vindo resolvido (`outcome_label`).
+- Arquivos: `frontend/src/routes/(app)/bolsas/analise/+page.svelte` (novo),
+  `frontend/src/lib/bolsas.ts`, `frontend/src/routes/(app)/+layout.svelte`,
+  `backend/apps/scholarships/{models,schemas,router}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_analise.py`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados).
+- **Learnings for future iterations:**
+  - **Papel criado pela migration de um módulo não ganha as leituras de
+    catálogo dos outros apps.** A Comissão de Bolsas tem só permissões de
+    `scholarships`: sem `programs.view_researchline` e `academic.view_teacher`,
+    os filtros de linha e de orientador dariam 403 na cara dela. A tela os
+    desenha condicionalmente (`podeVerLinhas`, `podeVerDocentes`), como a f21
+    já fazia com a lista de professores. **Se o humano quiser esses dois
+    filtros para a Comissão, é uma data migration de papéis — não foi feita
+    aqui de propósito, mexer em permissão é decisão de merge.**
+  - **Conta derivada que a tela precisa exibir vira rota, não `Math.min` no
+    front.** Foi o caso do total por item: a alternativa barata (somar os
+    lançamentos e cortar pelo `cap` publicado) reescreveria `apply_cap` do
+    outro lado do fio, e a divergência só apareceria depois de publicada.
+  - O **`EACCES` em `.svelte-kit/`** reapareceu pela terceira rota nova
+    seguida: `docker compose exec -T frontend rm -rf` nos artefatos
+    `root:root` (`types/src/routes/(app)/bolsas/analise` e
+    `generated/client/nodes/37.js`).
+  - **O guarda de tenant cobra a rota nova**:
+    `test_a_lista_de_casos_cobre_todas_as_rotas_com_id`
+    (`test_bolsas_tenant.py`) varre o `router` e reprovou a primeira rodada
+    por causa de `GET /applications/{id}/item-totals/`. O caso entrou em
+    `CASOS` ao lado do `item-reviews/`, e a asserção é 404 estrito.
+  - **Verificação visual continua pendente**: o binário `browser-use` não
+    existe nesta máquina. No lugar dela, o fluxo inteiro da tela foi
+    exercitado por curl com as mesmas requisições que ela monta — fila
+    (`?level=masters`), `entries/`, `item-totals/`, avaliação divergente sem
+    observação (400 `note_required`) e com observação (200), `item-review`
+    (200), e a Coordenação em `item-totals/` (403). A rota também compila no
+    Vite do canteiro (`/bolsas/analise` responde 200).
+  - **Esse exercício mexeu no banco do canteiro**: a edição 1 foi para
+    `under_review` (`start-review` pela secretaria) e o lançamento 1 de Daniel
+    Prado está avaliado em 2,50 com observação. Útil para a f24 (já há
+    material para publicar); quem quiser o cenário limpo refaz o `make seed`.
+---
+
+## 2026-09-01 - f24-telas-resultado-e-recurso
+- **`frontend/src/routes/(app)/bolsas/resultado/+page.svelte`** (novo): as dez
+  faixas do documento publicado, na ordem canônica e **todas presentes mesmo
+  vazias** — a lista é a ordem de prioridade do edital, e faixa que sumisse da
+  tela seria uma prioridade a menos no papel. Cada seção sai com o título, o
+  `priority_label` ("Ordem de prioridade: sétima"), a regra de ordenação
+  escrita e a tabela (Ordem, Candidato(a), Nota, mais Remuneração só onde
+  `shows_income`). Nada disso é montado no front: vem pronto do `BandOut`, que
+  é o **mesmo objeto** que alimenta o PDF.
+- **O botão "Baixar PDF" aponta para `/api/v1/scholarships/editions/{id}/result.pdf?level=`**
+  — endereço de API, não rota da SPA: `eslint-disable
+  svelte/no-navigation-without-resolve` local, o padrão do projeto. A
+  visibilidade é conferida no servidor pela mesma função do JSON
+  (`_garantir_resultado_visivel`).
+- **"Ainda não publicado" é `code`, não texto**: o 403 `result_not_published`
+  vira tela de espera (`codigoDeErro`), e só o resto vira `aviso-erro`. É assim
+  que a tela do Discente "só existe a partir do preliminar" sem a tela repetir
+  a máquina de estados — quem recusa a prévia continua sendo o backend.
+- **A tela abre no nível do próprio candidato**: `my-application` responde o
+  `level` e ele vira o padrão do seletor; 404 (quem não se inscreveu —
+  Secretaria, Coordenação e Comissão sempre) cai no mestrado, em silêncio.
+- **`frontend/src/routes/(app)/bolsas/recurso/+page.svelte`** (novo): o
+  Discente interpõe (textarea, **sem anexo** — item 1.3 do edital veta
+  documento novo fora do prazo) e, depois, a mesma tela vira acompanhamento:
+  o texto interposto, o `outcome_label` e a fundamentação do julgamento. O
+  recurso viaja dentro de `ScholarshipApplicationOut.appeal`, então não há
+  segunda chamada — e o botão sai de `can_appeal`, nunca de comparação de
+  `status`.
+- **`frontend/src/lib/bolsas.ts`**: entra `formatarDinheiro` — a coluna
+  "Remuneração" precisa dizer `R$ 3.200,00`, igual ao `_dinheiro` do PDF
+  (`force_grouping=True`).
+- **Menu**: "Resultado da bolsa" por `scholarships.view_scholarshipedition` (os
+  quatro papéis a têm — a lista publicada é assunto de todos) e "Recurso da
+  bolsa" por `scholarships.add_scholarshipappeal` (exclusiva do Discente; a
+  Comissão julga na tela de análise).
+- Arquivos: os dois `+page.svelte` novos, `frontend/src/lib/bolsas.ts`,
+  `frontend/src/routes/(app)/+layout.svelte`.
+- `make ready` verde.
+- **Learnings for future iterations:**
+  - **Faixa vazia é conteúdo, não ausência.** O `BandOut` sempre traz dez
+    elementos e a tela imprime "Nenhum candidato nesta faixa." — filtrar
+    `rows.length > 0` (o reflexo natural de quem escreve lista) apagaria a
+    ordem de prioridade do documento.
+  - **403 com `code` conhecido é estado de tela, não erro.**
+    `result_not_published` é o candidato chegando cedo; tratá-lo como falha
+    poria um `aviso-erro` vermelho no lugar de "aguarde a publicação". O par
+    `codigoDeErro`/`mensagemDeErro` do `client.ts` existe para isso.
+  - **O rótulo do documento (preliminar × final × prévia) é uma linha só e sai
+    dos carimbos** (`published_final_at`, e `results_visible_to_student` para a
+    prévia) — mesma leitura de `pdf.tipo_do_resultado`. Foi o único ponto em
+    que a tela toca a decisão do servidor, e é rótulo, não conteúdo.
+  - O **`EACCES` em `.svelte-kit/`** apareceu pela quarta vez seguida, agora
+    com duas rotas de uma vez: `docker compose exec -T frontend rm -rf` nos
+    artefatos `root:root` (`types/src/routes/(app)/bolsas/{resultado,recurso}`
+    e `generated/client/nodes/{38,39}.js`).
+  - **Verificação visual continua pendente**: o binário `browser-use` não
+    existe nesta máquina. No lugar dela, o **fluxo inteiro da aceitação** foi
+    exercitado por curl com as requisições que as telas montam: discente em
+    `result` antes da publicação (403 `result_not_published`); secretaria
+    `publish-preliminary`; discente lê as 10 faixas (a sétima com Daniel Prado,
+    nota 2,50 e R$ 3.200,00; as outras nove vazias) e baixa
+    `result.pdf?level=masters` (200, `Content-Disposition` com
+    `resultado-preliminar-2026-masters-edicao-1.pdf`); recurso antes de
+    `open-appeals` (409 `appeals_closed`), depois dela 201; comissão julga
+    (`partially_granted` com fundamentação) e o discente relê `can_appeal:
+    false` com o julgamento embutido. As duas rotas também compilam no Vite do
+    canteiro (`/bolsas/resultado` e `/bolsas/recurso` respondem 200).
+  - **Esse exercício mexeu no banco do canteiro**: a edição 1 está em
+    `appeals_under_review`, com o resultado preliminar publicado e o recurso 1
+    julgado. Quem quiser o cenário limpo refaz o `make seed`.
+---

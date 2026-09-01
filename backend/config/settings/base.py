@@ -48,6 +48,9 @@ INSTALLED_APPS = [
     # por trás do vínculo) — por isso vem depois dos dois.
     "apps.academic",
     "apps.selection",
+    # Depende de academic (o discente e o docente da comissão) e de
+    # selection só na ordem de leitura — entra depois dos dois.
+    "apps.scholarships",
     "apps.audit",
 ]
 

@@ -5513,6 +5513,2148 @@
           }
         ]
       }
+    },
+    "/scholarships/editions/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_editions",
+        "summary": "List Editions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "year",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ScholarshipEditionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "As edições do programa, do ano mais recente para o mais antigo.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_scholarships_router_create_edition",
+        "summary": "Create Edition",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria abre a edição do ano, em rascunho.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScholarshipEditionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/": {
+      "get": {
+        "operationId": "apps_scholarships_router_get_edition",
+        "summary": "Get Edition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "apps_scholarships_router_update_edition",
+        "summary": "Update Edition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retificação da edição, em qualquer estado.\n\nSem `ensure_editable` de propósito: o que se corrige aqui é título e\ncronograma, e cronograma é informação divulgada, não gatilho —\nretificar data publicada é rotina do edital. O que não pode mudar\ndepois de aberta a inscrição é o **barema**, e quem guarda isso é\n`bareme_editable()`, na story do barema.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScholarshipEditionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/open-submissions": {
+      "post": {
+        "operationId": "apps_scholarships_router_open_submissions",
+        "summary": "Open Submissions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Abre as inscrições e congela o barema (409 `edition_not_draft`).",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/start-review": {
+      "post": {
+        "operationId": "apps_scholarships_router_start_review",
+        "summary": "Start Review",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Encerra as inscrições e entrega a fila para a comissão.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/publish-preliminary": {
+      "post": {
+        "operationId": "apps_scholarships_router_publish_preliminary",
+        "summary": "Publish Preliminary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Publica o resultado preliminar e **congela a lista**.\n\nPermissão própria `publish_scholarshipedition`, e não `change_`:\npublicar congela o ano e é o que o candidato lê como resultado — quem\nmonta o edital não é necessariamente quem assina a lista.\n\nFora do padrão `_transicionar` porque o ato cruza dois agregados: o\nservice classifica os dois níveis, grava o snapshot em toda inscrição\ne escreve um `AuditLog` só, com as contagens.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/open-appeals": {
+      "post": {
+        "operationId": "apps_scholarships_router_open_appeals",
+        "summary": "Open Appeals",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Abre a fase de recursos: o discente interpõe e a comissão julga.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/publish-final": {
+      "post": {
+        "operationId": "apps_scholarships_router_publish_final",
+        "summary": "Publish Final",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipEditionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Publica o resultado final, depois dos recursos julgados.\n\nMesmo service do preliminar, com a **mesma** semente de sorteio: o\nque muda entre as duas listas é o que os recursos mudaram, e nada\nmais.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/result": {
+      "get": {
+        "operationId": "apps_scholarships_router_edition_result",
+        "summary": "Edition Result",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "description": "Nível do vínculo a que a bolsa se refere.\n\nMesmos valores de `Student.Level` (`apps/academic/models.py`) — a\ninscrição copia o nível do aluno no ato e o congela. Enum próprio (e não\nreuso do aninhado) porque enum de módulo é a regra deste app.",
+              "enum": [
+                "masters",
+                "doctorate"
+              ],
+              "title": "ScholarshipLevel",
+              "type": "string"
+            },
+            "required": true,
+            "description": "Nível do vínculo a que a bolsa se refere.\n\nMesmos valores de `Student.Level` (`apps/academic/models.py`) — a\ninscrição copia o nível do aluno no ato e o congela. Enum próprio (e não\nreuso do aninhado) porque enum de módulo é a regra deste app."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BandOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "As dez faixas de um nível — a lista publicada, ou a prévia.\n\nUm nível por chamada: mestrado e doutorado correm independentes e saem\nem documentos separados, e é este mesmo objeto que alimenta a tela e o\nPDF do resultado.\n\nAntes da publicação a rota devolve a **prévia** (`classify()`), e ela é\nsó de quem trabalha o edital — Secretaria, Coordenação e Comissão de\nBolsas, o mesmo recorte de `ScholarshipApplicationQuerySet.visible_to`.\nPara o candidato o resultado começa a existir com o preliminar\npublicado (`results_visible_to_student()`); antes disso, 403.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/result.pdf": {
+      "get": {
+        "operationId": "apps_scholarships_router_edition_result_pdf",
+        "summary": "Edition Result Pdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "description": "Nível do vínculo a que a bolsa se refere.\n\nMesmos valores de `Student.Level` (`apps/academic/models.py`) — a\ninscrição copia o nível do aluno no ato e o congela. Enum próprio (e não\nreuso do aninhado) porque enum de módulo é a regra deste app.",
+              "enum": [
+                "masters",
+                "doctorate"
+              ],
+              "title": "ScholarshipLevel",
+              "type": "string"
+            },
+            "required": true,
+            "description": "Nível do vínculo a que a bolsa se refere.\n\nMesmos valores de `Student.Level` (`apps/academic/models.py`) — a\ninscrição copia o nível do aluno no ato e o congela. Enum próprio (e não\nreuso do aninhado) porque enum de módulo é a regra deste app."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "O mesmo resultado, em papel — um documento por nível.\n\nA rota não monta nada: a permissão e a regra de visibilidade são as\n**mesmas** do JSON (`_garantir_resultado_visivel`, e é de propósito\nque sejam uma função só — duas cópias divergiriam, e a que vazasse\nseria justamente a imprimível), e o documento sai inteiro de\n`pdf.montar_resultado`.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/bareme/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_bareme",
+        "summary": "List Bareme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ScholarshipLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BaremeItemOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "O barema da edição, na ordem do edital (nível, depois código).\n\nSem paginação de propósito: o barema é a tabela do edital e a tela de\nlançamento monta as seis seções de uma vez — paginar aqui obrigaria o\nfront a remontar a tabela em pedaços.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_scholarships_router_add_bareme_item",
+        "summary": "Add Bareme Item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaremeItemOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria acrescenta uma linha ao barema, em rascunho.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaremeItemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/bareme/{item_id}/": {
+      "patch": {
+        "operationId": "apps_scholarships_router_update_bareme_item",
+        "summary": "Update Bareme Item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaremeItemOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retificação da linha do barema, só em rascunho.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaremeItemPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_scholarships_router_remove_bareme_item",
+        "summary": "Remove Bareme Item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Tira uma linha do barema, só em rascunho.\n\nA permissão exigida é `change_baremeitem`, e não `delete_`: nenhum\npapel de domínio recebe `delete_*` (migration `0008_papeis_da_bolsa`,\ncom teste guardando) — mesmo precedente do `DELETE` da comissão. Em\nrascunho ainda não existe lançamento contra o item, então remover não\napaga nota de ninguém.\n\nA auditoria é gravada **antes** do `delete()`: depois dele a instância\nperde o pk e o alvo do registro sairia vazio.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/bareme/clone": {
+      "post": {
+        "operationId": "apps_scholarships_router_clone_bareme_from_edition",
+        "summary": "Clone Bareme From Edition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaremeCloneOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Copia o barema de outra edição do programa para esta.\n\nA edição da URL é o **destino** — é ela que precisa estar em rascunho.\nA origem é buscada com o mesmo escopo: edição de outro programa é 404.\n\nCruza dois agregados, então o corpo é do service (ADR-002); aqui só\npermissão, escopo e contrato.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaremeCloneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/committee/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_committee",
+        "summary": "List Committee",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CommitteeMemberOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "A composição da comissão daquele ano.\n\nSem paginação de propósito: são poucos membros por edição, e a tela\nmonta a portaria inteira de uma vez.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_scholarships_router_add_committee_member",
+        "summary": "Add Committee Member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitteeMemberOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria designa um professor do programa na comissão.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitteeMemberIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/committee/{member_id}/": {
+      "delete": {
+        "operationId": "apps_scholarships_router_remove_committee_member",
+        "summary": "Remove Committee Member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "schema": {
+              "title": "Member Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Tira um professor da comissão — retificação de portaria.\n\nVale em qualquer estado da edição: a comissão é registro de quem\ncompôs, e não autorização, então remover uma linha não invalida nota\njá lançada nem reabre nada. O que se corrige aqui é o erro de digitação\ne a substituição que a portaria retificadora fez.\n\nA permissão exigida é `change_committeemember`, e não `delete_`:\nnenhum papel de domínio recebe `delete_*` (migration\n`0008_papeis_da_bolsa`, com teste guardando), porque apagar dado da\nbolsa é quebra-vidro de sysadmin — e recompor a comissão do ano é a\nmesma edição da composição que o POST faz.\n\nA auditoria é gravada **antes** do `delete()`: depois dele a instância\nperde o pk e o alvo do registro sairia vazio.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/my-application": {
+      "get": {
+        "operationId": "apps_scholarships_router_get_my_application",
+        "summary": "Get My Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipApplicationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A inscrição do próprio discente naquela edição, se existir.\n\n404 quando ele ainda não se inscreveu — é assim que a tela sabe que\ndeve oferecer o formulário em branco em vez do questionário\npreenchido. Rota separada de um `GET /applications/{id}` de propósito:\no candidato não guarda o id da própria inscrição, ele guarda o edital.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/": {
+      "post": {
+        "operationId": "apps_scholarships_router_create_application",
+        "summary": "Create Application",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipApplicationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "O discente se inscreve na edição, com o questionário respondido.\n\n`for_student` copia programa e nível do vínculo e congela o nível; a\nduplicata por (edição, discente) é o `clean()` (400\n`duplicate_application`). A guarda roda sobre a instância ainda não\nsalva — ela só lê a edição e o dono, e é justamente antes de gravar\nque a janela precisa ser conferida.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScholarshipApplicationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/": {
+      "patch": {
+        "operationId": "apps_scholarships_router_update_application",
+        "summary": "Update Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipApplicationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retificação do questionário, só na janela aberta e só pelo dono.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScholarshipApplicationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_scholarships_router_remove_application",
+        "summary": "Remove Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "O candidato desiste e apaga a própria inscrição, na janela aberta.\n\nFechada a janela, a inscrição é a peça que a comissão pontua e some\nda mão dele — quem cobra isso é o mesmo `ensure_editable` das outras\nescritas (409 `submissions_closed`).\n\nA permissão exigida é `change_scholarshipapplication`, e não\n`delete_`: nenhum papel de domínio recebe `delete_*` (migration\n`0008_papeis_da_bolsa`, com teste guardando), mesmo precedente do\nDELETE do barema e do da comissão. O `CASCADE` leva junto os\ncomprovantes do questionário e os lançamentos do barema; os arquivos\nsaem do storage com eles, porque o `delete()` do model não o faz.\n\nA auditoria é gravada **antes** do `delete()`: depois dele a\ninstância perde o pk e o alvo do registro sairia vazio.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/documents": {
+      "post": {
+        "operationId": "apps_scholarships_router_upload_application_document",
+        "summary": "Upload Application Document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDocumentOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDocumentOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Anexa (ou substitui) o comprovante de um \"Sim\" do questionário.\n\nA permissão é a de montar a própria inscrição — anexar é parte de\nmontar —, e não há permissão de `add_applicationdocument` para papel\nnenhum: o comprovante não é entidade que alguém administre à parte.\nMesmo desenho do anexo do requerimento de isolada.\n\nSubstituir, e não empilhar: um tipo tem uma versão\n(`unique_documento_por_inscricao_de_bolsa_e_tipo`), e o reenvio é a\ncorreção de quem mandou a página errada. 201 quando é o primeiro\nenvio daquele tipo, 200 quando substituiu.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "description": "Um tipo por resposta \"Sim\" do questionário que exige comprovante.\n\nSão sete: `has_paid_activity` é a chave que joga o candidato do bloco\n2.1 para o 2.4 e não pede documento próprio — quem comprova são os\nincisos abaixo dela.",
+                    "enum": [
+                      "affirmative_action",
+                      "socioeconomic_vulnerability",
+                      "substitute_teacher",
+                      "basic_education_or_collective_health",
+                      "public_service",
+                      "private_service",
+                      "other_non_public_scholarship"
+                    ],
+                    "title": "ApplicationDocumentKind",
+                    "type": "string"
+                  },
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/documents/{document_id}/download": {
+      "get": {
+        "operationId": "apps_scholarships_router_download_application_document",
+        "summary": "Download Application Document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.\n\nDuas portas, e só duas: `download_applicationdocument` (Secretaria e\nComissão de Bolsas) e o próprio candidato por posse. Quem apenas\nenxerga a inscrição — a Coordenação, que só acompanha — leva 403\naqui: laudo de vulnerabilidade e contracheque não são insumo de\nacompanhamento. Mesmo desenho do download de `RequestDocument`\n(`apps/academic/router.py`).\n\nA permissão ampla é checada só depois da posse porque ela é a\nexceção, e não a regra: o dono do documento não precisa de permissão\nde secretaria para ler o que ele mesmo enviou.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/entries/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_entries",
+        "summary": "List Entries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BaremeEntryOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os lançamentos de uma inscrição, na ordem do barema.\n\nSem paginação, de propósito: a tela do candidato e a da comissão\nmostram o barema inteiro de uma vez, agrupado por seção, e uma\nsegunda página quebraria o agrupamento — são dezenas de linhas, não\nmilhares.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_scholarships_router_create_entry",
+        "summary": "Create Entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaremeEntryOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "O candidato lança uma linha do barema, com o comprovante junto.\n\nO arquivo é obrigatório na assinatura: faltando, o Ninja devolve 422\nantes de qualquer regra — e é exatamente a resposta certa, porque\n\"lançamento sem comprovante\" não é um estado a ser recusado pelo\ndomínio, é um corpo incompleto.\n\nRepetir o mesmo item é normal e não é duplicata: dois semestres de\ndocência são duas linhas, e é a soma delas que enfrenta o teto do\nitem. Por isso não há guarda de unicidade aqui.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "item_id": {
+                    "title": "Item Id",
+                    "type": "integer"
+                  },
+                  "description": {
+                    "title": "Description",
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "type": "string"
+                      }
+                    ],
+                    "title": "Quantity"
+                  },
+                  "proof": {
+                    "format": "binary",
+                    "title": "Proof",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "item_id",
+                  "description",
+                  "quantity",
+                  "proof"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/entries/{entry_id}/": {
+      "patch": {
+        "operationId": "apps_scholarships_router_update_entry",
+        "summary": "Update Entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaremeEntryOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retificação do lançamento pelo candidato, na janela aberta.\n\nJSON, e não multipart como o POST: **o Django só monta `request.POST`\ne `request.FILES` em requisição POST** (`HttpRequest\n._load_post_and_files`), então um corpo multipart em PATCH chegaria\nvazio ao Ninja, sem erro nenhum. Trocar o comprovante tem rota\nprópria (`POST .../proof`), pelo mesmo motivo pelo qual anexar o\ncomprovante do questionário também é um POST.\n\nTrocar item ou quantidade **recalcula** `candidate_score`: a nota é\nderivada, e deixá-la para trás daria ao candidato uma pontuação que\nnão corresponde ao que ele lançou.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaremeEntryPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_scholarships_router_remove_entry",
+        "summary": "Remove Entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "O candidato apaga um lançamento que fez, na janela aberta.\n\nExige `change_baremeentry`, e não `delete_`: nenhum papel de domínio\nrecebe `delete_*` (migration `0008_papeis_da_bolsa`, com teste\nguardando), mesmo precedente do DELETE da inscrição, do barema e da\ncomissão.\n\nO arquivo sai do storage junto, porque o `delete()` do model não o\nfaz; e a auditoria é gravada **antes**, porque depois a instância\nperde o pk e o alvo do registro sairia vazio.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/entries/{entry_id}/proof": {
+      "post": {
+        "operationId": "apps_scholarships_router_replace_entry_proof",
+        "summary": "Replace Entry Proof",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaremeEntryOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Troca o comprovante de um lançamento já feito.\n\nExiste porque o `PATCH` não pode ser multipart (ver a docstring dele)\ne porque mandar o candidato apagar e relançar para corrigir a página\nerrada do certificado perderia a linha inteira.\n\nSubstitui, e não empilha: o comprovante é um por lançamento\n(`FileField`, não relação), e o arquivo antigo sai do storage — mas\nsó depois do commit, porque apagar arquivo não participa do rollback.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "proof": {
+                    "format": "binary",
+                    "title": "Proof",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "proof"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/entries/{entry_id}/proof/download": {
+      "get": {
+        "operationId": "apps_scholarships_router_download_entry_proof",
+        "summary": "Download Entry Proof",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Entrega o comprovante do lançamento — pelo Django, nunca por URL\ndireta do MEDIA.\n\nSem esta rota o comprovante seria inalcançável: `BaremeEntryOut` não\npublica caminho nem URL, justamente porque o Nginx serve o MEDIA sem\npassar pelo Django. E é o comprovante que a comissão lê para decidir\na nota — é o insumo central da análise (f13).\n\nMesmas duas portas do comprovante do questionário: o dono por posse e\nquem tem `download_applicationdocument`. Leitura auditada, porque é\ndocumento pessoal de outro candidato.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/editions/{edition_id}/applications/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_applications",
+        "summary": "List Applications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edition_id",
+            "schema": {
+              "title": "Edition Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "description": "Nível do vínculo a que a bolsa se refere.\n\nMesmos valores de `Student.Level` (`apps/academic/models.py`) — a\ninscrição copia o nível do aluno no ato e o congela. Enum próprio (e não\nreuso do aninhado) porque enum de módulo é a regra deste app.",
+              "enum": [
+                "masters",
+                "doctorate"
+              ],
+              "title": "ScholarshipLevel",
+              "type": "string"
+            },
+            "required": true,
+            "description": "Nível do vínculo a que a bolsa se refere.\n\nMesmos valores de `Student.Level` (`apps/academic/models.py`) — a\ninscrição copia o nível do aluno no ato e o congela. Enum próprio (e não\nreuso do aninhado) porque enum de módulo é a regra deste app."
+          },
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "advisor_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Advisor Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "admission_year",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Admission Year"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "has_paid_activity",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Paid Activity"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "affirmative_action",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Affirmative Action"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "socioeconomic_vulnerability",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Socioeconomic Vulnerability"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "substitute_teacher",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Substitute Teacher"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "basic_education_or_collective_health",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Basic Education Or Collective Health"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "public_service",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Public Service"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "private_service",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Private Service"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "other_non_public_scholarship",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Other Non Public Scholarship"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "appeal",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AppealState"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "pending_review",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending Review"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedScholarshipApplicationQueueOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A fila de trabalho da comissão, com os filtros do legado.\n\nPaginada de propósito: cada linha lê os lançamentos da inscrição para\nsomar as duas notas (o teto é do item, aplicado sobre a soma dos\nlançamentos daquele item — não há SQL de uma consulta só que faça\nisso), e uma edição inteira sem página seria uma consulta por\ncandidato.\n\nOs oito booleanos são as oito respostas do questionário.\n`cadastro_unico` fica de fora porque não é pergunta de faixa e sim\ncritério de desempate (ver o campo no model): filtrar a fila por ele\nnão é trabalho da análise.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/entries/{entry_id}/review": {
+      "patch": {
+        "operationId": "apps_scholarships_router_review_entry",
+        "summary": "Review Entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaremeEntryOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A comissão pontua um lançamento.\n\nPermissão própria (`review_baremeentry`), separada de\n`change_baremeentry` justamente porque o candidato tem esta última\nsobre o próprio lançamento: uma permissão só para as duas coisas\njuntaria \"corrigir o que digitei\" com \"decidir quanto vale\".\n\nO schema de entrada tem **dois campos** e nenhum deles é do candidato\n— é o contrato, e não uma checagem, que impede a comissão de reescrever\nquantidade ou descrição. A janela (`under_review` e\n`appeals_under_review`) e a observação obrigatória na divergência são\ndo model.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaremeEntryReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/item-reviews/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_item_reviews",
+        "summary": "List Item Reviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemReviewOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "As observações por item de uma inscrição.\n\nSem esta rota o `PUT` seria escrita sem leitura: a tela da análise\nprecisa mostrar o que a comissão já comentou para poder retificar, e\no candidato precisa ler o comentário para poder recorrer dele — é a\nmesma razão pela qual `committee_note` já viaja no lançamento.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/item-totals/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_item_totals",
+        "summary": "List Item Totals",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationItemTotalOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "A \"Nota total\" de cada item, com o teto do edital já aplicado.\n\nExiste para que a tela de análise não some nada: o teto corta a SOMA\ndos lançamentos do item (`BaremeItem.apply_cap`), e um `min` repetido\nno front seria a segunda porta para a mesma regra. Mesma permissão e\nmesmo porteiro dos lançamentos — é a leitura deles, agrupada.\n\nO `prefetch_related` é o que faz a conta caber numa consulta: o\n`item_totals()` lê `bareme_entries.all()` e cai no cache (ver\n`_lancamentos_carregados`).",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/item-review": {
+      "put": {
+        "operationId": "apps_scholarships_router_set_item_review",
+        "summary": "Set Item Review",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemReviewOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Grava a observação da comissão sobre um item do barema.\n\n`PUT` e não `POST` porque a observação é uma por (inscrição, item):\nreenviar sobrescreve o texto, e não empilha um segundo comentário que\ndeixaria o candidato adivinhando qual vale. Por isso responde 200\ntambém na primeira vez — o recurso identificado pela chave existe a\npartir do momento em que se escreve nele.\n\nExige `review_baremeentry`, a mesma permissão da nota: comentar o item\né parte do ato de analisar, e um papel que comentasse sem poder\npontuar não existe no edital.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/fump": {
+      "patch": {
+        "operationId": "apps_scholarships_router_set_fump_level",
+        "summary": "Set Fump Level",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipApplicationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A Secretaria transcreve o nível da FUMP do candidato.\n\nSem guarda de estado de propósito: o resultado da FUMP chega fora do\nsistema e no calendário dela, não no da edição — travá-lo por status\nobrigaria a secretaria a reabrir a edição para digitar um dado que\nela recebeu por e-mail.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FumpLevelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/band": {
+      "patch": {
+        "operationId": "apps_scholarships_router_override_band",
+        "summary": "Override Band",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipApplicationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A Secretaria sobrescreve a faixa de prioridade, com justificativa.\n\nA justificativa vazia é recusada pelo `clean()` do model\n(`override_reason_required`) — a regra é do domínio, não da borda.\nEnviar `band_override: null` limpa a sobrescrita, e a faixa volta a\nser a derivada do questionário.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BandOverrideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/applications/{application_id}/appeal": {
+      "post": {
+        "operationId": "apps_scholarships_router_create_appeal",
+        "summary": "Create Appeal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipAppealOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "O candidato interpõe recurso contra o resultado preliminar.\n\nA guarda é do model (`ensure_appealable`): fase fechada é 409\n`appeals_closed`, inscrição alheia é 403 `not_application_owner`, e o\nsegundo recurso é 400 `duplicate_appeal` do `clean()`. Publicar o\npreliminar não abre a fase — quem abre é `open_appeals()`, e é por\nisso que a janela é conferida pelo estado e não pela data.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScholarshipAppealIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "apps_scholarships_router_get_appeal",
+        "summary": "Get Appeal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipAppealOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "O recurso de uma inscrição, para a tela da comissão e a do dono.\n\n404 quando não há recurso — \"não recorreu\" é o caso normal, e é assim\nque a tela sabe que deve oferecer o formulário em branco. Quem não é\no dono passa pelo mesmo porteiro dos lançamentos\n(`_garantir_acesso_a_inscricao`): `view_scholarshipappeal` sozinha não\nserve, porque o Discente também a tem — é com ela que lê o próprio.",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/scholarships/appeals/{appeal_id}/judge": {
+      "patch": {
+        "operationId": "apps_scholarships_router_judge_appeal",
+        "summary": "Judge Appeal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "appeal_id",
+            "schema": {
+              "title": "Appeal Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScholarshipAppealOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A comissão julga o recurso, com fundamentação.\n\nRota nomeada pelo ato, e não um `PATCH` de `outcome`: julgar é\ntransição, e o model a cobra (fase aberta, recurso ainda não julgado,\nfundamentação não vazia). O instante vai explícito, como nas demais\ntransições deste app.",
+        "tags": [
+          "scholarships"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScholarshipAppealJudgeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -11052,15 +13194,14 @@
         "type": "object"
       },
       "ApplicationDocumentOut": {
-        "description": "Um anexo da inscrição, sem o caminho do arquivo.\n\nNem `file` nem `file.url` entram aqui, pelo mesmo motivo de\n`academic.RequestDocumentOut`: o MEDIA é servido pelo Nginx sem passar\npelo Django, então publicar a URL entregaria o documento de identidade\ndo candidato a quem descobrisse o endereço — e sem `AuditLog`. O único\ncaminho para o conteúdo é a rota de download, que exige\n`download_applicationdocument` e registra a leitura.",
+        "description": "Um comprovante do questionário, sem o caminho do arquivo.\n\nNem `file` nem `file.url` entram aqui, pelo mesmo motivo de\n`RequestDocumentOut` (`apps/academic/schemas.py`): o MEDIA é servido\npelo Nginx sem passar pelo Django, então publicar a URL entregaria o\nlaudo e o contracheque do candidato a quem descobrisse o endereço — e\nsem AuditLog. O único caminho para o conteúdo é a rota de download,\nque exige `download_applicationdocument` de quem não é o dono e\nregistra o acesso.",
         "properties": {
           "id": {
             "title": "Id",
             "type": "integer"
           },
           "kind": {
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/ApplicationDocumentKind"
           },
           "kind_label": {
             "title": "Kind Label",
@@ -11867,6 +14008,2041 @@
           "project_id"
         ],
         "title": "ApplicationEnrollIn",
+        "type": "object"
+      },
+      "ScholarshipEditionStatus": {
+        "description": "Estados da edição anual, sempre para frente (não há volta ao rascunho).\n\nCorreção de rumo é quebra-vidro no Admin, não transição.",
+        "enum": [
+          "draft",
+          "submissions_open",
+          "under_review",
+          "preliminary_result",
+          "appeals_under_review",
+          "final_result"
+        ],
+        "title": "ScholarshipEditionStatus",
+        "type": "string"
+      },
+      "PagedScholarshipEditionOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScholarshipEditionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedScholarshipEditionOut",
+        "type": "object"
+      },
+      "ScholarshipEditionOut": {
+        "description": "A edição como a tela da secretaria a vê.\n\nAs cinco guardas de leitura do model viajam resolvidas: é o servidor\nque decide se o barema ainda é editável ou se o resultado já aparece\npara o discente, e a tela só desenha o que elas dizem. Repetir a\nmáquina de estados no front seria a segunda porta que o CLAUDE.md\nproíbe.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScholarshipEditionStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "submission_starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Starts On"
+          },
+          "submission_ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Ends On"
+          },
+          "preliminary_result_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preliminary Result On"
+          },
+          "appeal_ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appeal Ends On"
+          },
+          "final_result_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Result On"
+          },
+          "notice_filename": {
+            "title": "Notice Filename",
+            "type": "string"
+          },
+          "notice_url": {
+            "title": "Notice Url",
+            "type": "string"
+          },
+          "bareme_editable": {
+            "title": "Bareme Editable",
+            "type": "boolean"
+          },
+          "submission_open": {
+            "title": "Submission Open",
+            "type": "boolean"
+          },
+          "committee_can_review": {
+            "title": "Committee Can Review",
+            "type": "boolean"
+          },
+          "appeal_open": {
+            "title": "Appeal Open",
+            "type": "boolean"
+          },
+          "results_visible_to_student": {
+            "title": "Results Visible To Student",
+            "type": "boolean"
+          },
+          "published_preliminary_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Preliminary At"
+          },
+          "published_final_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Final At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "year",
+          "title",
+          "status",
+          "status_label",
+          "submission_starts_on",
+          "submission_ends_on",
+          "preliminary_result_on",
+          "appeal_ends_on",
+          "final_result_on",
+          "notice_filename",
+          "notice_url",
+          "bareme_editable",
+          "submission_open",
+          "committee_can_review",
+          "appeal_open",
+          "results_visible_to_student",
+          "published_preliminary_at",
+          "published_final_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScholarshipEditionOut",
+        "type": "object"
+      },
+      "ScholarshipEditionIn": {
+        "description": "Abertura da edição do ano, digitada pela secretaria.\n\nSem `program_id`: o programa é o da requisição (`current_program`),\nnunca o que o chamador escolher. Sem `status` também — a edição nasce\nem rascunho e só anda pelas cinco rotas de transição.\n\nAs datas do cronograma são opcionais e todas nulas por padrão: elas são\n**informação publicada**, não gatilho (nada abre ou fecha por relógio),\ne no momento em que a secretaria abre a edição o calendário ainda está\nsendo fechado.",
+        "properties": {
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "submission_starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Starts On"
+          },
+          "submission_ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Ends On"
+          },
+          "preliminary_result_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preliminary Result On"
+          },
+          "appeal_ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appeal Ends On"
+          },
+          "final_result_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Result On"
+          }
+        },
+        "required": [
+          "year",
+          "title"
+        ],
+        "title": "ScholarshipEditionIn",
+        "type": "object"
+      },
+      "ScholarshipEditionPatch": {
+        "description": "Retificação da edição: só os campos presentes são aplicados.\n\nVale em qualquer estado, de propósito. O que a edição publica de\ncronograma é texto informativo, e retificar data divulgada é o caso\nnormal do edital — quem trava o que muda nota já dada é\n`bareme_editable()`, no barema, não aqui. O `year` continua defendido\npelo `clean()` (`duplicate_edition`).",
+        "properties": {
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "submission_starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Starts On"
+          },
+          "submission_ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Ends On"
+          },
+          "preliminary_result_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preliminary Result On"
+          },
+          "appeal_ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appeal Ends On"
+          },
+          "final_result_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Result On"
+          }
+        },
+        "title": "ScholarshipEditionPatch",
+        "type": "object"
+      },
+      "ScholarshipLevel": {
+        "description": "Nível do vínculo a que a bolsa se refere.\n\nMesmos valores de `Student.Level` (`apps/academic/models.py`) — a\ninscrição copia o nível do aluno no ato e o congela. Enum próprio (e não\nreuso do aninhado) porque enum de módulo é a regra deste app.",
+        "enum": [
+          "masters",
+          "doctorate"
+        ],
+        "title": "ScholarshipLevel",
+        "type": "string"
+      },
+      "BandOut": {
+        "description": "Uma das dez faixas do documento publicado, **mesmo vazia**.\n\nFaixa sem candidato sai só com o cabeçalho (Q8), e por isso a lista\ntem sempre dez elementos, na ordem canônica do edital: a tela e o PDF\nimprimem a ordem de prioridade completa, e uma faixa que sumisse da\nresposta viraria uma prioridade a menos no documento.",
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/PriorityBand"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "priority_label": {
+            "title": "Priority Label",
+            "type": "string"
+          },
+          "ordering_rule": {
+            "title": "Ordering Rule",
+            "type": "string"
+          },
+          "shows_income": {
+            "title": "Shows Income",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ResultRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "band",
+          "title",
+          "priority_label",
+          "ordering_rule",
+          "shows_income",
+          "rows"
+        ],
+        "title": "BandOut",
+        "type": "object"
+      },
+      "PriorityBand": {
+        "description": "As dez faixas de prioridade, nomeadas pelo inciso do edital.\n\n`B24_I` e `B24_II` só existem por sobrescrita da secretaria: não há\npergunta no questionário que as derive. A residual é a décima e recebe\nquem não se encaixa em nenhum inciso.",
+        "enum": [
+          "b21_i",
+          "b21_ii",
+          "b24_i",
+          "b24_ii",
+          "b24_iii",
+          "b24_iv",
+          "b24_v",
+          "b24_vi_vii_viii",
+          "b24_ix",
+          "residual"
+        ],
+        "title": "PriorityBand",
+        "type": "string"
+      },
+      "ResultRowOut": {
+        "description": "Uma linha da lista, já na posição publicada.\n\n`income` e `weekly_hours` viajam sempre, mas só a faixa com\n`shows_income` os imprime: é a coluna \"Remuneração\" das duas faixas\nordenadas por rendimento.\n\n`draw_order` nula é o caso normal — \"não precisou de sorteio\". Quando\nvem preenchida, é a ordem que o sorteio de desempate deu, e ela é\npublicada junto porque é o que torna o desempate conferível.",
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Score",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "income": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income"
+          },
+          "weekly_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Hours"
+          },
+          "draw_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draw Order"
+          }
+        },
+        "required": [
+          "application_id",
+          "student_id",
+          "name",
+          "score",
+          "position",
+          "income",
+          "weekly_hours",
+          "draw_order"
+        ],
+        "title": "ResultRowOut",
+        "type": "object"
+      },
+      "BaremeItemOut": {
+        "description": "O item do barema como a tela o mostra.\n\nOs três rótulos viajam resolvidos porque a tela de lançamento agrupa\nos itens por seção e o nome da seção é do edital, não do front.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "edition_id": {
+            "title": "Edition Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/ScholarshipLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "section": {
+            "$ref": "#/components/schemas/BaremeSection"
+          },
+          "section_label": {
+            "title": "Section Label",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/BaremeUnit"
+          },
+          "unit_label": {
+            "title": "Unit Label",
+            "type": "string"
+          },
+          "points_per_unit": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Points Per Unit",
+            "type": "string"
+          },
+          "cap": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cap",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edition_id",
+          "level",
+          "level_label",
+          "section",
+          "section_label",
+          "code",
+          "text",
+          "unit",
+          "unit_label",
+          "points_per_unit",
+          "cap",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BaremeItemOut",
+        "type": "object"
+      },
+      "BaremeSection": {
+        "description": "As seis seções (I..VI) do barema do edital.",
+        "enum": [
+          "formation",
+          "bibliographic",
+          "events",
+          "professional",
+          "boards",
+          "other_titles"
+        ],
+        "title": "BaremeSection",
+        "type": "string"
+      },
+      "BaremeUnit": {
+        "description": "Unidade em que o item do barema mede a quantidade lançada.",
+        "enum": [
+          "semester",
+          "month",
+          "hour",
+          "unit"
+        ],
+        "title": "BaremeUnit",
+        "type": "string"
+      },
+      "BaremeItemIn": {
+        "description": "Uma linha do barema, digitada pela secretaria com a edição em\nrascunho.\n\nSem `edition_id`: a edição vem da URL, já escopada no programa da\nsessão. `level` é obrigatório e não tem default — o barema é por\n(edição, nível), e mestrado e doutorado são listas independentes;\num default aqui faria item de doutorado nascer em mestrado por\nesquecimento.",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/ScholarshipLevel"
+          },
+          "section": {
+            "$ref": "#/components/schemas/BaremeSection"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/BaremeUnit"
+          },
+          "points_per_unit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Points Per Unit"
+          },
+          "cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Cap"
+          }
+        },
+        "required": [
+          "level",
+          "section",
+          "code",
+          "text",
+          "unit",
+          "points_per_unit",
+          "cap"
+        ],
+        "title": "BaremeItemIn",
+        "type": "object"
+      },
+      "BaremeItemPatch": {
+        "description": "Retificação do item: só os campos presentes são aplicados.\n\nVale apenas com a edição em rascunho (`ensure_bareme_editable`), como\no POST e o DELETE. O `code` continua defendido pelo `clean()`\n(`duplicate_bareme_item`).",
+        "properties": {
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScholarshipLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "section": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaremeSection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaremeUnit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "points_per_unit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points Per Unit"
+          },
+          "cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap"
+          }
+        },
+        "title": "BaremeItemPatch",
+        "type": "object"
+      },
+      "BaremeCloneOut": {
+        "description": "O resultado da clonagem: quantos itens vieram e o barema completo.\n\nA tela recarrega a lista sem uma segunda chamada, e `created` é o\nnúmero que a secretaria confere contra o edital do ano anterior.",
+        "properties": {
+          "source_edition_id": {
+            "title": "Source Edition Id",
+            "type": "integer"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BaremeItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_edition_id",
+          "created",
+          "items"
+        ],
+        "title": "BaremeCloneOut",
+        "type": "object"
+      },
+      "BaremeCloneIn": {
+        "description": "De onde copiar o barema.\n\nO destino é a edição da URL — é ela que precisa estar em rascunho. A\norigem é qualquer outra edição do mesmo programa (tipicamente a do ano\nanterior): montar o barema do zero é a parte mais cara de abrir o\nedital, e ele muda pouco de um ano para o outro.",
+        "properties": {
+          "source_edition_id": {
+            "title": "Source Edition Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_edition_id"
+        ],
+        "title": "BaremeCloneIn",
+        "type": "object"
+      },
+      "CommitteeMemberOut": {
+        "description": "Um membro da comissão, com o nome já resolvido.\n\nA tela lista a composição do ano e não deve cruzar id de professor com\nnome. Nada aqui é autorização: quem avalia é quem está no Group\n\"Comissão de Bolsas\" (docstring de `CommitteeMember`).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "edition_id": {
+            "title": "Edition Id",
+            "type": "integer"
+          },
+          "teacher_id": {
+            "title": "Teacher Id",
+            "type": "integer"
+          },
+          "teacher_name": {
+            "title": "Teacher Name",
+            "type": "string"
+          },
+          "appointed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointed On"
+          },
+          "ordinance": {
+            "title": "Ordinance",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edition_id",
+          "teacher_id",
+          "teacher_name",
+          "appointed_on",
+          "ordinance",
+          "created_at"
+        ],
+        "title": "CommitteeMemberOut",
+        "type": "object"
+      },
+      "CommitteeMemberIn": {
+        "description": "Designação de um professor na comissão daquele ano.\n\nSem `edition_id`: a edição vem da URL, já escopada no programa da\nsessão. `teacher_id` é conferido contra o programa na rota, e o\n`clean()` do model guarda o mesmo invariante para quem escrever fora\ndela.",
+        "properties": {
+          "teacher_id": {
+            "title": "Teacher Id",
+            "type": "integer"
+          },
+          "appointed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointed On"
+          },
+          "ordinance": {
+            "default": "",
+            "title": "Ordinance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "teacher_id"
+        ],
+        "title": "CommitteeMemberIn",
+        "type": "object"
+      },
+      "AppealOutcome": {
+        "description": "Resultado do julgamento do recurso.",
+        "enum": [
+          "granted",
+          "partially_granted",
+          "denied"
+        ],
+        "title": "AppealOutcome",
+        "type": "string"
+      },
+      "ApplicationDocumentKind": {
+        "description": "Um tipo por resposta \"Sim\" do questionário que exige comprovante.\n\nSão sete: `has_paid_activity` é a chave que joga o candidato do bloco\n2.1 para o 2.4 e não pede documento próprio — quem comprova são os\nincisos abaixo dela.",
+        "enum": [
+          "affirmative_action",
+          "socioeconomic_vulnerability",
+          "substitute_teacher",
+          "basic_education_or_collective_health",
+          "public_service",
+          "private_service",
+          "other_non_public_scholarship"
+        ],
+        "title": "ApplicationDocumentKind",
+        "type": "string"
+      },
+      "PendingDocumentOut": {
+        "description": "Um \"Sim\" do questionário ainda sem comprovante.\n\nViaja com o rótulo resolvido porque é isto que a tela desenha na\nlista de pendências, e o nome do inciso é do edital, não do front.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ApplicationDocumentKind"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "kind_label"
+        ],
+        "title": "PendingDocumentOut",
+        "type": "object"
+      },
+      "ScholarshipAppealOut": {
+        "description": "O recurso como as duas telas o leem: a do candidato e a da comissão.\n\n`outcome_label` viaja resolvido porque o rótulo (\"Parcialmente\ndeferido\") é do edital, e montá-lo no front seria a segunda cópia da\ntabela de resultados.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppealOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Label"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "judged": {
+            "title": "Judged",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "text",
+          "submitted_at",
+          "outcome",
+          "outcome_label",
+          "reasoning",
+          "decided_at",
+          "judged",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScholarshipAppealOut",
+        "type": "object"
+      },
+      "ScholarshipApplicationOut": {
+        "description": "A inscrição como a tela do discente e a da comissão a veem.\n\nAs derivações viajam resolvidas, e nenhuma delas é recalculável no\nfront: `submission_open` (a janela, que decide se a tela desenha os\nbotões de edição), `pending_docs` (o \"Sim - Não enviado\" do legado),\n`band` (a faixa efetiva) e o par do recurso — `can_appeal` (o botão de\nrecorrer) e `appeal` (o que já foi interposto e como foi julgado).\n\nOs campos de snapshot da publicação não estão aqui: eles entram com a\ntela do resultado (f18/f24), e expô-los antes daria à tela de\ninscrição um resultado que ainda não existe.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "edition_id": {
+            "title": "Edition Id",
+            "type": "integer"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "integer"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/ScholarshipLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "has_paid_activity": {
+            "title": "Has Paid Activity",
+            "type": "boolean"
+          },
+          "affirmative_action": {
+            "title": "Affirmative Action",
+            "type": "boolean"
+          },
+          "socioeconomic_vulnerability": {
+            "title": "Socioeconomic Vulnerability",
+            "type": "boolean"
+          },
+          "cadastro_unico": {
+            "title": "Cadastro Unico",
+            "type": "boolean"
+          },
+          "substitute_teacher": {
+            "title": "Substitute Teacher",
+            "type": "boolean"
+          },
+          "basic_education_or_collective_health": {
+            "title": "Basic Education Or Collective Health",
+            "type": "boolean"
+          },
+          "public_service": {
+            "title": "Public Service",
+            "type": "boolean"
+          },
+          "private_service": {
+            "title": "Private Service",
+            "type": "boolean"
+          },
+          "other_non_public_scholarship": {
+            "title": "Other Non Public Scholarship",
+            "type": "boolean"
+          },
+          "monthly_income": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Income"
+          },
+          "weekly_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Hours"
+          },
+          "fump_level": {
+            "title": "Fump Level",
+            "type": "integer"
+          },
+          "band_override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriorityBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "band_override_reason": {
+            "title": "Band Override Reason",
+            "type": "string"
+          },
+          "band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriorityBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "submission_open": {
+            "title": "Submission Open",
+            "type": "boolean"
+          },
+          "can_appeal": {
+            "title": "Can Appeal",
+            "type": "boolean"
+          },
+          "appeal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScholarshipAppealOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationDocumentOut"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "pending_docs": {
+            "items": {
+              "$ref": "#/components/schemas/PendingDocumentOut"
+            },
+            "title": "Pending Docs",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edition_id",
+          "student_id",
+          "student_name",
+          "level",
+          "level_label",
+          "submitted_at",
+          "has_paid_activity",
+          "affirmative_action",
+          "socioeconomic_vulnerability",
+          "cadastro_unico",
+          "substitute_teacher",
+          "basic_education_or_collective_health",
+          "public_service",
+          "private_service",
+          "other_non_public_scholarship",
+          "monthly_income",
+          "weekly_hours",
+          "fump_level",
+          "band_override",
+          "band_override_reason",
+          "band",
+          "submission_open",
+          "can_appeal",
+          "appeal",
+          "documents",
+          "pending_docs",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScholarshipApplicationOut",
+        "type": "object"
+      },
+      "ScholarshipApplicationIn": {
+        "description": "A inscrição que o discente monta, com o questionário do edital.\n\nSem `student_id` e sem `level`: o vínculo é o da sessão e o nível é\ncopiado dele no ato (`ScholarshipApplication.for_student`) — aceitar\nqualquer um dos dois do corpo deixaria um candidato se inscrever em\nnome de outro ou escolher a lista em que compete.\n\nSem `fump_level`, `band_override` e `band_override_reason` também:\nesses três são da Secretaria, têm permissão própria e rota própria\n(f14). Aqui só o que o candidato declara.\n\nOs booleanos têm default `False` para que a tela possa mandar apenas\nos \"Sim\" — o questionário do edital é uma lista de afirmações, e não\nresponder é responder \"não\".",
+        "properties": {
+          "edition_id": {
+            "title": "Edition Id",
+            "type": "integer"
+          },
+          "has_paid_activity": {
+            "default": false,
+            "title": "Has Paid Activity",
+            "type": "boolean"
+          },
+          "affirmative_action": {
+            "default": false,
+            "title": "Affirmative Action",
+            "type": "boolean"
+          },
+          "socioeconomic_vulnerability": {
+            "default": false,
+            "title": "Socioeconomic Vulnerability",
+            "type": "boolean"
+          },
+          "cadastro_unico": {
+            "default": false,
+            "title": "Cadastro Unico",
+            "type": "boolean"
+          },
+          "substitute_teacher": {
+            "default": false,
+            "title": "Substitute Teacher",
+            "type": "boolean"
+          },
+          "basic_education_or_collective_health": {
+            "default": false,
+            "title": "Basic Education Or Collective Health",
+            "type": "boolean"
+          },
+          "public_service": {
+            "default": false,
+            "title": "Public Service",
+            "type": "boolean"
+          },
+          "private_service": {
+            "default": false,
+            "title": "Private Service",
+            "type": "boolean"
+          },
+          "other_non_public_scholarship": {
+            "default": false,
+            "title": "Other Non Public Scholarship",
+            "type": "boolean"
+          },
+          "monthly_income": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Income"
+          },
+          "weekly_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Hours"
+          }
+        },
+        "required": [
+          "edition_id"
+        ],
+        "title": "ScholarshipApplicationIn",
+        "type": "object"
+      },
+      "ScholarshipApplicationPatch": {
+        "description": "Retificação do questionário: só os campos presentes são aplicados.\n\nVale enquanto a janela está aberta e só para o próprio candidato\n(`ensure_editable`). A coerência entre atividade remunerada,\nrendimento e carga horária continua sendo do `clean()`\n(`income_required`) — e ela é conferida sobre a inscrição **já\nalterada**, não sobre o payload, porque quem desliga\n`has_paid_activity` sem apagar a renda não está errado.",
+        "properties": {
+          "has_paid_activity": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Paid Activity"
+          },
+          "affirmative_action": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affirmative Action"
+          },
+          "socioeconomic_vulnerability": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Socioeconomic Vulnerability"
+          },
+          "cadastro_unico": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cadastro Unico"
+          },
+          "substitute_teacher": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Substitute Teacher"
+          },
+          "basic_education_or_collective_health": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Education Or Collective Health"
+          },
+          "public_service": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Service"
+          },
+          "private_service": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private Service"
+          },
+          "other_non_public_scholarship": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Non Public Scholarship"
+          },
+          "monthly_income": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Income"
+          },
+          "weekly_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly Hours"
+          }
+        },
+        "title": "ScholarshipApplicationPatch",
+        "type": "object"
+      },
+      "BaremeEntryOut": {
+        "description": "O lançamento como a tela do candidato e a da comissão o veem.\n\nOs dados do item viajam resolvidos (`item_code`, `item_text`,\n`item_section`) porque as duas telas agrupam os lançamentos por seção\ndo barema e o texto da linha é do edital, não do front.\n\nO comprovante sai como nome e tamanho, nunca como caminho ou URL —\nmesmo motivo de `ApplicationDocumentOut`: o MEDIA é servido pelo Nginx\nsem passar pelo Django, e o único caminho para o conteúdo é a rota de\ndownload, que audita o acesso.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "item_code": {
+            "title": "Item Code",
+            "type": "string"
+          },
+          "item_text": {
+            "title": "Item Text",
+            "type": "string"
+          },
+          "item_section": {
+            "$ref": "#/components/schemas/BaremeSection"
+          },
+          "item_section_label": {
+            "title": "Item Section Label",
+            "type": "string"
+          },
+          "item_unit": {
+            "$ref": "#/components/schemas/BaremeUnit"
+          },
+          "item_unit_label": {
+            "title": "Item Unit Label",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "quantity": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Quantity",
+            "type": "string"
+          },
+          "candidate_score": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Candidate Score",
+            "type": "string"
+          },
+          "committee_score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committee Score"
+          },
+          "committee_note": {
+            "title": "Committee Note",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "proof_filename": {
+            "title": "Proof Filename",
+            "type": "string"
+          },
+          "proof_size": {
+            "title": "Proof Size",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "item_id",
+          "item_code",
+          "item_text",
+          "item_section",
+          "item_section_label",
+          "item_unit",
+          "item_unit_label",
+          "description",
+          "quantity",
+          "candidate_score",
+          "committee_score",
+          "committee_note",
+          "reviewed_at",
+          "proof_filename",
+          "proof_size",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BaremeEntryOut",
+        "type": "object"
+      },
+      "BaremeEntryIn": {
+        "description": "O que o candidato digita ao lançar uma linha do barema.\n\n**Três campos, e só três.** Não há `candidate_score` aqui de\npropósito: a nota do candidato é *calculada* pelo servidor como\n`item.raw_score(quantity)`, e aceitá-la do corpo deixaria o candidato\nescolher a própria pontuação. Também não há `committee_score` nem\n`committee_note` — a nota da comissão tem rota e permissão próprias\n(`review_baremeentry`, f13), e é assim que \"a comissão não mexe no que\no aluno digitou, e o aluno não mexe no que a comissão decidiu\" vira\ncódigo, e não combinado.\n\nViaja como **multipart** junto com o comprovante (`Form(...)` no\nrouter): sem comprovante o lançamento não existe (Q11), então não há\ncaminho de criar vazio e anexar depois.",
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Quantity"
+          }
+        },
+        "required": [
+          "item_id",
+          "description",
+          "quantity"
+        ],
+        "title": "BaremeEntryIn",
+        "type": "object"
+      },
+      "BaremeEntryPatch": {
+        "description": "Retificação do lançamento: só os campos presentes são aplicados.\n\nJSON, ao contrário do `BaremeEntryIn` — o comprovante tem rota\nprópria porque o Django não parseia multipart em PATCH. Os campos da\ncomissão continuam de fora, pela mesma razão do `In`.",
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          }
+        },
+        "title": "BaremeEntryPatch",
+        "type": "object"
+      },
+      "AppealState": {
+        "description": "Estado do recurso, como a **fila de análise** o filtra.\n\nNão é campo de model nenhum: é derivado da existência do\n`ScholarshipAppeal` e do preenchimento do `outcome`\n(`ScholarshipApplication.appeal_state()`). Existe porque a comissão\ntrabalha a fila por estado (\"quem recorreu e ainda não foi julgado\"),\ne um filtro por `outcome` sozinho não distinguiria \"sem recurso\" de\n\"recurso pendente\" — os dois têm `outcome` nulo.",
+        "enum": [
+          "none",
+          "pending",
+          "judged"
+        ],
+        "title": "AppealState",
+        "type": "string"
+      },
+      "PagedScholarshipApplicationQueueOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScholarshipApplicationQueueOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedScholarshipApplicationQueueOut",
+        "type": "object"
+      },
+      "ScholarshipApplicationQueueOut": {
+        "description": "Uma linha da fila de trabalho da comissão.\n\nÉ um schema próprio, e não o `ScholarshipApplicationOut`: a fila\nresponde a outras perguntas (quanto o candidato pediu, quanto a\ncomissão já concedeu, sobrou item a analisar, recorreu) e não precisa\ndo questionário inteiro em cada linha — quem quer o questionário abre\na inscrição.\n\nAs três leituras de nota (`candidate_score`, `committee_score`,\n`fully_reviewed`) são derivadas dos lançamentos a cada resposta: não\nhá campo denormalizado a manter em dia, e o teto do item é aplicado\nsobre a soma dos lançamentos daquele item (ver\n`BaremeItem.raw_score`). É por isso que a fila é paginada.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "integer"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/ScholarshipLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "research_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line"
+          },
+          "advisor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisor Name"
+          },
+          "admission_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Year"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "fump_level": {
+            "title": "Fump Level",
+            "type": "integer"
+          },
+          "band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriorityBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "candidate_score": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Candidate Score",
+            "type": "string"
+          },
+          "committee_score": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Committee Score",
+            "type": "string"
+          },
+          "fully_reviewed": {
+            "title": "Fully Reviewed",
+            "type": "boolean"
+          },
+          "appeal_state": {
+            "$ref": "#/components/schemas/AppealState"
+          },
+          "appeal_outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppealOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_docs": {
+            "items": {
+              "$ref": "#/components/schemas/PendingDocumentOut"
+            },
+            "title": "Pending Docs",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "student_id",
+          "student_name",
+          "level",
+          "level_label",
+          "research_line",
+          "advisor_name",
+          "admission_year",
+          "submitted_at",
+          "fump_level",
+          "band",
+          "candidate_score",
+          "committee_score",
+          "fully_reviewed",
+          "appeal_state",
+          "appeal_outcome",
+          "pending_docs",
+          "updated_at"
+        ],
+        "title": "ScholarshipApplicationQueueOut",
+        "type": "object"
+      },
+      "BaremeEntryReviewIn": {
+        "description": "A avaliação da comissão sobre um lançamento — **dois campos**.\n\nNão há `description`, `quantity`, `item_id` nem `candidate_score`\naqui, e a ausência é o ponto: a comissão pontua o que o candidato\nlançou e não reescreve o que ele lançou. Campo extra no corpo é\nignorado pelo pydantic, sem erro — o teste que prova isso manda o\ncampo e confere o gravado.\n\n`committee_note` tem default vazio porque nota igual à do candidato\nnão precisa de justificativa; a divergência sem observação é recusada\npelo `clean()` do lançamento (`note_required`), que é onde a regra\nmora desde o model.",
+        "properties": {
+          "committee_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Committee Score"
+          },
+          "committee_note": {
+            "default": "",
+            "title": "Committee Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "committee_score"
+        ],
+        "title": "BaremeEntryReviewIn",
+        "type": "object"
+      },
+      "ItemReviewOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "item_code": {
+            "title": "Item Code",
+            "type": "string"
+          },
+          "item_text": {
+            "title": "Item Text",
+            "type": "string"
+          },
+          "item_section": {
+            "$ref": "#/components/schemas/BaremeSection"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "item_id",
+          "item_code",
+          "item_text",
+          "item_section",
+          "note",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ItemReviewOut",
+        "type": "object"
+      },
+      "ApplicationItemTotalOut": {
+        "description": "A \"Nota total\" de um item do barema, do jeito que a análise a lê.\n\nO teto já vem aplicado (`ScholarshipApplication.item_totals`), e é por\nisso que este schema existe: somar os lançamentos e cortar pelo limite\nno front seria reescrever `BaremeItem.apply_cap` do outro lado do fio\n— e o teto é do item sobre a SOMA, não de cada lançamento.\n\n`cap` viaja junto porque a tela publica o limite ao lado do total\n(\"Limite: 3,00\"): é o texto do edital, e sem ele o corte apareceria\ncomo um número menor sem explicação.",
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "item_code": {
+            "title": "Item Code",
+            "type": "string"
+          },
+          "item_text": {
+            "title": "Item Text",
+            "type": "string"
+          },
+          "item_section": {
+            "$ref": "#/components/schemas/BaremeSection"
+          },
+          "item_section_label": {
+            "title": "Item Section Label",
+            "type": "string"
+          },
+          "cap": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cap",
+            "type": "string"
+          },
+          "candidate_total": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Candidate Total",
+            "type": "string"
+          },
+          "committee_total": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Committee Total",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "item_code",
+          "item_text",
+          "item_section",
+          "item_section_label",
+          "cap",
+          "candidate_total",
+          "committee_total"
+        ],
+        "title": "ApplicationItemTotalOut",
+        "type": "object"
+      },
+      "ItemReviewIn": {
+        "description": "A observação da comissão sobre um item inteiro do barema.\n\nOutra coisa que `committee_note`: aquela explica **um lançamento**,\nesta comenta o item como um todo. Uma por (inscrição, item) — por isso\na rota é `PUT`, e reenviar sobrescreve em vez de empilhar.",
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "note"
+        ],
+        "title": "ItemReviewIn",
+        "type": "object"
+      },
+      "FumpLevelIn": {
+        "description": "O nível da FUMP transcrito pela Secretaria — **um campo**.\n\nO resultado da FUMP chega à Comissão fora do sistema (Q9); aqui ele é\nsó transcrito, e vale duas vezes: bônus na nota final (`BONUS_FUMP`) e\n1º critério de desempate. Os limites são os de `NIVEIS_DA_FUMP` (0 é\n\"sem nível\"), conferidos aqui para que valor fora do domínio pare na\nborda, com 422, em vez de virar linha gravada que ninguém entende.",
+        "properties": {
+          "fump_level": {
+            "maximum": 2,
+            "minimum": 0,
+            "title": "Fump Level",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fump_level"
+        ],
+        "title": "FumpLevelIn",
+        "type": "object"
+      },
+      "BandOverrideIn": {
+        "description": "A sobrescrita da faixa de prioridade, com a justificativa.\n\nA válvula da decisão B6: 2.4-I e 2.4-II não têm pergunta no\nquestionário e só chegam por aqui, junto de todo caso omisso.\n\n`band_override` nulo **limpa** a sobrescrita e devolve a inscrição à\nfaixa derivada do questionário. A justificativa continua aceita nesse\ncaso (desfazer também é ato discricionário e merece motivo escrito),\nmas só é *exigida* quando há faixa — quem cobra é o `clean()` do\nmodel (`override_reason_required`), que é onde a regra mora.",
+        "properties": {
+          "band_override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriorityBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "band_override_reason": {
+            "default": "",
+            "title": "Band Override Reason",
+            "type": "string"
+          }
+        },
+        "title": "BandOverrideIn",
+        "type": "object"
+      },
+      "ScholarshipAppealIn": {
+        "description": "As razões do candidato — **um campo, e sem anexo**.\n\nA ausência do anexo é do edital, não do esquecimento: o item 1.3 veta\na postagem de documento fora do prazo de inscrição, e o recurso ataca\na pontuação com argumento sobre o que já foi entregue. Ver a docstring\nde `ScholarshipAppeal`.",
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ScholarshipAppealIn",
+        "type": "object"
+      },
+      "ScholarshipAppealJudgeIn": {
+        "description": "O julgamento da comissão: resultado e fundamentação.\n\nA fundamentação vazia é recusada pelo `judge()` do model\n(`appeal_reasoning_required`) e não aqui — decisão sem fundamentação é\no que o próprio candidato recorreria, e isso é regra do domínio.",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/AppealOutcome"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "reasoning"
+        ],
+        "title": "ScholarshipAppealJudgeIn",
         "type": "object"
       }
     },
