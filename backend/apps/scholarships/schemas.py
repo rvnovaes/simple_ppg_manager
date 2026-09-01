@@ -8,7 +8,7 @@ import datetime
 import decimal
 from pathlib import Path
 
-from ninja import Schema
+from ninja import Field, Schema
 
 from .models import (
     AppealOutcome,
@@ -730,3 +730,38 @@ class ScholarshipApplicationQueueOut(Schema):
         return [
             {"kind": kind, "kind_label": rotulos[kind]} for kind in obj.pending_docs()
         ]
+
+
+# ---------------------------------------------------------------------------
+# Lançamentos da Secretaria na inscrição alheia
+# ---------------------------------------------------------------------------
+
+
+class FumpLevelIn(Schema):
+    """O nível da FUMP transcrito pela Secretaria — **um campo**.
+
+    O resultado da FUMP chega à Comissão fora do sistema (Q9); aqui ele é
+    só transcrito, e vale duas vezes: bônus na nota final (`BONUS_FUMP`) e
+    1º critério de desempate. Os limites são os de `NIVEIS_DA_FUMP` (0 é
+    "sem nível"), conferidos aqui para que valor fora do domínio pare na
+    borda, com 422, em vez de virar linha gravada que ninguém entende.
+    """
+
+    fump_level: int = Field(..., ge=0, le=2)
+
+
+class BandOverrideIn(Schema):
+    """A sobrescrita da faixa de prioridade, com a justificativa.
+
+    A válvula da decisão B6: 2.4-I e 2.4-II não têm pergunta no
+    questionário e só chegam por aqui, junto de todo caso omisso.
+
+    `band_override` nulo **limpa** a sobrescrita e devolve a inscrição à
+    faixa derivada do questionário. A justificativa continua aceita nesse
+    caso (desfazer também é ato discricionário e merece motivo escrito),
+    mas só é *exigida* quando há faixa — quem cobra é o `clean()` do
+    model (`override_reason_required`), que é onde a regra mora.
+    """
+
+    band_override: PriorityBand | None = None
+    band_override_reason: str = ""

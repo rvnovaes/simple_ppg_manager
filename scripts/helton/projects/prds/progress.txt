@@ -724,3 +724,46 @@ Started: ter. 01 set 2026 11:06:15 -03
     `ScholarshipApplicationOut`: f24 (resultado) deve seguir o mesmo caminho
     em vez de inchar o `Out` da inscrição com os campos de snapshot.
 ---
+
+## 2026-09-01 - f14-api-fump-e-override-de-faixa
+- **Os dois campos que a Secretaria escreve na inscrição alheia**, cada um com
+  rota e permissão próprias: `PATCH /applications/{id}/fump`
+  (`scholarships.set_fump_level`) e `PATCH /applications/{id}/band`
+  (`scholarships.override_band`). O `PATCH /applications/{id}/` continua
+  exclusivo do dono — dar `change_scholarshipapplication` à Secretaria abriria
+  o questionário inteiro do candidato a quem não o respondeu.
+- `FumpLevelIn` tem **um** campo, com `Field(ge=0, le=2)`: nível fora de
+  `NIVEIS_DA_FUMP` para na borda com 422 em vez de virar linha gravada
+  ilegível. `BandOverrideIn` tem a faixa (nula = desfazer a sobrescrita) e a
+  justificativa; a exigência da justificativa continua sendo do `clean()` do
+  model (`override_reason_required`), não da borda.
+- **Nenhuma das duas tem guarda de estado da edição**, de propósito: o
+  resultado da FUMP chega fora do sistema, no calendário da FUMP, e travá-lo
+  por status obrigaria a secretaria a reabrir a edição para digitar um dado
+  recebido por e-mail. A válvula do B6 (2.4-I e 2.4-II, casos omissos) tem a
+  mesma razão.
+- `AuditLog` com o valor **anterior** e o novo nas duas
+  (`previous_fump_level`/`fump_level`, `previous_band`/`band`/`reason`): é
+  decisão sobre a vida acadêmica, e "qual era antes de a secretaria mexer" é a
+  pergunta que se faz depois.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `.../tests/test_bolsas_api_analise.py` (15 casos novos). Sem migration — as
+  permissões e os campos já existiam desde f4/f7/f8.
+- `make ready` verde (1747 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - As permissões `set_fump_level`/`override_band` já vinham prontas de f8 (com
+    o mapa explícito de content type na `0008`), e os campos, de f4. A story foi
+    só borda: quando o model chega antes da API neste app, a story de API não
+    toca `models.py`.
+  - `band()` do model devolve **só** a sobrescrita hoje. f15 vai preencher a
+    derivação do questionário lá dentro — e o `resolve_band` do
+    `ScholarshipApplicationOut`/`QueueOut` já lê o método, então a tela ganha a
+    faixa derivada sem mexer no schema.
+  - Desfazer a sobrescrita é `PATCH` com corpo `{}` (os dois campos têm default),
+    e não uma rota de DELETE: o schema não é `exclude_unset`, ele **sempre**
+    grava os dois campos. Foi escolha — "limpar a faixa" e "trocar a faixa" são
+    o mesmo ato para a secretaria, e um `exclude_unset` aqui deixaria o par
+    (faixa, justificativa) sair de sincronia.
+  - `Field` do Ninja precisa ser importado em `schemas.py` (`from ninja import
+    Field, Schema`) — foi o primeiro uso de validação de faixa numérica no app.
+---

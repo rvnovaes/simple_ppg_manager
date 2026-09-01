@@ -40,6 +40,7 @@ from .models import (
 )
 from .schemas import (
     ApplicationDocumentOut,
+    BandOverrideIn,
     BaremeCloneIn,
     BaremeCloneOut,
     BaremeEntryIn,
@@ -51,6 +52,7 @@ from .schemas import (
     BaremeItemPatch,
     CommitteeMemberIn,
     CommitteeMemberOut,
+    FumpLevelIn,
     ItemReviewIn,
     ItemReviewOut,
     ScholarshipApplicationIn,
@@ -1278,3 +1280,85 @@ def set_item_review(request: HttpRequest, application_id: int, payload: ItemRevi
             item_id=item.pk,
         )
     return observacao
+
+
+# ---------------------------------------------------------------------------
+# Lançamentos da Secretaria na inscrição alheia
+# ---------------------------------------------------------------------------
+#
+# Os dois únicos campos que alguém escreve na inscrição de outra pessoa, e
+# cada um com a sua permissão (`set_fump_level`, `override_band`). Dar
+# `change_scholarshipapplication` à Secretaria para isso abriria o
+# questionário inteiro do candidato à edição de quem não o respondeu —
+# por isso o `PATCH /applications/{id}/` continua sendo só do dono.
+#
+# Os dois são decisão sobre a vida acadêmica: o `AuditLog` grava o valor
+# **anterior** e o novo, porque "qual era a faixa antes de a secretaria
+# mexer" é a pergunta que se faz depois, e sem o anterior o rastro não a
+# responde.
+
+
+@router.patch(
+    "/applications/{int:application_id}/fump", response=ScholarshipApplicationOut
+)
+def set_fump_level(request: HttpRequest, application_id: int, payload: FumpLevelIn):
+    """A Secretaria transcreve o nível da FUMP do candidato.
+
+    Sem guarda de estado de propósito: o resultado da FUMP chega fora do
+    sistema e no calendário dela, não no da edição — travá-lo por status
+    obrigaria a secretaria a reabrir a edição para digitar um dado que
+    ela recebeu por e-mail.
+    """
+    require_perm(request, "scholarships.set_fump_level")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    anterior = inscricao.fump_level
+    inscricao.fump_level = payload.fump_level
+    with transaction.atomic():
+        inscricao.clean()
+        inscricao.save(update_fields=["fump_level", "updated_at"])
+        audit.record(
+            "scholarships.application.set_fump_level",
+            request=request,
+            target=inscricao,
+            edition_id=inscricao.edition_id,
+            student_id=inscricao.student_id,
+            previous_fump_level=anterior,
+            fump_level=inscricao.fump_level,
+        )
+    return inscricao
+
+
+@router.patch(
+    "/applications/{int:application_id}/band", response=ScholarshipApplicationOut
+)
+def override_band(request: HttpRequest, application_id: int, payload: BandOverrideIn):
+    """A Secretaria sobrescreve a faixa de prioridade, com justificativa.
+
+    A justificativa vazia é recusada pelo `clean()` do model
+    (`override_reason_required`) — a regra é do domínio, não da borda.
+    Enviar `band_override: null` limpa a sobrescrita, e a faixa volta a
+    ser a derivada do questionário.
+    """
+    require_perm(request, "scholarships.override_band")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    anterior = inscricao.band_override
+    inscricao.band_override = payload.band_override
+    inscricao.band_override_reason = payload.band_override_reason
+    with transaction.atomic():
+        inscricao.clean()
+        inscricao.save(
+            update_fields=["band_override", "band_override_reason", "updated_at"]
+        )
+        audit.record(
+            "scholarships.application.override_band",
+            request=request,
+            target=inscricao,
+            edition_id=inscricao.edition_id,
+            student_id=inscricao.student_id,
+            previous_band=anterior,
+            band=inscricao.band_override,
+            reason=inscricao.band_override_reason,
+        )
+    return inscricao

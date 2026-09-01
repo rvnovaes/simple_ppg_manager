@@ -33,6 +33,7 @@ from apps.scholarships.models import (
     BaremeEntry,
     BaremeItem,
     ItemReview,
+    PriorityBand,
     ScholarshipAppeal,
     ScholarshipApplication,
     ScholarshipEdition,
@@ -876,3 +877,198 @@ def test_o_colega_nao_le_a_observacao_alheia(
     client.force_login(user)
 
     assert client.get(url_item_reviews(inscricao_ana)).status_code == 403
+
+
+# --- FUMP e sobrescrita de faixa (os dois campos da Secretaria) ------------
+#
+# O que estas rotas provam, e nenhuma outra prova: quem escreve nelas é a
+# Secretaria, e só ela. A Comissão tem `view_scholarshipapplication` e
+# `review_baremeentry` e mesmo assim leva 403 — as permissões são próprias
+# (`set_fump_level`, `override_band`), e é isso que separa "decidir a nota"
+# de "transcrever a FUMP e sobrescrever a faixa".
+
+
+def url_fump(inscricao: ScholarshipApplication) -> str:
+    return f"/api/v1/scholarships/applications/{inscricao.pk}/fump"
+
+
+def url_band(inscricao: ScholarshipApplication) -> str:
+    return f"/api/v1/scholarships/applications/{inscricao.pk}/band"
+
+
+JUSTIFICATIVA = "Caso omisso decidido pelo colegiado em 12/03, ata 04/2026."
+
+
+def test_a_secretaria_lanca_o_nivel_da_fump(
+    client_da_secretaria: Client, inscricao_ana: ScholarshipApplication
+):
+    resposta = _patch(client_da_secretaria, url_fump(inscricao_ana), {"fump_level": 2})
+
+    assert resposta.status_code == 200, resposta.content
+    assert resposta.json()["fump_level"] == 2
+    inscricao_ana.refresh_from_db()
+    assert inscricao_ana.fump_level == 2
+
+
+def test_o_lancamento_da_fump_audita_o_valor_anterior_e_o_novo(
+    client_da_secretaria: Client, inscricao_ana: ScholarshipApplication
+):
+    """Decisão sobre a vida acadêmica: sem o valor anterior o rastro não
+    responde "qual era o nível antes de a secretaria mexer"."""
+    inscricao_ana.fump_level = 1
+    inscricao_ana.save(update_fields=["fump_level"])
+
+    _patch(client_da_secretaria, url_fump(inscricao_ana), {"fump_level": 2})
+
+    registro = AuditLog.objects.get(event="scholarships.application.set_fump_level")
+    assert registro.payload["previous_fump_level"] == 1
+    assert registro.payload["fump_level"] == 2
+
+
+@pytest.mark.parametrize("nivel", [3, -1])
+def test_nivel_de_fump_fora_da_tabela_para_na_borda(
+    client_da_secretaria: Client, inscricao_ana: ScholarshipApplication, nivel: int
+):
+    """A FUMP tem três níveis (`NIVEIS_DA_FUMP`); um quarto viraria linha
+    gravada que ninguém sabe ler."""
+    resposta = _patch(
+        client_da_secretaria, url_fump(inscricao_ana), {"fump_level": nivel}
+    )
+
+    assert resposta.status_code == 422, resposta.content
+
+
+def test_a_secretaria_sobrescreve_a_faixa_com_justificativa(
+    client_da_secretaria: Client, inscricao_ana: ScholarshipApplication
+):
+    """2.4-I não tem pergunta no questionário: só chega por esta rota."""
+    resposta = _patch(
+        client_da_secretaria,
+        url_band(inscricao_ana),
+        {"band_override": "b24_i", "band_override_reason": JUSTIFICATIVA},
+    )
+
+    assert resposta.status_code == 200, resposta.content
+    corpo = resposta.json()
+    assert corpo["band_override"] == "b24_i"
+    assert corpo["band"] == "b24_i"
+    inscricao_ana.refresh_from_db()
+    assert inscricao_ana.band() == "b24_i"
+
+
+def test_a_sobrescrita_sem_justificativa_e_recusada(
+    client_da_secretaria: Client, inscricao_ana: ScholarshipApplication
+):
+    resposta = _patch(
+        client_da_secretaria,
+        url_band(inscricao_ana),
+        {"band_override": "b24_ii", "band_override_reason": "   "},
+    )
+
+    assert resposta.status_code == 400, resposta.content
+    assert resposta.json()["code"] == "override_reason_required"
+    inscricao_ana.refresh_from_db()
+    assert inscricao_ana.band_override is None
+
+
+def test_a_sobrescrita_pode_ser_desfeita(
+    client_da_secretaria: Client, inscricao_ana: ScholarshipApplication
+):
+    """Nulo devolve a inscrição à faixa derivada do questionário."""
+    inscricao_ana.band_override = PriorityBand.B24_I
+    inscricao_ana.band_override_reason = JUSTIFICATIVA
+    inscricao_ana.save(update_fields=["band_override", "band_override_reason"])
+
+    resposta = _patch(client_da_secretaria, url_band(inscricao_ana), {})
+
+    assert resposta.status_code == 200, resposta.content
+    assert resposta.json()["band"] is None
+    inscricao_ana.refresh_from_db()
+    assert inscricao_ana.band_override is None
+    registro = AuditLog.objects.get(event="scholarships.application.override_band")
+    assert registro.payload["previous_band"] == PriorityBand.B24_I
+    assert registro.payload["band"] is None
+
+
+def test_a_sobrescrita_audita_a_faixa_anterior_e_a_justificativa(
+    client_da_secretaria: Client, inscricao_ana: ScholarshipApplication
+):
+    _patch(
+        client_da_secretaria,
+        url_band(inscricao_ana),
+        {"band_override": "b24_ii", "band_override_reason": JUSTIFICATIVA},
+    )
+
+    registro = AuditLog.objects.get(event="scholarships.application.override_band")
+    assert registro.payload["previous_band"] is None
+    assert registro.payload["band"] == "b24_ii"
+    assert registro.payload["reason"] == JUSTIFICATIVA
+
+
+@pytest.mark.parametrize(
+    ("url", "corpo"),
+    [
+        ("fump", {"fump_level": 1}),
+        ("band", {"band_override": "b24_i", "band_override_reason": JUSTIFICATIVA}),
+    ],
+)
+def test_a_comissao_nao_lanca_fump_nem_sobrescreve_faixa(
+    client_da_comissao: Client,
+    inscricao_ana: ScholarshipApplication,
+    url: str,
+    corpo: dict,
+):
+    """Ela pontua o barema; transcrever a FUMP e mexer na faixa é da
+    Secretaria, e as permissões são próprias justamente por isso."""
+    resposta = _patch(
+        client_da_comissao,
+        f"/api/v1/scholarships/applications/{inscricao_ana.pk}/{url}",
+        corpo,
+    )
+
+    assert resposta.status_code == 403, resposta.content
+    inscricao_ana.refresh_from_db()
+    assert inscricao_ana.fump_level == 0
+    assert inscricao_ana.band_override is None
+
+
+@pytest.mark.parametrize(
+    ("url", "corpo"),
+    [
+        ("fump", {"fump_level": 2}),
+        ("band", {"band_override": "b21_i", "band_override_reason": JUSTIFICATIVA}),
+    ],
+)
+def test_o_proprio_candidato_nao_lanca_a_fump_nem_a_faixa(
+    client_da_ana: Client,
+    inscricao_ana: ScholarshipApplication,
+    url: str,
+    corpo: dict,
+):
+    """Os dois campos valem na classificação: o candidato não escolhe nem
+    o bônus da FUMP nem a faixa em que compete."""
+    resposta = _patch(
+        client_da_ana,
+        f"/api/v1/scholarships/applications/{inscricao_ana.pk}/{url}",
+        corpo,
+    )
+
+    assert resposta.status_code == 403, resposta.content
+
+
+def test_inscricao_de_outro_programa_nao_existe_para_a_secretaria(
+    client_da_secretaria: Client, db: None
+) -> None:
+    outro = Program.objects.create(name="Outro programa", acronym="PPGY")
+    edicao_alheia = ScholarshipEdition.objects.create(
+        program=outro,
+        year=2026,
+        title="Edital alheio",
+        status=ScholarshipEditionStatus.UNDER_REVIEW,
+    )
+    aluno_alheio = criar_discente(program=outro, username="daniel", nome="Daniel Rocha")
+    alheia = criar_inscricao(edicao_alheia, aluno_alheio)
+
+    resposta = _patch(client_da_secretaria, url_fump(alheia), {"fump_level": 1})
+
+    assert resposta.status_code == 404, resposta.content

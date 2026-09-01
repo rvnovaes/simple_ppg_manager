@@ -338,7 +338,7 @@
         "f13-api-analise-da-comissao"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
