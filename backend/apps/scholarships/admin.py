@@ -9,7 +9,12 @@ from django.contrib import admin
 
 from apps.core.admin import AuditedModelAdmin
 
-from .models import BaremeItem, CommitteeMember, ScholarshipEdition
+from .models import (
+    BaremeItem,
+    CommitteeMember,
+    ScholarshipApplication,
+    ScholarshipEdition,
+)
 
 QUEBRA_VIDRO = "Quebra-vidro: a rotina do edital de bolsas é a tela Svelte (ADR-006)."
 
@@ -74,3 +79,40 @@ class BaremeItemAdmin(AuditedModelAdmin):
     list_select_related = ("edition",)
     raw_id_fields = ("edition",)
     readonly_fields = CARIMBOS
+
+
+@admin.register(ScholarshipApplication)
+class ScholarshipApplicationAdmin(AuditedModelAdmin):
+    __doc__ = QUEBRA_VIDRO
+
+    list_display = (
+        "student",
+        "edition",
+        "level",
+        "fump_level",
+        "band_override",
+        "published_band",
+        "published_position",
+    )
+    list_filter = (
+        "edition__program",
+        "edition",
+        "level",
+        "fump_level",
+        "has_paid_activity",
+        "band_override",
+        "published_band",
+    )
+    search_fields = ("student__person__full_name", "student__registration_number")
+    list_select_related = ("edition", "student")
+    raw_id_fields = ("program", "edition", "student")
+    # O snapshot é do serviço de publicação: reescrevê-lo à mão trocaria a
+    # lista já publicada por outra, sem passar pelo sorteio reprodutível.
+    readonly_fields = (
+        "published_band",
+        "published_score",
+        "published_position",
+        "draw_order",
+        "published_at",
+        *CARIMBOS,
+    )

@@ -25,6 +25,16 @@ Started: ter. 01 set 2026 11:06:15 -03
 - Filho de agregado (sem FK `program`) leva `for_program()` no QuerySet
   filtrando pelo pai (`edition__program`) — a regra do CLAUDE.md é
   `for_program()` como primeiro filtro de toda busca, inclusive aí.
+- Teste de model **sem banco** exige FK **sem pk**: o espelho da
+  `UniqueConstraint` dentro de `clean()` consulta o banco assim que
+  `<fk>_id` está preenchido. Monte `Modelo(edition=Edicao(program_id=1))`,
+  não `Edicao(pk=1, ...)`.
+- Não crie fixture `program` local: `backend/conftest.py` já tem uma
+  (`Program.objects.get(acronym="PPGD")`, da data migration). Um segundo
+  PPGD estoura o unique e derruba o arquivo inteiro.
+- `SimpleNamespace` **não** substitui FK (`ValueError` do descriptor). Para
+  montar uma cadeia de relações em memória, atribua instâncias reais não
+  salvas: `Student(person=Person(pk=5, user_id=7))`.
 
 ## 2026-09-01 - f1-app-scholarships-esqueleto
 - Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
@@ -110,4 +120,49 @@ Started: ter. 01 set 2026 11:06:15 -03
   - `pytest` neste canteiro imprime "Pytest: No tests collected" quando a
     saída passa pelo filtro do shell; redirecione para arquivo
     (`> /tmp/pt.log 2>&1`) para ver o resultado real.
+---
+
+## 2026-09-01 - f4-inscricao-e-questionario
+- `ScholarshipApplication`: FK `program` PROTECT direta (ADR-007), `edition`
+  CASCADE, `student` PROTECT, `level` copiado do `Student` no ato e congelado,
+  `submitted_at`; unique `(edition, student)` espelhado em `clean()` como
+  `duplicate_application`.
+- Questionário **fixo em código** (B7): os oito booleanos, com
+  `has_paid_activity` como a chave que joga do bloco 2.1 para o 2.4, mais
+  `cadastro_unico` (assunção marcada em `help_text`: é o critério II do
+  desempate e não existe na spec do questionário).
+- `monthly_income` `Decimal(10,2)` e `weekly_hours` obrigatórios quando
+  `has_paid_activity` → `income_required`; `band_override` +
+  `band_override_reason` com `override_reason_required` (B6); snapshot de
+  publicação (`published_band/score/position`, `draw_order`, `published_at`)
+  todo nulo até publicar; `fump_level` 0/1/2 com `NIVEIS_DA_FUMP`.
+- `ScholarshipApplication.for_student(edition=, student=)`: classmethod que
+  devolve instância **não salva** com `program` e `level` já copiados, e recusa
+  discente sem nível (`student_without_level`) — isolada e eletiva não têm.
+- `ensure_editable(user)`: janela aberta (409 `submissions_closed`) **e** o
+  próprio aluno (403 `not_application_owner`). `band()` devolve só a
+  sobrescrita; sem ela é `None` ("ainda não derivada"), nunca `residual`.
+- Migration `0003_scholarshipapplication` gerada, lida (tabela nova,
+  retrocompatível) e aplicada no canteiro. Admin quebra-vidro com o snapshot
+  em `readonly_fields`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0003_scholarshipapplication.py`,
+  `.../tests/test_bolsas_inscricao.py`.
+- `make ready` verde (1348 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - Teste de model sem banco só passa se as FKs forem **sem pk**: com
+    `edition_id`/`student_id` preenchidos, o espelho da `UniqueConstraint`
+    dentro de `clean()` consulta o banco e o teste sem `django_db` quebra. O
+    `_inscricao()` deste arquivo é o molde.
+  - Não crie fixture `program` local: já existe uma em `backend/conftest.py`
+    que faz `Program.objects.get(acronym="PPGD")` da data migration. Criar
+    outro PPGD estoura o unique e derruba a suíte inteira do arquivo.
+  - Substituir FK por `SimpleNamespace` **não funciona** (`ValueError` do
+    descriptor). Para montar `Student → Person → User` em memória, atribua
+    instâncias de verdade sem salvar: `Student(person=Person(pk=5, user_id=7))`.
+  - `Student` regular exige `project` e `admission_date` (CheckConstraint), e
+    isolada/eletiva exige `term` e **proíbe** `level`. Fixture de discente para
+    bolsas precisa de `ResearchLine` + `CollectiveProject`.
+  - Campo `null=True` em `CharField` com choices pede `# noqa: DJ001` — o
+    `ruff` cobra, e aqui nulo é semântico ("sem sobrescrita" ≠ "").
 ---

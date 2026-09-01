@@ -34,7 +34,7 @@ from typing import Any
 
 from django.db import models
 
-from apps.core.exceptions import DomainError, InvalidStateTransition
+from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
 
 # ---------------------------------------------------------------------------
 # Enums de módulo
@@ -606,3 +606,350 @@ class BaremeItem(models.Model):
     def apply_cap(self, total: Decimal) -> Decimal:
         """Corta pelo limite do item a **soma** dos lançamentos dele."""
         return min(total, self.cap)
+
+
+# ---------------------------------------------------------------------------
+# ScholarshipApplication (a inscrição do discente na edição)
+# ---------------------------------------------------------------------------
+
+# Níveis da FUMP lançados pela Secretaria. O resultado da FUMP chega à
+# Comissão fora do sistema (Q9); aqui ele é só transcrito. Zero é "sem
+# nível" e não pontua — ver `BONUS_FUMP`, que por isso não tem a chave 0.
+NIVEIS_DA_FUMP: list[tuple[int, str]] = [
+    (0, "Sem nível"),
+    (1, "Nível 1"),
+    (2, "Nível 2"),
+]
+
+
+class ScholarshipApplicationQuerySet(models.QuerySet["ScholarshipApplication"]):
+    def for_program(self, program: Any) -> "ScholarshipApplicationQuerySet":
+        return self.filter(program=program)
+
+    def for_edition(self, edition: Any) -> "ScholarshipApplicationQuerySet":
+        return self.filter(edition=edition)
+
+    def for_level(self, level: str) -> "ScholarshipApplicationQuerySet":
+        """A classificação corre por nível: mestrado e doutorado são duas
+        listas independentes, com barema e faixas próprios."""
+        return self.filter(level=level)
+
+    def for_student(self, student: Any) -> "ScholarshipApplicationQuerySet":
+        return self.filter(student=student)
+
+
+class ScholarshipApplication(models.Model):
+    """A inscrição de um discente na edição anual do edital de bolsas.
+
+    Uma por (edição, aluno). O `level` é **copiado do `Student` no ato** e
+    congelado: o barema, a nota e a fila são por nível, e um aluno que
+    passa de mestrado a doutorado no meio da edição não pode migrar de
+    lista depois que a comissão já pontuou.
+
+    O **questionário é fixo em código** (decisão B7 do plano), e não uma
+    tabela de perguntas cadastráveis: cada campo aqui é um inciso do
+    edital, com efeito próprio na derivação da faixa. Mudar a norma é
+    mudar o código — e a migração que vem junto é o registro de quando a
+    pergunta mudou. Uma tabela genérica trocaria isso por um formulário
+    editável cujo efeito na classificação ninguém consegue ler.
+
+    `has_paid_activity` é a **chave** do questionário: falso joga o
+    candidato no bloco 2.1, verdadeiro no bloco 2.4. Os demais booleanos
+    escolhem o inciso dentro do bloco (a derivação completa é da
+    `classify()` da edição).
+
+    A leitura dos campos de nota (`committee_score`, `final_score`,
+    `subtotal`, `fully_reviewed`) depende de `BaremeEntry`, e a de
+    `pending_docs` depende de `ApplicationDocument`: entram com esses
+    models, nas stories seguintes.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="scholarship_applications",
+        verbose_name="programa",
+    )
+    edition = models.ForeignKey(
+        ScholarshipEdition,
+        on_delete=models.CASCADE,
+        related_name="applications",
+        verbose_name="edição",
+    )
+    student = models.ForeignKey(
+        "academic.Student",
+        on_delete=models.PROTECT,
+        related_name="scholarship_applications",
+        verbose_name="discente",
+    )
+    level = models.CharField(
+        "nível",
+        max_length=20,
+        choices=ScholarshipLevel,
+        help_text=(
+            "Copiado do vínculo do discente no ato da inscrição e congelado: "
+            "mudança posterior no Student não move a inscrição de lista."
+        ),
+    )
+    submitted_at = models.DateTimeField("inscrito em", null=True, blank=True)
+
+    # -- questionário (fixo em código, decisão B7) -------------------------
+    has_paid_activity = models.BooleanField(
+        "exerce atividade remunerada",
+        default=False,
+        help_text="A chave do questionário: falso vai ao bloco 2.1, verdadeiro ao 2.4.",
+    )
+    affirmative_action = models.BooleanField(
+        "ingressou por ação afirmativa", default=False
+    )
+    socioeconomic_vulnerability = models.BooleanField(
+        "vulnerabilidade socioeconômica", default=False
+    )
+    cadastro_unico = models.BooleanField(
+        "inscrito no CadÚnico",
+        default=False,
+        help_text=(
+            "ASSUNÇÃO A CONFIRMAR NO MERGE: o CadÚnico é o critério II do "
+            "desempate (item 3.3 do edital) mas não aparece no questionário "
+            "da spec. Sem este campo o critério é letra morta, por isso ele "
+            "entra aqui, junto do bloco de vulnerabilidade."
+        ),
+    )
+    substitute_teacher = models.BooleanField("professor substituto", default=False)
+    basic_education_or_collective_health = models.BooleanField(
+        "atua na educação básica ou em saúde coletiva", default=False
+    )
+    public_service = models.BooleanField("vínculo com o serviço público", default=False)
+    private_service = models.BooleanField(
+        "vínculo com o serviço privado", default=False
+    )
+    other_non_public_scholarship = models.BooleanField(
+        "recebe outra bolsa não pública", default=False
+    )
+
+    # -- o que a atividade remunerada carrega ------------------------------
+    #
+    # Obrigatórios quando `has_paid_activity` (`clean()` → `income_required`):
+    # são eles que ordenam as faixas 2.4-V (menor rendimento) e
+    # 2.4-VI/VII/VIII (menor rendimento, depois menor carga horária).
+    monthly_income = models.DecimalField(
+        "rendimento mensal", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    weekly_hours = models.PositiveSmallIntegerField(
+        "carga horária semanal", null=True, blank=True
+    )
+
+    # -- lançado pela Secretaria -------------------------------------------
+    fump_level = models.PositiveSmallIntegerField(
+        "nível da FUMP",
+        choices=NIVEIS_DA_FUMP,
+        default=0,
+        help_text=(
+            "Transcrito do resultado que a FUMP manda à Comissão fora do "
+            "sistema. Vale duas vezes: bônus na nota final e 1º critério de "
+            "desempate."
+        ),
+    )
+
+    # -- sobrescrita de faixa (decisão B6) ---------------------------------
+    #
+    # A válvula da secretaria: 2.4-I e 2.4-II não têm pergunta no
+    # questionário e só chegam por aqui, junto de todo caso omisso.
+    band_override = models.CharField(  # noqa: DJ001
+        "faixa sobrescrita",
+        max_length=20,
+        choices=PriorityBand,
+        null=True,
+        blank=True,
+        help_text="Nulo é o normal: a faixa sai do questionário.",
+    )
+    band_override_reason = models.TextField("justificativa da sobrescrita", blank=True)
+
+    # -- snapshot da publicação (decisão B10) ------------------------------
+    #
+    # Tudo nulo até publicar. Depois de publicado, é ESTE o resultado que a
+    # tela e o PDF mostram — recalcular na leitura faria a lista publicada
+    # mudar debaixo de quem já a leu.
+    published_band = models.CharField(  # noqa: DJ001
+        "faixa publicada", max_length=20, choices=PriorityBand, null=True, blank=True
+    )
+    published_score = models.DecimalField(
+        "nota publicada", max_digits=7, decimal_places=2, null=True, blank=True
+    )
+    published_position = models.PositiveIntegerField(
+        "classificação publicada", null=True, blank=True
+    )
+    draw_order = models.PositiveIntegerField(
+        "ordem do sorteio",
+        null=True,
+        blank=True,
+        help_text="Preenchida só em quem o sorteio de desempate precisou ordenar.",
+    )
+    published_at = models.DateTimeField("publicado em", null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ScholarshipApplicationQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "inscrição no edital de bolsas"
+        verbose_name_plural = "inscrições no edital de bolsas"
+        ordering = ["edition", "level", "student"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["edition", "student"],
+                name="unique_inscricao_de_bolsa_por_edicao_e_discente",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student} — {self.edition}"
+
+    # -- construção --------------------------------------------------------
+
+    @classmethod
+    def for_student(
+        cls, *, edition: ScholarshipEdition, student: Any, **campos: Any
+    ) -> "ScholarshipApplication":
+        """Instância **não salva**, com `program` e `level` já copiados.
+
+        O nível é congelado aqui, e não em `save()`, porque este é o único
+        momento em que copiar faz sentido: uma inscrição que lesse o nível
+        do `Student` a cada acesso mudaria de lista sozinha no dia em que o
+        aluno passasse de mestrado a doutorado.
+
+        Isolada e eletiva não têm nível (`Student.level` é nulo nelas) e
+        por isso não se inscrevem: sem nível não há barema contra o qual
+        pontuar.
+        """
+        if not student.level:
+            raise DomainError(
+                "Só discente com nível de vínculo (mestrado ou doutorado) "
+                "pode se inscrever no edital de bolsas.",
+                code="student_without_level",
+            )
+        return cls(
+            program=edition.program,
+            edition=edition,
+            student=student,
+            level=student.level,
+            **campos,
+        )
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """Uma inscrição por (edição, discente), coerente com o questionário.
+
+        As três regras, nesta ordem: o discente e a edição são do mesmo
+        programa; a atividade remunerada declarada vem com rendimento e
+        carga horária (são eles que ordenam as faixas 2.4-V e
+        2.4-VI/VII/VIII — sem eles a fila não existe); e a sobrescrita de
+        faixa vem com justificativa, porque ela é o ato discricionário do
+        módulo e sem motivo escrito não há o que revisar.
+        """
+        super().clean()
+        self._validar_programa()
+        self._validar_atividade_remunerada()
+        self._validar_sobrescrita_de_faixa()
+        self._validar_duplicata()
+
+    def _validar_programa(self) -> None:
+        if self.program_id is None or self.edition_id is None:
+            return
+        if self.edition.program_id != self.program_id:
+            raise DomainError(
+                "A inscrição precisa ser da mesma edição do programa do discente.",
+                code="program_mismatch",
+            )
+        if self.student_id is not None and self.student.program_id != self.program_id:
+            raise DomainError(
+                "O discente precisa ser do mesmo programa da edição.",
+                code="program_mismatch",
+            )
+
+    def _validar_atividade_remunerada(self) -> None:
+        if not self.has_paid_activity:
+            return
+        if self.monthly_income is None or self.weekly_hours is None:
+            raise DomainError(
+                "Quem declara atividade remunerada precisa informar o "
+                "rendimento mensal e a carga horária semanal.",
+                code="income_required",
+            )
+
+    def _validar_sobrescrita_de_faixa(self) -> None:
+        if self.band_override and not self.band_override_reason.strip():
+            raise DomainError(
+                "A sobrescrita da faixa de prioridade exige justificativa.",
+                code="override_reason_required",
+            )
+
+    def _validar_duplicata(self) -> None:
+        """Espelho da `UniqueConstraint`, como nos demais models do app."""
+        if self.edition_id is None or self.student_id is None:
+            return
+        duplicatas = ScholarshipApplication.objects.filter(
+            edition_id=self.edition_id, student_id=self.student_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Este discente já tem inscrição nesta edição do edital de bolsas.",
+                code="duplicate_application",
+            )
+
+    # -- guardas -----------------------------------------------------------
+
+    def ensure_editable(self, user: Any) -> None:
+        """Só na janela aberta, e só pelo próprio aluno.
+
+        Vale para alterar o questionário, lançar no barema, anexar
+        comprovante **e excluir a própria inscrição**: enquanto as
+        inscrições estão abertas o candidato desfaz o que fez; fechada a
+        janela, a inscrição é a peça que a comissão pontua e some da mão
+        dele.
+
+        Duas exceções diferentes de propósito: o estado errado é 409
+        (a janela pode reabrir para todo mundo), a pessoa errada é 403.
+        A secretaria não passa por aqui — o que ela mexe em inscrição
+        alheia tem rota e permissão próprias (`set_fump_level`,
+        `override_band`), justamente para não virar "editar como se fosse
+        o aluno".
+        """
+        if not self.edition.submission_open():
+            raise InvalidStateTransition(
+                "A inscrição só pode ser alterada com as inscrições abertas.",
+                code="submissions_closed",
+            )
+        if not self._user_is_owner(user):
+            raise NotAllowed(
+                "Só o próprio discente pode alterar a sua inscrição.",
+                code="not_application_owner",
+            )
+
+    def _user_is_owner(self, user: Any) -> bool:
+        if user is None or not getattr(user, "pk", None):
+            return False
+        pessoa = getattr(self.student, "person", None)
+        return pessoa is not None and pessoa.user_id == user.pk
+
+    # -- derivação ---------------------------------------------------------
+
+    def band(self) -> str | None:
+        """A faixa de prioridade: a sobrescrita, quando existe.
+
+        A sobrescrita da secretaria vence sempre — é a válvula do B6, e
+        também o único caminho para 2.4-I e 2.4-II, que não têm pergunta
+        no questionário.
+
+        Sem sobrescrita, a faixa é **derivada do questionário**, e essa
+        derivação mora na `classify()` da edição, com o resto do
+        algoritmo. Até ela existir, este método devolve `None` para quem
+        não tem override — "ainda não derivada", nunca "residual": tratar
+        a ausência como residual poria candidato do bloco 2.1 no fim da
+        fila sem que ninguém percebesse.
+        """
+        return self.band_override or None

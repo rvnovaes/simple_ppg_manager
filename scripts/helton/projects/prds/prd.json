@@ -101,7 +101,7 @@
         "f3-barema-item"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
