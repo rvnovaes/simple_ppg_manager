@@ -1353,3 +1353,75 @@ Started: ter. 01 set 2026 11:06:15 -03
     Prado está avaliado em 2,50 com observação. Útil para a f24 (já há
     material para publicar); quem quiser o cenário limpo refaz o `make seed`.
 ---
+
+## 2026-09-01 - f24-telas-resultado-e-recurso
+- **`frontend/src/routes/(app)/bolsas/resultado/+page.svelte`** (novo): as dez
+  faixas do documento publicado, na ordem canônica e **todas presentes mesmo
+  vazias** — a lista é a ordem de prioridade do edital, e faixa que sumisse da
+  tela seria uma prioridade a menos no papel. Cada seção sai com o título, o
+  `priority_label` ("Ordem de prioridade: sétima"), a regra de ordenação
+  escrita e a tabela (Ordem, Candidato(a), Nota, mais Remuneração só onde
+  `shows_income`). Nada disso é montado no front: vem pronto do `BandOut`, que
+  é o **mesmo objeto** que alimenta o PDF.
+- **O botão "Baixar PDF" aponta para `/api/v1/scholarships/editions/{id}/result.pdf?level=`**
+  — endereço de API, não rota da SPA: `eslint-disable
+  svelte/no-navigation-without-resolve` local, o padrão do projeto. A
+  visibilidade é conferida no servidor pela mesma função do JSON
+  (`_garantir_resultado_visivel`).
+- **"Ainda não publicado" é `code`, não texto**: o 403 `result_not_published`
+  vira tela de espera (`codigoDeErro`), e só o resto vira `aviso-erro`. É assim
+  que a tela do Discente "só existe a partir do preliminar" sem a tela repetir
+  a máquina de estados — quem recusa a prévia continua sendo o backend.
+- **A tela abre no nível do próprio candidato**: `my-application` responde o
+  `level` e ele vira o padrão do seletor; 404 (quem não se inscreveu —
+  Secretaria, Coordenação e Comissão sempre) cai no mestrado, em silêncio.
+- **`frontend/src/routes/(app)/bolsas/recurso/+page.svelte`** (novo): o
+  Discente interpõe (textarea, **sem anexo** — item 1.3 do edital veta
+  documento novo fora do prazo) e, depois, a mesma tela vira acompanhamento:
+  o texto interposto, o `outcome_label` e a fundamentação do julgamento. O
+  recurso viaja dentro de `ScholarshipApplicationOut.appeal`, então não há
+  segunda chamada — e o botão sai de `can_appeal`, nunca de comparação de
+  `status`.
+- **`frontend/src/lib/bolsas.ts`**: entra `formatarDinheiro` — a coluna
+  "Remuneração" precisa dizer `R$ 3.200,00`, igual ao `_dinheiro` do PDF
+  (`force_grouping=True`).
+- **Menu**: "Resultado da bolsa" por `scholarships.view_scholarshipedition` (os
+  quatro papéis a têm — a lista publicada é assunto de todos) e "Recurso da
+  bolsa" por `scholarships.add_scholarshipappeal` (exclusiva do Discente; a
+  Comissão julga na tela de análise).
+- Arquivos: os dois `+page.svelte` novos, `frontend/src/lib/bolsas.ts`,
+  `frontend/src/routes/(app)/+layout.svelte`.
+- `make ready` verde.
+- **Learnings for future iterations:**
+  - **Faixa vazia é conteúdo, não ausência.** O `BandOut` sempre traz dez
+    elementos e a tela imprime "Nenhum candidato nesta faixa." — filtrar
+    `rows.length > 0` (o reflexo natural de quem escreve lista) apagaria a
+    ordem de prioridade do documento.
+  - **403 com `code` conhecido é estado de tela, não erro.**
+    `result_not_published` é o candidato chegando cedo; tratá-lo como falha
+    poria um `aviso-erro` vermelho no lugar de "aguarde a publicação". O par
+    `codigoDeErro`/`mensagemDeErro` do `client.ts` existe para isso.
+  - **O rótulo do documento (preliminar × final × prévia) é uma linha só e sai
+    dos carimbos** (`published_final_at`, e `results_visible_to_student` para a
+    prévia) — mesma leitura de `pdf.tipo_do_resultado`. Foi o único ponto em
+    que a tela toca a decisão do servidor, e é rótulo, não conteúdo.
+  - O **`EACCES` em `.svelte-kit/`** apareceu pela quarta vez seguida, agora
+    com duas rotas de uma vez: `docker compose exec -T frontend rm -rf` nos
+    artefatos `root:root` (`types/src/routes/(app)/bolsas/{resultado,recurso}`
+    e `generated/client/nodes/{38,39}.js`).
+  - **Verificação visual continua pendente**: o binário `browser-use` não
+    existe nesta máquina. No lugar dela, o **fluxo inteiro da aceitação** foi
+    exercitado por curl com as requisições que as telas montam: discente em
+    `result` antes da publicação (403 `result_not_published`); secretaria
+    `publish-preliminary`; discente lê as 10 faixas (a sétima com Daniel Prado,
+    nota 2,50 e R$ 3.200,00; as outras nove vazias) e baixa
+    `result.pdf?level=masters` (200, `Content-Disposition` com
+    `resultado-preliminar-2026-masters-edicao-1.pdf`); recurso antes de
+    `open-appeals` (409 `appeals_closed`), depois dela 201; comissão julga
+    (`partially_granted` com fundamentação) e o discente relê `can_appeal:
+    false` com o julgamento embutido. As duas rotas também compilam no Vite do
+    canteiro (`/bolsas/resultado` e `/bolsas/recurso` respondem 200).
+  - **Esse exercício mexeu no banco do canteiro**: a edição 1 está em
+    `appeals_under_review`, com o resultado preliminar publicado e o recurso 1
+    julgado. Quem quiser o cenário limpo refaz o `make seed`.
+---

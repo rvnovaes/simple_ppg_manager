@@ -227,3 +227,20 @@ export const RESULTADOS_DO_RECURSO: { valor: ResultadoDoRecurso; rotulo: string 
 /** Extensões que o comprovante do questionário aceita (o barema só aceita PDF). */
 export const ACEITA_DOCUMENTO = '.pdf,.jpg,.jpeg,.png';
 export const ACEITA_COMPROVANTE = '.pdf';
+
+/**
+ * Rendimento como o documento publicado o escreve.
+ *
+ * O papel imprime `R$ 3.200,00` (`_dinheiro` em `apps/scholarships/pdf.py`,
+ * com `force_grouping=True`), e a tela precisa dizer o mesmo — é a coluna
+ * "Remuneração" das duas faixas ordenadas por rendimento, e ela é o
+ * critério de desempate publicado. Aqui também não há conta: o valor vem
+ * como string do Ninja e só ganha vírgula e separador de milhar.
+ */
+export function formatarDinheiro(valor: string | number | null | undefined): string {
+	if (valor === null || valor === undefined || valor === '') return '—';
+	return `R$ ${Number(valor).toLocaleString('pt-BR', {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2
+	})}`;
+}

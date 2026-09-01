@@ -309,6 +309,27 @@
 								Minha bolsa
 							</a>
 						{/if}
+						<!-- O resultado é a lista publicada, e ela é assunto dos quatro
+						papéis: `view_scholarshipedition` é justamente a permissão que todos
+						receberam em `scholarships.0008_papeis_da_bolsa`. Quem chega cedo
+						não vê lista nenhuma — é o servidor que recusa a prévia ao candidato
+						(403 `result_not_published`), e a tela transforma isso em espera. -->
+						{#if sessao.pode('scholarships.view_scholarshipedition')}
+							<a class="item-menu" href={resolve('/bolsas/resultado')}>
+								<Icone nome="classificacao" tamanho={14} />
+								Resultado da bolsa
+							</a>
+						{/if}
+						<!-- Recorrer é do candidato e de mais ninguém:
+						`add_scholarshipappeal` é exclusiva do Discente, e é a mesma
+						separação que faz "o aluno não julga o próprio recurso" ser 403 de
+						permissão. A Comissão julga na tela de análise. -->
+						{#if sessao.pode('scholarships.add_scholarshipappeal')}
+							<a class="item-menu" href={resolve('/bolsas/recurso')}>
+								<Icone nome="acerto" tamanho={14} />
+								Recurso da bolsa
+							</a>
+						{/if}
 						{#if sessao.pode('programs.view_discipline')}
 							<a class="item-menu" href={resolve('/disciplinas')}>
 								<Icone nome="disciplinas" tamanho={14} />
