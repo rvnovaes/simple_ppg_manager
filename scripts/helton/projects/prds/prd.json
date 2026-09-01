@@ -198,7 +198,7 @@
         "f7-recurso-model"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

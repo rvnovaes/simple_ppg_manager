@@ -38,6 +38,11 @@ Started: ter. 01 set 2026 11:06:15 -03
 - Método derivado que lê relação reversa (`self.<related_name>`) precisa de
   guarda `if self.pk is None` — o gerente reverso não existe em instância não
   salva, e os testes de invariante deste projeto são em memória.
+- Data migration de papéis deriva o content type do codename
+  (`codename.split("_", 1)[1]`): permissão própria cujo codename não é
+  `verbo_model` (`set_fump_level`, `override_band`) precisa de mapa explícito
+  na migration, senão nasce num content type fantasma e `require_perm` nunca
+  casa.
 - Upload de teste cai em `tmp_path` pela fixture autouse `media_temporaria`
   (`backend/conftest.py`) — não montar `MEDIA_ROOT` local. E teste de "o
   arquivo antigo sumiu do storage" precisa de **nomes diferentes** nos dois
@@ -311,4 +316,60 @@ Started: ter. 01 set 2026 11:06:15 -03
   - `ScholarshipEditionStatus.values` serve de matriz de parametrização para
     "transição fora do estado" — o caso "o preliminar publicado ainda não abre
     a fase de recursos" sai de graça.
+---
+
+## 2026-09-01 - f8-papeis-e-seed
+- Três permissões próprias novas em `Meta.permissions`:
+  `publish_scholarshipedition` (em `ScholarshipEdition` — publicar congela o
+  ano, não é mais uma transição de trabalho) e `set_fump_level` +
+  `override_band` (em `ScholarshipApplication` — os dois campos que a
+  Secretaria escreve na inscrição **alheia** sem receber `change` sobre ela).
+  Migration `0007_permissoes_proprias` é só `AlterModelOptions`.
+- `0008_papeis_da_bolsa`: espelho de `selection.0006_papeis_da_selecao` e de
+  `academic.0011_papeis_da_isolada`, docstring inclusive. Grupo novo:
+  **"Comissão de Bolsas"**. Secretaria monta edição/barema/comissão + lê
+  inscrição e lançamento + baixa comprovante + as três próprias; Comissão lê
+  os quatro models do fluxo, `review_baremeentry`, `download_...` e
+  `change_scholarshipappeal`; Discente add/view/change de inscrição e
+  lançamento, view de edição e barema, add/view de recurso; Coordenação só
+  `view` dos 8 models. Nenhum `delete_*`, nenhum `is_staff`/`is_superuser`.
+- `seed_demo` ganhou `_bolsas(programa, docentes)`, chamada dentro do
+  `transaction.atomic` do `handle` — roda para **todo** programa que a carga
+  semeia (conferido: PPGD e PPGA ficam com uma edição 2026 cada, em
+  `submissions_open`, com 4 itens de barema e 2 membros de comissão). Segunda
+  rodada não cria nada. Conta nova `comissao.bolsas@ppgd.test` no papel
+  Comissão de Bolsas, listada em `_contas()`/`CONTAS-DEMO.txt`.
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../migrations/{0007_permissoes_proprias,0008_papeis_da_bolsa}.py`,
+  `.../tests/test_bolsas_papeis.py`,
+  `backend/apps/core/management/commands/seed_demo.py`.
+- `make ready` verde (1475 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - O `criar()` dessas data migrations deriva o model do codename
+    (`codename.split("_", 1)[1]`). Permissão própria cujo codename **não** é
+    `verbo_model` — `set_fump_level`, `override_band` — precisa do mapa
+    `MODEL_DA_PERMISSAO`, senão nasce pendurada num content type fantasma
+    ("fump_level") e o `require_perm` nunca casa. Há teste travando isso.
+  - **O que o plano NÃO deu, e as stories de API vão sentir** (registrado
+    aqui de propósito, sem mexer no que a Seção 5 do plano lista):
+    - a Comissão **não** tem `add_itemreview`/`change_itemreview`. A leitura
+      coerente é que a observação por item é o mesmo ato de avaliar: f13 deve
+      exigir `scholarships.review_baremeentry` também na rota de `ItemReview`.
+    - a Comissão tem `change_scholarshipappeal` mas **não**
+      `view_scholarshipappeal`. f17 deve exigir `change_...` também na rota
+      que lista os recursos a julgar (é a fila de trabalho de quem julga), ou
+      abrir uma migration de papéis adicional. Vale conferir no merge.
+  - Anexar comprovante do questionário **não** tem permissão própria: é
+    `change_scholarshipapplication`, mesmo recorte de `RequestDocument` na
+    isolada. `download_applicationdocument` existe só para a leitura do dado
+    pessoal alheio (Secretaria e Comissão).
+  - `seed_demo` semeia **um** programa por invocação (`--acronym`); o segundo
+    tenant sai de uma segunda chamada com `--email-domain` próprio. O
+    `SEED_CMD` do `obra.conf` e o `make seed` só chamam a primeira — quem
+    quiser o PPGA no canteiro roda a segunda à mão (o comando está na
+    docstring do módulo). Pôr o seed novo no caminho por-programa é o que faz
+    ele valer para os dois.
+  - `_pessoa()` estoura `CommandError` se o Group não existe: papel novo em
+    data migration tem de estar **aplicado** antes do seed — daí `migrate` vir
+    antes do `seed_demo` no `SEED_CMD`.
 ---

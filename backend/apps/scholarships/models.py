@@ -280,6 +280,17 @@ class ScholarshipEdition(models.Model):
                 name="unique_edicao_de_bolsas_por_programa_e_ano",
             ),
         ]
+        permissions = [
+            # Publicar **não** é `change`: as outras transições movem o
+            # edital entre estados de trabalho, e esta congela o ano —
+            # grava o snapshot em toda inscrição e é o que o candidato lê
+            # como resultado. Quem monta o edital não é necessariamente
+            # quem assina a lista.
+            (
+                "publish_scholarshipedition",
+                "Pode publicar resultado da edição de bolsas",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.title or f"Bolsas {self.year}"
@@ -800,6 +811,20 @@ class ScholarshipApplication(models.Model):
             models.UniqueConstraint(
                 fields=["edition", "student"],
                 name="unique_inscricao_de_bolsa_por_edicao_e_discente",
+            ),
+        ]
+        permissions = [
+            # Os dois campos que a Secretaria escreve na inscrição **alheia**.
+            # Dar-lhe `change_scholarshipapplication` para isso abriria o
+            # questionário inteiro do candidato à edição de quem não o
+            # respondeu; cada um destes abre exatamente um campo.
+            (
+                "set_fump_level",
+                "Pode lançar o nível da FUMP na inscrição",
+            ),
+            (
+                "override_band",
+                "Pode sobrescrever a faixa de prioridade da inscrição",
             ),
         ]
 
