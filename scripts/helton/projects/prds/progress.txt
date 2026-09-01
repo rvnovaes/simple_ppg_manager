@@ -811,3 +811,64 @@ Started: ter. 01 set 2026 11:06:15 -03
     por inscrição (o teto por item não sai em SQL de uma passada só, como f13
     já registrou). `classify()` deve carregar os lançamentos com
     `prefetch_related`, não chamar o método N vezes cru.
+
+## 2026-09-01 - f16-classificacao-ordenacao-e-desempate
+- **`ScholarshipEdition.classify(level) -> list[BandResult]`**: o coração do
+  módulo. Uma chamada por nível; devolve **sempre as 10 faixas na ordem
+  canônica, inclusive as vazias** (Q8), cada uma com título, o rótulo "Ordem
+  de prioridade: <ordinal>" derivado da posição em `ORDEM_DAS_FAIXAS`, a regra
+  de ordenação escrita e as linhas (`ClassifiedRow`: nome, nota final,
+  posição, rendimento, carga horária, `draw_order`).
+- **Uma chave de ordenação só**, e não duas passadas: o critério da faixa
+  (`ORDENACAO_DA_FAIXA`) e, concatenado, o desempate geral do item 3.3 (FUMP →
+  CadÚnico → subtotal de Formação → subtotal de Publicações). Empate = chave
+  idêntica, e é esse conjunto que vai a sorteio — comparar "quem sobrou" com
+  uma chave diferente da que ordenou é como se perde um critério em silêncio.
+- **A inversão do nível da FUMP** virou constante nomeada
+  `ORDEM_DO_NIVEL_DA_FUMP = {1: 0, 2: 1, 0: 2}`: o critério é "menor nível",
+  mas 0 é "sem nível" e portanto o **pior**. Ler o campo cru como chave põe
+  justamente quem a FUMP não classificou na frente de todo mundo.
+- **Sorteio (B5)**: `random.Random(f"{pk}:{draw_seed}")`, uma instância só
+  consumida faixa a faixa na ordem canônica. Cada bloco empatado é reordenado
+  **por `pk` antes** do `shuffle` — sem isso a ordem em que o banco devolveu as
+  linhas mudaria a lista com a mesma semente, que é o oposto do que a semente
+  existe para garantir. `draw_order` nula = "não precisou de sorteio".
+- `classify()` **não grava nada** (teste explícito): `draw_order` e o snapshot
+  são do service de publicação (f18).
+- Constantes novas lidas pelo PDF e pelo schema: `TITULO_DA_FAIXA`,
+  `REGRA_DE_ORDENACAO_DA_FAIXA`/`_PADRAO`, `ORDINAIS_DA_PRIORIDADE`,
+  `ORDENACAO_PADRAO`. **Assunção marcada**: com 2.4-II e 2.4-III publicadas, a
+  residual é a **décima** (em 2026 era a oitava) — conferência de merge.
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../tests/test_bolsas_classificacao.py` (+24 casos), `CLAUDE.md`. Sem
+  migration — nada de novo no schema.
+- `make ready` verde (1804 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`prefetch_related` é jogado fora por `.filter()`/`.select_related()` no
+    gerente reverso.** `_somar_por_item` fazia `self.bareme_entries
+    .select_related("item")` e teria feito 4 consultas por candidato dentro do
+    `classify()`. Virou `_lancamentos_carregados()`, que devolve o cache
+    (`.all()`) quando `"bareme_entries" in self._prefetched_objects_cache`, e o
+    recorte por seção do `subtotal()` passou a ser em Python. Está no
+    `CLAUDE.md`.
+  - **Aluno regular exige `project` e `deadline`**, além de `level` e
+    `admission_date` (`student_regular_requires_degree_fields`, check
+    constraint — estoura como `IntegrityError` no `save`, não em `clean`).
+    Fábrica de candidato em teste tem de dar os quatro; a linha de pesquisa e o
+    projeto coletivo entram por `get_or_create` compartilhado.
+  - A saída são dois `dataclass` congelados (`BandResult`/`ClassifiedRow`), não
+    dicionários: f18 (snapshot), f19 (PDF) e f20 (schema Ninja) consomem o
+    mesmo objeto. O schema de saída da f20 é `BandOut` sobre `BandResult` — não
+    montar dicionário no router.
+  - A prévia antes da publicação sorteia com `draw_seed` nula
+    (`"{pk}:None"`): reprodutível, mas **não** igual à publicada. Foi decisão
+    consciente para a secretaria conseguir ver a lista antes de congelá-la; a
+    f18 gera a semente uma vez e nunca a regera.
+  - Cenário de teste que precisa de faixa monta o **questionário**
+    (`QUESTIONARIO_DA_FAIXA`), nunca `band_override` — o override só aparece
+    onde ele é o caminho real (2.4-I e 2.4-II, que não têm pergunta).
+  - Teste de desempate isolado só vale se as notas finais forem iguais: no
+    critério I as três foram calibradas com o bônus da FUMP (15,00+15,00 =
+    21,00+9,00 = 30,00), senão o bônus resolveria antes e o critério nunca
+    rodaria.
+---

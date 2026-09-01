@@ -558,3 +558,13 @@ As que já custaram iteração aqui:
   filhos no cenário. Quando a pergunta é "existe filho com campo nulo", use
   `Exists(Filho.objects.filter(pai=OuterRef("pk"), campo__isnull=True))` — de
   quebra a subconsulta não multiplica linha e dispensa o `distinct()`.
+- **`prefetch_related` só vale se o método filho usar `.all()`.** Qualquer
+  `.filter()`, `.select_related()` ou `.order_by()` sobre o gerente reverso
+  monta um QuerySet novo e vai ao banco de novo — o cache do prefetch fica
+  intacto e inútil, sem erro nenhum e sem diferença de resultado. Só a conta
+  de consultas muda, e ela não aparece em teste que não a mede: uma lista de
+  44 candidatos passa de 1 consulta para 176. Método de model que soma filhos
+  lê `self.<related>.all()` e filtra **em Python**; quem carrega usa
+  `Prefetch("<related>", queryset=Filho.objects.select_related(...))`, e o
+  método cai no `.select_related()` só quando não há cache
+  (`"<related>" in self._prefetched_objects_cache`).

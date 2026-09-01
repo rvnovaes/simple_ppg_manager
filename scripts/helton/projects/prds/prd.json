@@ -382,7 +382,7 @@
         "f15-classificacao-nota-e-faixa"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Coracao do modulo. effort high e assumido: a regra nao se quebra em pedacos independentes sem perder o teste que a prova. Teste verde nao prova criterio certo -- conferencia humana no merge."
     },
     {

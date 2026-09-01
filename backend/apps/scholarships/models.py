@@ -28,6 +28,8 @@ informação, e toda mudança de estado é ato manual da secretaria — mesmo
 corte das isoladas.
 """
 
+import random
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -210,6 +212,77 @@ ORDENACAO_DA_FAIXA: dict[str, tuple[str, ...]] = {
     PriorityBand.B24_VI_VII_VIII: ("income", "hours", "score"),
 }
 
+# A ordenação padrão de quem não está no dicionário acima: nota
+# decrescente. É constante nomeada porque `classify()` e o cabeçalho
+# publicado leem a mesma coisa.
+ORDENACAO_PADRAO: tuple[str, ...] = ("score",)
+
+# A regra de ordenação **escrita**, como sai no cabeçalho de cada seção do
+# documento publicado (item 3.1 e os PDFs de 2026). A faixa que não está
+# aqui publica `REGRA_DE_ORDENACAO_PADRAO` — texto e algoritmo saem do
+# mesmo lugar justamente para não divergirem.
+REGRA_DE_ORDENACAO_PADRAO = "Nota do barema, em ordem decrescente."
+REGRA_DE_ORDENACAO_DA_FAIXA: dict[str, str] = {
+    PriorityBand.B24_V: (
+        "Menor rendimento mensal, prevalecendo a nota do barema como "
+        "critério de desempate."
+    ),
+    PriorityBand.B24_VI_VII_VIII: (
+        "Menor rendimento mensal, prevalecendo a menor carga horária em "
+        "caso de empate e a nota do barema caso o empate persista."
+    ),
+}
+
+# O título de cada seção do documento publicado. Vem separado do `label`
+# do `PriorityBand` (que é o rótulo curto da tela, "2.4-V") porque o
+# documento publica o texto do inciso — e o da residual não existe na
+# norma, é a descrição que os PDFs de 2026 usam.
+TITULO_DA_FAIXA: dict[str, str] = {
+    PriorityBand.B21_I: "Item 2.1, I",
+    PriorityBand.B21_II: "Item 2.1, II",
+    PriorityBand.B24_I: "Item 2.4, I",
+    PriorityBand.B24_II: "Item 2.4, II",
+    PriorityBand.B24_III: "Item 2.4, III",
+    PriorityBand.B24_IV: "Item 2.4, IV",
+    PriorityBand.B24_V: "Item 2.4, V",
+    PriorityBand.B24_VI_VII_VIII: "Item 2.4, VI, VII e VIII",
+    PriorityBand.B24_IX: "Item 2.4, IX",
+    PriorityBand.RESIDUAL: (
+        "Cumulação com atividade remunerada, fora dos critérios de "
+        "prioridade do item 2.4"
+    ),
+}
+
+# O rótulo "Ordem de prioridade: N" sai daqui pela POSIÇÃO da faixa em
+# `ORDEM_DAS_FAIXAS`, e não de campo nenhum.
+#
+# ASSUNÇÃO A CONFIRMAR NO MERGE: em 2026 a residual era a **oitava**,
+# porque os PDFs não publicavam 2.4-II nem 2.4-III. A decisão Q8 mandou
+# publicar as nove faixas normativas sempre, mesmo vazias — com elas a
+# residual passa a ser a **décima**. É mudança no texto publicado, e é o
+# humano que a confirma.
+ORDINAIS_DA_PRIORIDADE: tuple[str, ...] = (
+    "primeira",
+    "segunda",
+    "terceira",
+    "quarta",
+    "quinta",
+    "sexta",
+    "sétima",
+    "oitava",
+    "nona",
+    "décima",
+)
+
+# Onde o nível 0 da FUMP entra no 1º critério de desempate (item 3.3).
+#
+# **CUIDADO COM A INVERSÃO**: o critério é "menor nível da FUMP", mas 0
+# não é o menor — é "sem nível", quem a FUMP não classificou, e portanto o
+# PIOR colocado. A ordem é 1, depois 2, depois 0. Ler o campo cru como
+# chave de ordenação põe justamente quem não tem nível na frente de todo
+# mundo.
+ORDEM_DO_NIVEL_DA_FUMP: dict[int, int] = {1: 0, 2: 1, 0: 2}
+
 # Quem enxerga a **fila de análise** inteira da edição. Os demais só veem
 # a própria inscrição — o recorte é `ScholarshipApplicationQuerySet
 # .visible_to`, e o motivo é o mesmo de
@@ -220,6 +293,55 @@ ORDENACAO_DA_FAIXA: dict[str, tuple[str, ...]] = {
 # A Comissão de Bolsas entra aqui e não lá: ela analisa o edital de bolsas
 # e nada mais do programa.
 PAPEIS_COM_VISAO_DA_FILA = ("Secretaria", "Coordenação", "Comissão de Bolsas")
+
+
+# ---------------------------------------------------------------------------
+# A saída da classificação
+# ---------------------------------------------------------------------------
+#
+# Dois `dataclass` congelados, e não dicionários: são o que `classify()`
+# devolve, e o mesmo objeto alimenta o schema Ninja do resultado (f20) e o
+# PDF (f19). Não são models — nada aqui é gravado; o snapshot da
+# publicação é escrito pelo service, a partir destas linhas.
+
+
+@dataclass(frozen=True)
+class ClassifiedRow:
+    """Uma linha da lista publicada, já na posição final.
+
+    `income` e `weekly_hours` só saem impressos nas duas faixas que têm
+    coluna "Remuneração" (`BandResult.shows_income`), mas viajam sempre:
+    quem monta a tabela é quem decide o que mostrar, e uma linha que
+    escondesse o dado obrigaria a segunda consulta.
+
+    `draw_order` é preenchida **só em quem o sorteio precisou ordenar** —
+    nula é o caso normal, e é ela que a publicação persiste.
+    """
+
+    application: "ScholarshipApplication"
+    name: str
+    score: Decimal
+    position: int
+    income: "Decimal | None"
+    weekly_hours: "int | None"
+    draw_order: "int | None"
+
+
+@dataclass(frozen=True)
+class BandResult:
+    """Uma das dez seções do documento publicado, **mesmo vazia** (Q8).
+
+    `priority_label` e `ordering_rule` são texto pronto: o cabeçalho da
+    seção publica a regra pela qual aquela faixa foi ordenada, e ele sai
+    da mesma constante que a ordenou.
+    """
+
+    band: str
+    title: str
+    priority_label: str
+    ordering_rule: str
+    shows_income: bool
+    rows: list[ClassifiedRow]
 
 
 # ---------------------------------------------------------------------------
@@ -495,6 +617,185 @@ class ScholarshipEdition(models.Model):
         )
         self.status = ScholarshipEditionStatus.FINAL_RESULT
         self.published_final_at = at
+
+    # -- classificação ------------------------------------------------------
+
+    def classify(self, level: str) -> list[BandResult]:
+        """A lista de prioridade de um nível, pronta para publicar.
+
+        **Uma chamada por nível**: mestrado e doutorado correm
+        independentes e saem em documentos separados (item 6 da Seção 2 do
+        plano). O nível é obrigatório — não existe lista dos dois juntos.
+
+        O algoritmo, na ordem do edital:
+
+        1. Cada inscrição cai na **sua** faixa (`band()`: a sobrescrita da
+           secretaria, se houver, senão a derivada do questionário).
+        2. Dentro da faixa, a ordem vem de `ORDENACAO_DA_FAIXA`: nota
+           decrescente na maioria; 2.4-V por **menor rendimento** com a
+           nota desempatando; 2.4-VI/VII/VIII por menor rendimento →
+           **menor carga horária** → nota. Nessas duas a nota **não**
+           ordena, e é o caso que os dados de 2026 provam (59,20 em 1º e
+           73,29 em 5º na faixa VI/VII/VIII do mestrado).
+        3. O desempate geral do item 3.3 entra **depois**, só onde o
+           critério da faixa não resolveu: menor nível da FUMP (com 0 =
+           "sem nível" em último, ver `ORDEM_DO_NIVEL_DA_FUMP`) → CadÚnico
+           → maior subtotal em Formação Acadêmica → maior subtotal em
+           Produção Bibliográfica → sorteio.
+        4. Quem ainda estiver empatado depois de tudo isso é embaralhado
+           por `random.Random(f"{pk}:{draw_seed}")` e recebe `draw_order`.
+
+        **Nada aqui é gravado.** `draw_order` e o resto do snapshot são
+        persistidos pelo service da publicação, a partir destas linhas —
+        `classify()` pode ser chamada a qualquer momento, inclusive antes
+        do resultado sair, para a secretaria conferir a prévia.
+
+        A semente é gerada uma vez, na primeira publicação, e nunca
+        regerada: republicar tem de dar a mesma lista. Antes disso ela é
+        nula, e a prévia sorteia com `"{pk}:None"` — reprodutível também,
+        mas **não** necessariamente igual à publicada. É o preço de
+        conseguir ver a lista antes de congelá-la.
+
+        Devolve sempre as **dez faixas na ordem canônica, inclusive as
+        vazias** (Q8): faixa sem candidato é publicada só com o cabeçalho.
+        """
+        inscricoes = list(
+            self.applications.filter(level=level)
+            .select_related("student__person")
+            .prefetch_related(
+                models.Prefetch(
+                    "bareme_entries",
+                    queryset=BaremeEntry.objects.select_related("item"),
+                )
+            )
+        )
+        por_faixa: dict[str, list[ScholarshipApplication]] = {
+            faixa: [] for faixa in ORDEM_DAS_FAIXAS
+        }
+        for inscricao in inscricoes:
+            por_faixa[inscricao.band()].append(inscricao)
+
+        sorteio = random.Random(f"{self.pk}:{self.draw_seed}")
+        return [
+            self._montar_faixa(faixa, posicao, por_faixa[faixa], sorteio)
+            for posicao, faixa in enumerate(ORDEM_DAS_FAIXAS, start=1)
+        ]
+
+    def _montar_faixa(
+        self,
+        faixa: str,
+        posicao: int,
+        inscricoes: list["ScholarshipApplication"],
+        sorteio: random.Random,
+    ) -> BandResult:
+        """Ordena uma faixa e a embrulha com o cabeçalho que ela publica.
+
+        O sorteio consome a mesma instância de `Random` faixa a faixa, na
+        ordem canônica: é o que faz duas chamadas com a mesma semente
+        darem a mesma lista.
+        """
+        chaves = {
+            inscricao.pk: self._chave_de_ordenacao(faixa, inscricao)
+            for inscricao in inscricoes
+        }
+        ordenadas = sorted(inscricoes, key=lambda i: chaves[i.pk])
+        ordenadas, sorteadas = self._desempatar_por_sorteio(ordenadas, chaves, sorteio)
+        return BandResult(
+            band=faixa,
+            title=TITULO_DA_FAIXA[faixa],
+            priority_label=(
+                f"Ordem de prioridade: {ORDINAIS_DA_PRIORIDADE[posicao - 1]}"
+            ),
+            ordering_rule=REGRA_DE_ORDENACAO_DA_FAIXA.get(
+                faixa, REGRA_DE_ORDENACAO_PADRAO
+            ),
+            shows_income=faixa in ORDENACAO_DA_FAIXA,
+            rows=[
+                ClassifiedRow(
+                    application=inscricao,
+                    name=str(inscricao.student.person.full_name),
+                    score=inscricao.final_score(),
+                    position=indice,
+                    income=inscricao.monthly_income,
+                    weekly_hours=inscricao.weekly_hours,
+                    draw_order=sorteadas.get(inscricao.pk),
+                )
+                for indice, inscricao in enumerate(ordenadas, start=1)
+            ],
+        )
+
+    def _chave_de_ordenacao(
+        self, faixa: str, inscricao: "ScholarshipApplication"
+    ) -> tuple[Any, ...]:
+        """A chave completa: o critério da faixa e, depois, o do item 3.3.
+
+        Duas inscrições com a **mesma** chave estão empatadas em tudo o
+        que o edital sabe comparar — e é exatamente esse conjunto que vai
+        a sorteio. Por isso a chave é uma só, e não duas passadas de
+        ordenação: comparar "quem sobrou empatado" com uma chave diferente
+        da que ordenou é como se perde um critério em silêncio.
+
+        Rendimento e carga horária **nulos vão para o fim** da faixa que os
+        usa. Não deveria acontecer (`clean()` os exige de quem declara
+        atividade remunerada), mas a sobrescrita da secretaria pode pôr em
+        2.4-V alguém do bloco 2.1, e um `None` no meio de `Decimal`
+        estouraria a comparação.
+        """
+        chave: list[Any] = []
+        for criterio in ORDENACAO_DA_FAIXA.get(faixa, ORDENACAO_PADRAO):
+            if criterio == "score":
+                chave.append(-inscricao.final_score())
+            elif criterio == "income":
+                renda = inscricao.monthly_income
+                chave.append((renda is None, renda or Decimal("0.00")))
+            elif criterio == "hours":
+                horas = inscricao.weekly_hours
+                chave.append((horas is None, horas or 0))
+        # Item 3.3, na ordem: FUMP, CadÚnico, Formação Acadêmica,
+        # Produção Bibliográfica. `not cadastro_unico` porque quem tem o
+        # cadastro vem antes, e `False < True`.
+        chave.append(ORDEM_DO_NIVEL_DA_FUMP.get(inscricao.fump_level, 2))
+        chave.append(not inscricao.cadastro_unico)
+        chave.append(-inscricao.subtotal(BaremeSection.FORMATION))
+        chave.append(-inscricao.subtotal(BaremeSection.BIBLIOGRAPHIC))
+        return tuple(chave)
+
+    @staticmethod
+    def _desempatar_por_sorteio(
+        ordenadas: list["ScholarshipApplication"],
+        chaves: dict[int, tuple[Any, ...]],
+        sorteio: random.Random,
+    ) -> tuple[list["ScholarshipApplication"], dict[int, int]]:
+        """Embaralha cada bloco que sobrou empatado (item 3.3, V).
+
+        Cada bloco é reordenado **por `pk`** antes do embaralhamento: a
+        ordem em que o banco devolveu as linhas não é garantida, e sem
+        esse passo a mesma semente daria listas diferentes conforme o
+        plano de consulta — que é justamente o que a semente existe para
+        impedir.
+
+        Devolve a lista final e o `draw_order` de quem foi sorteado
+        (1..n dentro do bloco). Quem não empatou com ninguém não recebe
+        `draw_order`: nula é "não precisou de sorteio".
+        """
+        final: list[ScholarshipApplication] = []
+        sorteadas: dict[int, int] = {}
+        inicio = 0
+        while inicio < len(ordenadas):
+            fim = inicio + 1
+            while fim < len(ordenadas) and (
+                chaves[ordenadas[fim].pk] == chaves[ordenadas[inicio].pk]
+            ):
+                fim += 1
+            bloco = ordenadas[inicio:fim]
+            if len(bloco) > 1:
+                bloco = sorted(bloco, key=lambda i: i.pk)
+                sorteio.shuffle(bloco)
+                for ordem, inscricao in enumerate(bloco, start=1):
+                    sorteadas[inscricao.pk] = ordem
+            final.extend(bloco)
+            inicio = fim
+        return final, sorteadas
 
 
 # ---------------------------------------------------------------------------
@@ -1193,9 +1494,13 @@ class ScholarshipApplication(models.Model):
         """
         if self.pk is None:
             return Decimal("0.00")
-        lancamentos = self.bareme_entries.select_related("item")
+        lancamentos = self._lancamentos_carregados()
         if section is not None:
-            lancamentos = lancamentos.filter(item__section=section)
+            lancamentos = [
+                lancamento
+                for lancamento in lancamentos
+                if lancamento.item.section == section
+            ]
         totais: dict[int, Decimal] = {}
         itens: dict[int, BaremeItem] = {}
         for lancamento in lancamentos:
@@ -1208,6 +1513,24 @@ class ScholarshipApplication(models.Model):
             (itens[item_id].apply_cap(total) for item_id, total in totais.items()),
             Decimal("0.00"),
         )
+
+    def _lancamentos_carregados(self) -> list["BaremeEntry"]:
+        """Os lançamentos, reusando o `prefetch_related` quando existe.
+
+        `classify()` carrega os lançamentos da edição inteira de uma vez.
+        Um `self.bareme_entries.select_related("item")` aqui dentro
+        descartaria esse cache e faria uma consulta nova **a cada leitura
+        de nota** — e a classificação lê quatro por inscrição (nota,
+        subtotal de Formação, subtotal de Publicações, e de novo a nota na
+        linha). `.all()` sobre o gerente reverso devolve o cache do
+        prefetch; sem prefetch, a consulta traz o item junto.
+
+        Por isso o recorte por seção do `subtotal()` é feito em Python: um
+        `.filter()` também descartaria o cache.
+        """
+        if "bareme_entries" in getattr(self, "_prefetched_objects_cache", {}):
+            return list(self.bareme_entries.all())
+        return list(self.bareme_entries.select_related("item"))
 
     def submitted_appeal(self) -> "ScholarshipAppeal | None":
         """O recurso desta inscrição, ou `None`.
