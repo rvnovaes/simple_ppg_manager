@@ -26,11 +26,13 @@ from apps.people.models import Person
 from apps.programs.models import Program
 
 from .models import (
+    AppealState,
     ApplicationDocument,
     ApplicationDocumentKind,
     BaremeEntry,
     BaremeItem,
     CommitteeMember,
+    ItemReview,
     ScholarshipApplication,
     ScholarshipEdition,
     ScholarshipEditionStatus,
@@ -43,14 +45,18 @@ from .schemas import (
     BaremeEntryIn,
     BaremeEntryOut,
     BaremeEntryPatch,
+    BaremeEntryReviewIn,
     BaremeItemIn,
     BaremeItemOut,
     BaremeItemPatch,
     CommitteeMemberIn,
     CommitteeMemberOut,
+    ItemReviewIn,
+    ItemReviewOut,
     ScholarshipApplicationIn,
     ScholarshipApplicationOut,
     ScholarshipApplicationPatch,
+    ScholarshipApplicationQueueOut,
     ScholarshipEditionIn,
     ScholarshipEditionOut,
     ScholarshipEditionPatch,
@@ -781,7 +787,12 @@ def download_application_document(request: HttpRequest, document_id: int):
 
 def _lancamentos(program: Program):
     return BaremeEntry.objects.for_program(program).select_related(
-        "item", "application__student__person"
+        # `application__edition` porque a avaliação cobra o estado da
+        # edição (`ensure_committee_can_review`): sem ele é uma consulta a
+        # mais por lançamento avaliado.
+        "item",
+        "application__edition",
+        "application__student__person",
     )
 
 
@@ -1057,3 +1068,213 @@ def download_entry_proof(request: HttpRequest, entry_id: int):
         as_attachment=True,
         filename=Path(lancamento.proof.name or "").name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Fila de análise da comissão
+# ---------------------------------------------------------------------------
+#
+# A fila é a tela de trabalho da comissão, e por isso o `level` é
+# **obrigatório**: a classificação corre por nível, e uma fila que mistura
+# mestrado e doutorado não é a fila de ninguém — é uma lista que precisa
+# ser separada à mão antes de servir para alguma coisa. Faltando o
+# parâmetro, o Ninja devolve 422.
+#
+# O recorte de quem vê o quê é `ScholarshipApplicationQuerySet.visible_to`:
+# `view_scholarshipapplication` diz que a pessoa acompanha inscrição, não
+# QUAIS inscrições — o Discente também a tem, é com ela que lê a própria.
+
+
+@router.get(
+    "/editions/{int:edition_id}/applications/",
+    response=list[ScholarshipApplicationQueueOut],
+)
+@paginate
+def list_applications(
+    request: HttpRequest,
+    edition_id: int,
+    level: ScholarshipLevel,
+    research_line_id: int | None = None,
+    advisor_id: int | None = None,
+    admission_year: int | None = None,
+    has_paid_activity: bool | None = None,
+    affirmative_action: bool | None = None,
+    socioeconomic_vulnerability: bool | None = None,
+    substitute_teacher: bool | None = None,
+    basic_education_or_collective_health: bool | None = None,
+    public_service: bool | None = None,
+    private_service: bool | None = None,
+    other_non_public_scholarship: bool | None = None,
+    appeal: AppealState | None = None,
+    pending_review: bool | None = None,
+):
+    """A fila de trabalho da comissão, com os filtros do legado.
+
+    Paginada de propósito: cada linha lê os lançamentos da inscrição para
+    somar as duas notas (o teto é do item, aplicado sobre a soma dos
+    lançamentos daquele item — não há SQL de uma consulta só que faça
+    isso), e uma edição inteira sem página seria uma consulta por
+    candidato.
+
+    Os oito booleanos são as oito respostas do questionário.
+    `cadastro_unico` fica de fora porque não é pergunta de faixa e sim
+    critério de desempate (ver o campo no model): filtrar a fila por ele
+    não é trabalho da análise.
+    """
+    require_perm(request, "scholarships.view_scholarshipapplication")
+    program: Program = current_program(request)
+    edicao = _edicao_do_programa(request, edition_id)
+    inscricoes = (
+        ScholarshipApplication.objects.for_program(program)
+        .for_edition(edicao)
+        .for_level(level)
+        # Duas camadas, nesta ordem: o tenant primeiro (não é opcional) e o
+        # papel depois.
+        .visible_to(request.user, program)
+        .select_related(
+            "edition",
+            "student__person",
+            "student__advisor__person",
+            "student__project__research_line",
+            "appeal",
+        )
+        .prefetch_related("documents")
+    )
+    # Filtros de conveniência da tela. Nenhum deles é escopo de tenant —
+    # esse já foi aplicado acima e não é opcional.
+    filtros = {
+        "student__project__research_line_id": research_line_id,
+        "student__advisor_id": advisor_id,
+        "student__admission_date__year": admission_year,
+        "has_paid_activity": has_paid_activity,
+        "affirmative_action": affirmative_action,
+        "socioeconomic_vulnerability": socioeconomic_vulnerability,
+        "substitute_teacher": substitute_teacher,
+        "basic_education_or_collective_health": basic_education_or_collective_health,
+        "public_service": public_service,
+        "private_service": private_service,
+        "other_non_public_scholarship": other_non_public_scholarship,
+    }
+    inscricoes = inscricoes.filter(
+        **{campo: valor for campo, valor in filtros.items() if valor is not None}
+    )
+    if appeal is not None:
+        inscricoes = inscricoes.with_appeal_state(appeal)
+    if pending_review is not None:
+        inscricoes = inscricoes.pending_review(pending_review)
+    return inscricoes
+
+
+@router.patch("/entries/{int:entry_id}/review", response=BaremeEntryOut)
+def review_entry(request: HttpRequest, entry_id: int, payload: BaremeEntryReviewIn):
+    """A comissão pontua um lançamento.
+
+    Permissão própria (`review_baremeentry`), separada de
+    `change_baremeentry` justamente porque o candidato tem esta última
+    sobre o próprio lançamento: uma permissão só para as duas coisas
+    juntaria "corrigir o que digitei" com "decidir quanto vale".
+
+    O schema de entrada tem **dois campos** e nenhum deles é do candidato
+    — é o contrato, e não uma checagem, que impede a comissão de reescrever
+    quantidade ou descrição. A janela (`under_review` e
+    `appeals_under_review`) e a observação obrigatória na divergência são
+    do model.
+    """
+    require_perm(request, "scholarships.review_baremeentry")
+    program: Program = current_program(request)
+    lancamento = get_object_or_404(_lancamentos(program), pk=entry_id)
+    lancamento.review(
+        committee_score=payload.committee_score,
+        committee_note=payload.committee_note,
+        at=timezone.now(),
+    )
+    with transaction.atomic():
+        lancamento.clean()
+        lancamento.save(
+            update_fields=[
+                "committee_score",
+                "committee_note",
+                "reviewed_at",
+                "updated_at",
+            ]
+        )
+        audit.record(
+            "scholarships.entry.review",
+            request=request,
+            target=lancamento,
+            program=program,
+            application_id=lancamento.application_id,
+            item_id=lancamento.item_id,
+            candidate_score=str(lancamento.candidate_score),
+            committee_score=str(lancamento.committee_score),
+        )
+    return lancamento
+
+
+@router.get(
+    "/applications/{int:application_id}/item-reviews/", response=list[ItemReviewOut]
+)
+def list_item_reviews(request: HttpRequest, application_id: int):
+    """As observações por item de uma inscrição.
+
+    Sem esta rota o `PUT` seria escrita sem leitura: a tela da análise
+    precisa mostrar o que a comissão já comentou para poder retificar, e
+    o candidato precisa ler o comentário para poder recorrer dele — é a
+    mesma razão pela qual `committee_note` já viaja no lançamento.
+    """
+    require_perm(request, "scholarships.view_itemreview")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    _garantir_acesso_a_inscricao(request, inscricao, program)
+    return list(
+        ItemReview.objects.for_program(program)
+        .for_application(inscricao)
+        .select_related("item")
+    )
+
+
+@router.put("/applications/{int:application_id}/item-review", response=ItemReviewOut)
+def set_item_review(request: HttpRequest, application_id: int, payload: ItemReviewIn):
+    """Grava a observação da comissão sobre um item do barema.
+
+    `PUT` e não `POST` porque a observação é uma por (inscrição, item):
+    reenviar sobrescreve o texto, e não empilha um segundo comentário que
+    deixaria o candidato adivinhando qual vale. Por isso responde 200
+    também na primeira vez — o recurso identificado pela chave existe a
+    partir do momento em que se escreve nele.
+
+    Exige `review_baremeentry`, a mesma permissão da nota: comentar o item
+    é parte do ato de analisar, e um papel que comentasse sem poder
+    pontuar não existe no edital.
+    """
+    require_perm(request, "scholarships.review_baremeentry")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    inscricao.edition.ensure_committee_can_review()
+    # 404 e não `bareme_item_mismatch`: id de outro programa não existe
+    # aqui. O item de outra edição ou de outro nível **existe** no
+    # programa, e esse é o caso que o `clean()` recusa com o código.
+    item = get_object_or_404(
+        BaremeItem.objects.for_program(program), pk=payload.item_id
+    )
+    observacao = (
+        ItemReview.objects.for_program(program)
+        .for_application(inscricao)
+        .filter(item=item)
+        .first()
+    )
+    if observacao is None:
+        observacao = ItemReview(application=inscricao, item=item)
+    observacao.note = payload.note
+    with transaction.atomic():
+        observacao.clean()
+        observacao.save()
+        audit.record(
+            "scholarships.item_review.set",
+            request=request,
+            target=observacao,
+            program=program,
+            application_id=inscricao.pk,
+            item_id=item.pk,
+        )
+    return observacao

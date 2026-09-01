@@ -172,6 +172,22 @@ def test_committee_can_review_em_analise_e_em_recursos(estado):
 
 
 @pytest.mark.parametrize("estado", TODOS_OS_ESTADOS)
+def test_ensure_committee_can_review_e_a_versao_que_cobra(estado):
+    """Mesmo par de `bareme_editable`: o predicado desenha o campo de nota,
+    o `ensure_` recusa a escrita fora dos dois estados (409)."""
+    edicao = _edicao(status=estado)
+
+    if edicao.committee_can_review():
+        assert edicao.ensure_committee_can_review() is None
+        return
+
+    with pytest.raises(InvalidStateTransition) as erro:
+        edicao.ensure_committee_can_review()
+    assert erro.value.code == "review_closed"
+    assert erro.value.status_code == 409
+
+
+@pytest.mark.parametrize("estado", TODOS_OS_ESTADOS)
 def test_appeal_open_so_com_a_fase_de_recursos_aberta(estado):
     esperado = estado == ScholarshipEditionStatus.APPEALS_UNDER_REVIEW
 

@@ -86,6 +86,19 @@ Started: ter. 01 set 2026 11:06:15 -03
   envios: com o mesmo nome o caminho é liberado no delete e reocupado pelo
   novo upload, e o `exists()` volta True sem nada estar errado.
 
+- **`filter(<relação>__<campo>__isnull=True)` traz também quem não tem
+  relação nenhuma** — o join vira LEFT OUTER e a coluna é nula porque a linha
+  não existe. "Tem filho com campo nulo" se escreve com
+  `Exists(Filho.objects.filter(pai=OuterRef("pk"), campo__isnull=True))`, que
+  ainda dispensa o `distinct()`. Registrado no `CLAUDE.md`.
+- Permissão `view_<model>` **não** é porteiro de "quais registros": quem
+  recorta é `visible_to(user, program)` no QuerySet, chamado logo depois de
+  `for_program` (precedente em `academic/models.py`). Lista de papéis com
+  visão ampla é constante de módulo (`PAPEIS_COM_VISAO_DA_FILA`).
+- O que a comissão/secretaria **não** pode reescrever se resolve no **schema
+  de entrada**, não em checagem: `BaremeEntryReviewIn` tem dois campos, e é
+  por isso que `quantity` no corpo é ignorado sem erro.
+
 ## 2026-09-01 - f1-app-scholarships-esqueleto
 - Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
   arquivos, registro em `INSTALLED_APPS` depois de `apps.selection` e router
@@ -646,4 +659,68 @@ Started: ter. 01 set 2026 11:06:15 -03
   - `BaremeSection` não tem `TEACHING`: as seções são as seis do edital
     (`FORMATION`, `BIBLIOGRAPHIC`, `EVENTS`, `PROFESSIONAL`, `BOARDS`,
     `OTHER_TITLES`). Estágio em docência é `PROFESSIONAL`.
+---
+
+## 2026-09-01 - f13-api-analise-da-comissao
+- **A fila de trabalho da comissão**: `GET /editions/{id}/applications/`,
+  paginada, com `level` **obrigatório** (422 sem ele — a classificação corre
+  por nível, e uma lista com os dois juntos não é fila de ninguém) e os
+  filtros do legado: `research_line_id` (chega pelo projeto coletivo do
+  vínculo), `advisor_id`, `admission_year`, as **oito** respostas do
+  questionário, `appeal` (`AppealState`: none/pending/judged) e
+  `pending_review`.
+- **`view_scholarshipapplication` não é porteiro da fila.** O Discente também
+  a tem — é com ela que lê a própria inscrição. Quem recorta é
+  `ScholarshipApplicationQuerySet.visible_to(user, program)`, no molde de
+  `EnrollmentAdjustmentRequestQuerySet.visible_to`: Secretaria, Coordenação e
+  Comissão de Bolsas (constante `PAPEIS_COM_VISAO_DA_FILA`) veem a edição
+  inteira, o resto vê o que é seu.
+- `PATCH /entries/{id}/review` com `BaremeEntryReviewIn` de **dois campos**:
+  é o contrato, e não uma checagem, que impede a comissão de reescrever
+  `quantity`/`description`/`candidate_score`. Exige `review_baremeentry` e
+  passa por `BaremeEntry.review()`, que chama a guarda nova
+  `ScholarshipEdition.ensure_committee_can_review()` (409 `review_closed`
+  fora de `under_review`/`appeals_under_review`). A divergência sem
+  observação continua sendo o `clean()` (`note_required`).
+- `PUT /applications/{id}/item-review` faz upsert da `ItemReview` (uma por
+  (inscrição, item)) e `GET .../item-reviews/` a lê. Escrever exige
+  `review_baremeentry` — comentar o item é parte do ato de analisar, e um
+  papel que comentasse sem poder pontuar não existe no edital.
+- **Migration de dados `0009_leitura_das_observacoes_por_item`**: a `0008`
+  deu `view_itemreview` só à Coordenação, e ficaram sem ele justamente quem
+  escreve (Comissão), quem responde ao candidato (Secretaria) e o
+  destinatário do comentário (Discente, que recorre dele). Os três exact-set
+  de `test_bolsas_papeis.py` foram atualizados — **é permissão, então é
+  ponto de conferência no merge**. Nenhum `add_`/`change_itemreview` foi dado
+  a ninguém.
+- Invariante novo: `ItemReview` vazia é recusada
+  (`item_review_note_required`) — linha em branco fingiria item já comentado.
+- Arquivos: `backend/apps/scholarships/{models,router,schemas}.py`,
+  `.../migrations/0009_leitura_das_observacoes_por_item.py` (nova),
+  `.../tests/test_bolsas_api_analise.py` (novo, 50 casos),
+  `.../tests/test_bolsas_{barema,edital,papeis}.py`, `CLAUDE.md`.
+- `make ready` verde (1734 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`filter(bareme_entries__committee_score__isnull=True)` trazia também a
+    inscrição SEM lançamento nenhum**: o Django promove o join a LEFT OUTER e
+    a coluna vem nula porque a linha não existe. Custou uma rodada e é
+    exatamente o oposto do que `pending_review=true` quer dizer. Virou
+    `Exists(...OuterRef("pk")...)`, que ainda dispensa o `distinct()`. Está
+    no `CLAUDE.md`.
+  - `mypy` cobra `student.project` (`CollectiveProject | None`) antes do
+    `.research_line` **também no teste** — `assert projeto is not None`.
+  - A fila é **paginada de propósito**: cada linha soma as duas notas lendo
+    os lançamentos (o teto é do item, aplicado sobre a soma — não há SQL de
+    uma consulta só que faça isso). f15/f16 vão precisar da mesma soma sobre
+    a edição inteira; ali o caminho não é reusar o schema da fila.
+  - O teste de API foi de novo para `test_bolsas_api_analise.py`, e não para
+    o `test_bolsas_analise.py` do `prd.json`: o par (a)/(b) do app está
+    mantido desde f10.
+  - `ScholarshipApplication.appeal_state()`/`submitted_appeal()` já existem
+    para f17/f24 — o acesso direto a `self.appeal` levanta
+    `RelatedObjectDoesNotExist` quando não há recurso, e "não recorreu" é o
+    caso normal.
+  - `ScholarshipApplicationQueueOut` é schema próprio, e não o
+    `ScholarshipApplicationOut`: f24 (resultado) deve seguir o mesmo caminho
+    em vez de inchar o `Out` da inscrição com os campos de snapshot.
 ---

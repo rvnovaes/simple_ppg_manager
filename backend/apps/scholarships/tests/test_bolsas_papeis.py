@@ -126,6 +126,9 @@ def test_secretaria_recebe_exatamente_o_que_opera_o_edital() -> None:
         ),
         "view_scholarshipapplication",
         "view_baremeentry",
+        # Ela responde ao candidato sobre a análise, então lê a observação
+        # por item — mas não a escreve (migration 0009).
+        "view_itemreview",
         "download_applicationdocument",
         "publish_scholarshipedition",
         "set_fump_level",
@@ -161,6 +164,10 @@ def test_comissao_le_o_que_precisa_para_avaliar_e_nada_mais() -> None:
         "view_scholarshipapplication",
         "view_baremeentry",
         "review_baremeentry",
+        # Quem escreve a observação por item precisa relê-la para
+        # retificar; escrever é `review_baremeentry`, e `add_itemreview`
+        # não existe para papel nenhum (migration 0009).
+        "view_itemreview",
         "download_applicationdocument",
         "change_scholarshipappeal",
     }
@@ -185,6 +192,9 @@ def test_discente_se_inscreve_lanca_e_recorre() -> None:
         "change_baremeentry",
         "add_scholarshipappeal",
         "view_scholarshipappeal",
+        # É dele o comentário da comissão sobre o item: sem lê-lo, o
+        # recurso ataca um número sem fundamento (migration 0009).
+        "view_itemreview",
     }
 
 

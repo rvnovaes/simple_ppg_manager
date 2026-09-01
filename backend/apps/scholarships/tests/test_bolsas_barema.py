@@ -631,6 +631,17 @@ def test_observacao_por_item_e_independente_da_do_lancamento(inscricao, edicao):
 
 
 @pytest.mark.django_db
+def test_observacao_por_item_nao_pode_ser_vazia(inscricao, edicao):
+    """Linha em branco fingiria que o item já foi comentado."""
+    item = _salvar_item(edicao, code="1.3")
+
+    with pytest.raises(DomainError) as exc:
+        ItemReview(application=inscricao, item=item, note="   ").clean()
+
+    assert exc.value.code == "item_review_note_required"
+
+
+@pytest.mark.django_db
 def test_observacao_recusa_item_de_outro_nivel(inscricao, edicao):
     item = _salvar_item(edicao, code="1.3", level=ScholarshipLevel.DOCTORATE)
 

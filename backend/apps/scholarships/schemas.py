@@ -11,6 +11,8 @@ from pathlib import Path
 from ninja import Schema
 
 from .models import (
+    AppealOutcome,
+    AppealState,
     ApplicationDocument,
     ApplicationDocumentKind,
     BaremeEntry,
@@ -18,6 +20,7 @@ from .models import (
     BaremeSection,
     BaremeUnit,
     CommitteeMember,
+    ItemReview,
     PriorityBand,
     ScholarshipApplication,
     ScholarshipEdition,
@@ -574,3 +577,156 @@ class BaremeEntryOut(Schema):
             return obj.proof.size
         except (FileNotFoundError, ValueError):
             return 0
+
+
+# ---------------------------------------------------------------------------
+# Análise da comissão
+# ---------------------------------------------------------------------------
+
+
+class BaremeEntryReviewIn(Schema):
+    """A avaliação da comissão sobre um lançamento — **dois campos**.
+
+    Não há `description`, `quantity`, `item_id` nem `candidate_score`
+    aqui, e a ausência é o ponto: a comissão pontua o que o candidato
+    lançou e não reescreve o que ele lançou. Campo extra no corpo é
+    ignorado pelo pydantic, sem erro — o teste que prova isso manda o
+    campo e confere o gravado.
+
+    `committee_note` tem default vazio porque nota igual à do candidato
+    não precisa de justificativa; a divergência sem observação é recusada
+    pelo `clean()` do lançamento (`note_required`), que é onde a regra
+    mora desde o model.
+    """
+
+    committee_score: decimal.Decimal
+    committee_note: str = ""
+
+
+class ItemReviewIn(Schema):
+    """A observação da comissão sobre um item inteiro do barema.
+
+    Outra coisa que `committee_note`: aquela explica **um lançamento**,
+    esta comenta o item como um todo. Uma por (inscrição, item) — por isso
+    a rota é `PUT`, e reenviar sobrescreve em vez de empilhar.
+    """
+
+    item_id: int
+    note: str
+
+
+class ItemReviewOut(Schema):
+    id: int
+    application_id: int
+    item_id: int
+    item_code: str
+    item_text: str
+    item_section: BaremeSection
+    note: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_item_code(obj: ItemReview) -> str:
+        return obj.item.code
+
+    @staticmethod
+    def resolve_item_text(obj: ItemReview) -> str:
+        return obj.item.text
+
+    @staticmethod
+    def resolve_item_section(obj: ItemReview) -> str:
+        return obj.item.section
+
+
+class ScholarshipApplicationQueueOut(Schema):
+    """Uma linha da fila de trabalho da comissão.
+
+    É um schema próprio, e não o `ScholarshipApplicationOut`: a fila
+    responde a outras perguntas (quanto o candidato pediu, quanto a
+    comissão já concedeu, sobrou item a analisar, recorreu) e não precisa
+    do questionário inteiro em cada linha — quem quer o questionário abre
+    a inscrição.
+
+    As três leituras de nota (`candidate_score`, `committee_score`,
+    `fully_reviewed`) são derivadas dos lançamentos a cada resposta: não
+    há campo denormalizado a manter em dia, e o teto do item é aplicado
+    sobre a soma dos lançamentos daquele item (ver
+    `BaremeItem.raw_score`). É por isso que a fila é paginada.
+    """
+
+    id: int
+    student_id: int
+    student_name: str
+    level: ScholarshipLevel
+    level_label: str
+    research_line: str | None
+    advisor_name: str | None
+    admission_year: int | None
+    submitted_at: datetime.datetime | None
+    fump_level: int
+    band: PriorityBand | None
+    candidate_score: decimal.Decimal
+    committee_score: decimal.Decimal
+    fully_reviewed: bool
+    appeal_state: AppealState
+    appeal_outcome: AppealOutcome | None
+    pending_docs: list[PendingDocumentOut]
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_student_name(obj: ScholarshipApplication) -> str:
+        return obj.student.person.full_name
+
+    @staticmethod
+    def resolve_level_label(obj: ScholarshipApplication) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_research_line(obj: ScholarshipApplication) -> str | None:
+        """A linha de pesquisa chega pelo projeto coletivo do vínculo — é
+        um dos filtros da fila, e a tela precisa exibir o que filtrou."""
+        projeto = obj.student.project
+        return projeto.research_line.name if projeto is not None else None
+
+    @staticmethod
+    def resolve_advisor_name(obj: ScholarshipApplication) -> str | None:
+        orientador = obj.student.advisor
+        return orientador.person.full_name if orientador is not None else None
+
+    @staticmethod
+    def resolve_admission_year(obj: ScholarshipApplication) -> int | None:
+        ingresso = obj.student.admission_date
+        return ingresso.year if ingresso is not None else None
+
+    @staticmethod
+    def resolve_band(obj: ScholarshipApplication) -> str | None:
+        return obj.band()
+
+    @staticmethod
+    def resolve_candidate_score(obj: ScholarshipApplication) -> decimal.Decimal:
+        return obj.candidate_score()
+
+    @staticmethod
+    def resolve_committee_score(obj: ScholarshipApplication) -> decimal.Decimal:
+        return obj.committee_score()
+
+    @staticmethod
+    def resolve_fully_reviewed(obj: ScholarshipApplication) -> bool:
+        return obj.fully_reviewed()
+
+    @staticmethod
+    def resolve_appeal_state(obj: ScholarshipApplication) -> str:
+        return obj.appeal_state()
+
+    @staticmethod
+    def resolve_appeal_outcome(obj: ScholarshipApplication) -> str | None:
+        recurso = obj.submitted_appeal()
+        return recurso.outcome if recurso is not None else None
+
+    @staticmethod
+    def resolve_pending_docs(obj: ScholarshipApplication) -> list[dict]:
+        rotulos = dict(ApplicationDocumentKind.choices)
+        return [
+            {"kind": kind, "kind_label": rotulos[kind]} for kind in obj.pending_docs()
+        ]

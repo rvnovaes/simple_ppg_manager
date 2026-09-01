@@ -315,7 +315,7 @@
         "f12-api-lancamentos"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "effort high por causa da matriz de filtros da fila; se o loop travar, quebre em 'fila com filtros' e 'review + item-review'."
     },
     {

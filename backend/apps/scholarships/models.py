@@ -35,6 +35,7 @@ from typing import Any
 from django.db import models
 
 from apps.core.exceptions import DomainError, InvalidStateTransition, NotAllowed
+from apps.people.models import Person
 
 # ---------------------------------------------------------------------------
 # Enums de módulo
@@ -115,6 +116,22 @@ class AppealOutcome(models.TextChoices):
     DENIED = "denied", "Indeferido"
 
 
+class AppealState(models.TextChoices):
+    """Estado do recurso, como a **fila de análise** o filtra.
+
+    Não é campo de model nenhum: é derivado da existência do
+    `ScholarshipAppeal` e do preenchimento do `outcome`
+    (`ScholarshipApplication.appeal_state()`). Existe porque a comissão
+    trabalha a fila por estado ("quem recorreu e ainda não foi julgado"),
+    e um filtro por `outcome` sozinho não distinguiria "sem recurso" de
+    "recurso pendente" — os dois têm `outcome` nulo.
+    """
+
+    NONE = "none", "Sem recurso"
+    PENDING = "pending", "Interposto, não julgado"
+    JUDGED = "judged", "Julgado"
+
+
 class ApplicationDocumentKind(models.TextChoices):
     """Um tipo por resposta "Sim" do questionário que exige comprovante.
 
@@ -174,6 +191,17 @@ ORDENACAO_DA_FAIXA: dict[str, tuple[str, ...]] = {
     PriorityBand.B24_V: ("income", "score"),
     PriorityBand.B24_VI_VII_VIII: ("income", "hours", "score"),
 }
+
+# Quem enxerga a **fila de análise** inteira da edição. Os demais só veem
+# a própria inscrição — o recorte é `ScholarshipApplicationQuerySet
+# .visible_to`, e o motivo é o mesmo de
+# `academic.PAPEIS_COM_VISAO_DO_PROGRAMA`: `view_scholarshipapplication` é
+# permissão de papel (o Discente também a tem, é com ela que lê a própria)
+# e diz que a pessoa acompanha inscrição, não QUAIS inscrições.
+#
+# A Comissão de Bolsas entra aqui e não lá: ela analisa o edital de bolsas
+# e nada mais do programa.
+PAPEIS_COM_VISAO_DA_FILA = ("Secretaria", "Coordenação", "Comissão de Bolsas")
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +390,21 @@ class ScholarshipEdition(models.Model):
             ScholarshipEditionStatus.UNDER_REVIEW,
             ScholarshipEditionStatus.APPEALS_UNDER_REVIEW,
         }
+
+    def ensure_committee_can_review(self) -> None:
+        """Guarda de escrita da análise — 409 fora dos dois estados.
+
+        Mesmo par de `bareme_editable`/`ensure_bareme_editable`: o
+        predicado desenha a tela (a comissão só vê o campo de nota quando
+        pode lançá-la), este cobra. Fora deles a nota já publicada mudaria
+        debaixo de quem leu a lista.
+        """
+        if not self.committee_can_review():
+            raise InvalidStateTransition(
+                "A comissão só avalia com a edição em análise ou com os "
+                "recursos em análise.",
+                code="review_closed",
+            )
 
     def appeal_open(self) -> bool:
         """Fase de recurso: o discente interpõe e a comissão julga.
@@ -662,6 +705,56 @@ class ScholarshipApplicationQuerySet(models.QuerySet["ScholarshipApplication"]):
 
     def for_student(self, student: Any) -> "ScholarshipApplicationQuerySet":
         return self.filter(student=student)
+
+    def visible_to(self, user: Any, program: Any) -> "ScholarshipApplicationQuerySet":
+        """O que esta sessão pode ler — sempre depois de `for_program`.
+
+        Mesmo recorte de `EnrollmentAdjustmentRequestQuerySet.visible_to`
+        (`apps/academic/models.py`) e pelo mesmo motivo: a permissão
+        `view_scholarshipapplication` diz que a pessoa acompanha
+        inscrição, não QUAIS inscrições — o Discente a tem para ler a
+        própria, e sem este recorte a fila de análise entregaria o
+        questionário de todo mundo a qualquer candidato.
+
+        Secretaria, Coordenação e Comissão de Bolsas (e o superusuário, que
+        opera a plataforma) veem a edição inteira. Todo o resto vê o que é
+        seu como aluno.
+        """
+        if (
+            user.is_superuser
+            or user.groups.filter(name__in=PAPEIS_COM_VISAO_DA_FILA).exists()
+        ):
+            return self
+        pessoas = Person.objects.active().filter(user=user, program=program)
+        return self.filter(student__person__in=pessoas)
+
+    def pending_review(self, pendente: bool) -> "ScholarshipApplicationQuerySet":
+        """O "somente candidatos com itens a analisar" do legado.
+
+        Derivado de `fully_reviewed()`, e não de um campo "análise
+        concluída": lançamento sem `committee_score` é lançamento não
+        avaliado. Quem não tem lançamento nenhum é vacuamente analisado e
+        por isso fica do lado `False` — não há o que analisar nele.
+        """
+        # `Exists`, e não `filter(bareme_entries__committee_score__isnull
+        # =True)`: aquele promove o join a LEFT OUTER e casa também quem
+        # NÃO TEM lançamento nenhum — a coluna vem nula porque a linha não
+        # existe —, que é exatamente o caso oposto. De quebra, a subconsulta
+        # não multiplica linha e dispensa o `distinct`.
+        sem_nota = models.Exists(
+            BaremeEntry.objects.filter(
+                application=models.OuterRef("pk"), committee_score__isnull=True
+            )
+        )
+        return self.filter(sem_nota if pendente else ~sem_nota)
+
+    def with_appeal_state(self, state: str) -> "ScholarshipApplicationQuerySet":
+        """Filtra pelo estado do recurso (ver `AppealState`)."""
+        if state == AppealState.NONE:
+            return self.filter(appeal__isnull=True)
+        if state == AppealState.PENDING:
+            return self.filter(appeal__isnull=False, appeal__outcome__isnull=True)
+        return self.filter(appeal__outcome__isnull=False)
 
 
 class ScholarshipApplication(models.Model):
@@ -1054,6 +1147,27 @@ class ScholarshipApplication(models.Model):
             (itens[item_id].apply_cap(total) for item_id, total in totais.items()),
             Decimal("0.00"),
         )
+
+    def submitted_appeal(self) -> "ScholarshipAppeal | None":
+        """O recurso desta inscrição, ou `None`.
+
+        O acesso direto (`self.appeal`) levanta `RelatedObjectDoesNotExist`
+        quando não há recurso, e "não recorreu" é o caso normal — não é
+        exceção nenhuma.
+        """
+        if self.pk is None:
+            return None
+        try:
+            return self.appeal
+        except ScholarshipAppeal.DoesNotExist:
+            return None
+
+    def appeal_state(self) -> str:
+        """O estado do recurso como a fila da comissão o lê (`AppealState`)."""
+        recurso = self.submitted_appeal()
+        if recurso is None:
+            return AppealState.NONE
+        return AppealState.JUDGED if recurso.judged() else AppealState.PENDING
 
     def fully_reviewed(self) -> bool:
         """Todos os lançamentos já têm nota da comissão.
@@ -1491,6 +1605,33 @@ class BaremeEntry(models.Model):
                 code="note_required",
             )
 
+    # -- avaliação ---------------------------------------------------------
+
+    def review(
+        self, *, committee_score: Decimal, committee_note: str, at: datetime
+    ) -> None:
+        """A comissão pontua **este** lançamento. Não salva.
+
+        Escreve exatamente três campos, e nenhum deles é do candidato: o
+        que ele digitou (`description`, `quantity`, `candidate_score`, o
+        comprovante) não é alcançável por aqui nem pelo schema de entrada
+        da rota. É assim que "a comissão não mexe no que o aluno digitou"
+        é código, e não combinado.
+
+        A janela é da edição (`ensure_committee_can_review`): fora de
+        `under_review`/`appeals_under_review` a nota já publicada mudaria
+        debaixo de quem leu a lista. A divergência sem observação quem
+        recusa é o `clean()` (`note_required`), no mesmo caminho de
+        qualquer outra escrita do lançamento.
+
+        Recebe `at` explícito, como as demais transições deste app: nada
+        aqui olha o relógio por conta própria.
+        """
+        self.application.edition.ensure_committee_can_review()
+        self.committee_score = committee_score
+        self.committee_note = committee_note
+        self.reviewed_at = at
+
     @classmethod
     def validate_upload(cls, *, filename: str, size: int) -> None:
         """Só PDF, 10 MB — mesmo contrato de `validate_upload` dos demais
@@ -1572,8 +1713,22 @@ class ItemReview(models.Model):
 
     def clean(self) -> None:
         super().clean()
+        self._validar_texto()
         self._validar_item()
         self._validar_duplicata()
+
+    def _validar_texto(self) -> None:
+        """Observação vazia não é observação.
+
+        A linha existe para dizer alguma coisa ao candidato que vai
+        recorrer; gravada em branco, ela só ocuparia a tela da comissão
+        fingindo que o item já foi comentado.
+        """
+        if not self.note.strip():
+            raise DomainError(
+                "A observação por item do barema não pode ser vazia.",
+                code="item_review_note_required",
+            )
 
     def _validar_item(self) -> None:
         """Mesma checagem do lançamento, e pelo mesmo motivo: comentar o

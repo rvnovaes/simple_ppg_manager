@@ -550,3 +550,11 @@ As que já custaram iteração aqui:
   Não há erro que aponte a causa. Rota que recebe arquivo é `POST`, sempre; a
   retificação dos demais campos fica no `PATCH` em JSON, ao lado
   (`POST .../entries/{id}/proof` × `PATCH .../entries/{id}/`).
+- **`filter(<relação>__<campo>__isnull=True)` casa também quem não tem
+  relação nenhuma.** O Django promove o join a LEFT OUTER, e a coluna vem
+  nula porque a *linha* não existe — não porque o campo esteja vazio. Numa
+  fila de "itens ainda não avaliados" isso traz justamente quem não tem item
+  algum, que é o caso oposto, e o teste só pega se houver um registro sem
+  filhos no cenário. Quando a pergunta é "existe filho com campo nulo", use
+  `Exists(Filho.objects.filter(pai=OuterRef("pk"), campo__isnull=True))` — de
+  quebra a subconsulta não multiplica linha e dispensa o `distinct()`.
