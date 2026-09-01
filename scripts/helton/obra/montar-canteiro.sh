@@ -433,16 +433,6 @@ docker compose run --rm "$MIGRATE_SERVICE" \
   || die "as migrations falharam — o canteiro ficou de pé para você investigar
    (docker compose logs $MIGRATE_SERVICE), e desmontar-canteiro.sh $PLAN --force limpa"
 fi
-say "subindo ${SERVICES[*]}..."
-docker compose up -d --wait "${SERVICES[@]}"
-
-# ── Seed ─────────────────────────────────────────────────────────────
-if [[ ${#SEED_CMD[@]} -gt 0 ]]; then
-say "semeando o banco..."
-"${SEED_CMD[@]}" || die "o seed falhou — a stack está de pé, corrija e rode
-   '${SEED_CMD[*]}' de dentro de $WT_DIR"
-fi
-
 # ── Dependências do host e tipos gerados ─────────────────────────────
 # Duas coisas que o git não traz e sem as quais o PRIMEIRO `make ready` da
 # worktree quebra: `web/node_modules` (quebra em web-help com
@@ -452,13 +442,22 @@ fi
 # iteração inteira, e a mensagem manda o agente investigar o lugar errado — por
 # isso o canteiro já nasce com as duas.
 #
+# Roda ANTES de subir os SERVICES, e não depois. Serviço de dev que faz bind
+# mount do código do host e o executa de lá (um `npm run dev` sobre
+# `frontend/`, típico do Vite) não sobe sem as dependências instaladas: morre
+# com `vite: not found` (exit 127) e leva o proxy junto (`host not found in
+# upstream frontend:5173`). Visto no canteiro processo-seletivo do projeto de
+# origem em 25/08/2026 — o `up --wait` "passou" com dois serviços mortos, e a
+# causa só apareceu no `docker compose logs`.
+#
 # Custa disco: ~420 MB de node_modules e ~320 MB de .venv por canteiro (o venv
 # sai quase todo em hardlink do cache do uv; o node_modules, não). Quem só quer
 # olhar a tela usa `--sem-deps` e economiza os dois.
 if [[ -n "$SEM_DEPS" ]]; then
-  say "pulando as dependências do host (--sem-deps). Antes do primeiro
-   'make ready' desta worktree: 'cd web && npm ci' e 'make generate-api'
-   (o 'ci', e não o 'install', para o lockfile não ser reescrito)."
+  say "pulando as dependências do host (--sem-deps). Os serviços que dependem
+   delas vão cair até você rodar, de dentro da worktree, o que está em
+   instalar_dependencias() no obra.conf, seguido de 'docker compose up -d'.
+   Use instalador que NÃO reescreve o lockfile ('npm ci', 'uv sync --locked')."
 else
   # `npm ci`, e não `npm install`: o install reescreve o `package-lock.json`
   # (marca `"dev": true` em pacotes opcionais do rollup, entre outros) e o
@@ -467,8 +466,19 @@ else
   # exatamente o que o lockfile manda e nunca o altera.
   say "instalando as dependências do host (ver instalar_dependencias em obra.conf)..."
   instalar_dependencias \
-    || die "instalar_dependencias falhou em $WT_DIR — o resto do canteiro está de pé.
-   Rode os comandos à mão lá dentro e siga; ou remonte com --sem-deps."
+    || die "instalar_dependencias falhou em $WT_DIR — banco e migrations estão de pé.
+   Rode os comandos à mão lá dentro e depois 'docker compose up -d'; ou remonte
+   com --sem-deps."
+fi
+
+say "subindo ${SERVICES[*]}..."
+docker compose up -d --wait "${SERVICES[@]}"
+
+# ── Seed ─────────────────────────────────────────────────────────────
+if [[ ${#SEED_CMD[@]} -gt 0 ]]; then
+say "semeando o banco..."
+"${SEED_CMD[@]}" || die "o seed falhou — a stack está de pé, corrija e rode
+   '${SEED_CMD[*]}' de dentro de $WT_DIR"
 fi
 
 # ── Pronto ───────────────────────────────────────────────────────────
