@@ -1,0 +1,572 @@
+{
+  "project": "ppgd-manager",
+  "branchName": "helton/bolsas",
+  "description": "Modulo de concessao de bolsas do PPGD: edital anual, barema por nivel, inscricao do discente com comprovante, analise da comissao, classificacao em 10 faixas de prioridade com desempate e sorteio, recurso, publicacao com snapshot e PDF do resultado.",
+  "execution": "sandboxed",
+  "userStories": [
+    {
+      "id": "f1-app-scholarships-esqueleto",
+      "title": "Cria o app scholarships com os enums e constantes de modulo",
+      "context": "Nada de bolsas existe no backend (B1 do plano, scripts/helton/projects/plans/bolsas.md:56). Esta story e a fatia vazia que compila: `backend/apps/scholarships/` com __init__.py, apps.py, models.py, admin.py, router.py, schemas.py, migrations/, tests/; registro em INSTALLED_APPS depois de 'apps.selection' (backend/config/settings/base.py:50) e um router vazio com prefixo /api/v1/scholarships/ em backend/api.py (espelhe o import e o add_router de apps.selection.router, backend/api.py:17). Em models.py entram SO os TextChoices e constantes de modulo da Secao 1 do plano (linhas 118-140): ScholarshipEditionStatus, ScholarshipLevel (mesmos valores de Student.Level, backend/apps/academic/models.py:235-237), BaremeSection, BaremeUnit, PriorityBand (10 valores na ordem canonica), AppealOutcome, ApplicationDocumentKind, e as constantes ORDEM_DAS_FAIXAS, BONUS_FUMP e ORDENACAO_DA_FAIXA. Todos os enums no NIVEL DO MODULO com nome unico: enum aninhado de nome repetido colide no gerador de OpenAPI e o ultimo registrado sobrescreve o outro sem erro no backend (precedente comentado em backend/apps/academic/models.py:1658). Nenhum model nesta story.",
+      "files": [
+        "backend/apps/scholarships/__init__.py",
+        "backend/apps/scholarships/apps.py",
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/admin.py",
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/migrations/__init__.py",
+        "backend/apps/scholarships/tests/__init__.py",
+        "backend/config/settings/base.py",
+        "backend/api.py"
+      ],
+      "acceptance": "`make ready` verde com o app instalado; /api/v1/scholarships/ aparece no OpenAPI (ainda sem rotas); os sete TextChoices e as tres constantes existem no nivel do modulo em apps/scholarships/models.py, PriorityBand com 10 valores e ORDEM_DAS_FAIXAS terminando em RESIDUAL.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f2-edicao-e-comissao",
+      "title": "Modela ScholarshipEdition e CommitteeMember com a migration inicial",
+      "context": "Passo 2 da Secao 8 do plano: o schema da edicao vem cedo de proposito, para o resto ser construido sobre ele. ScholarshipEdition (plano linhas 145-168): program FK PROTECT, year, title, status, notice_file, as cinco datas do cronograma como INFORMACAO (DateField null, nada abre ou fecha por relogio -- mesmo corte das isoladas), draw_seed BigIntegerField null, published_preliminary_at, published_final_at; unique (program, year) -> duplicate_edition. As cinco transicoes nomeadas open_submissions/start_review/publish_preliminary/open_appeals/publish_final, sempre para frente, exigindo o estado anterior e levantando InvalidStateTransition (409); transicao NAO salva -- quem persiste e o router/service no mesmo transaction.atomic() do AuditLog. Guardas de leitura bareme_editable(), submission_open(), committee_can_review() (verdadeiro em under_review E em appeals_under_review -- e o deferimento reabrindo o lancamento), appeal_open(), results_visible_to_student(). CommitteeMember (plano linhas 170-180): edition CASCADE, teacher PROTECT, appointed_on, ordinance blank, unique (edition, teacher); chega ao programa pelo pai, sem FK program (mesmo recorte de RequestDocument, backend/apps/academic/models.py:1675). DOCSTRING OBRIGATORIA EM CAIXA ALTA em CommitteeMember: e registro historico, NAO autorizacao -- quem pode avaliar e quem esta no Group 'Comissao de Bolsas' via require_perm; nenhuma rota consulta CommitteeMember para decidir acesso. QuerySet com for_program() como primeiro filtro de toda busca; clean() levanta DomainError cobrindo program_mismatch e a duplicata.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/migrations/0001_initial.py",
+        "backend/apps/scholarships/admin.py",
+        "backend/apps/scholarships/tests/test_bolsas_edital.py"
+      ],
+      "acceptance": "Migration inicial gerada, lida e aplicada; teste de model sem banco cobre cada transicao valida e cada InvalidStateTransition a partir de estado errado; committee_can_review() e verdadeiro nos dois estados previstos; unique (program, year) vira duplicate_edition e nao IntegrityError cru.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-app-scholarships-esqueleto"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f3-barema-item",
+      "title": "Modela BaremeItem com raw_score e apply_cap separados",
+      "context": "Passo 3 da Secao 8. BaremeItem (plano linhas 182-196): edition CASCADE, level, section, code ('1.3'), text, unit, points_per_unit Decimal(6,2), cap Decimal(7,2); unique (edition, level, code) -> duplicate_bareme_item. Duas funcoes SEPARADAS e esse e o ponto sutil do barema: raw_score(quantity) = quantity * points_per_unit, e apply_cap(total) = min(total, cap). O TETO E DO ITEM, aplicado sobre a SOMA dos lancamentos daquele item, nunca sobre cada lancamento -- confirmado nos dados (dois lancamentos de 3,00 no item 1.8 somam 6,00 contra limite de 18,00). Escrever o teto dentro de raw_score da a mesma resposta nos casos faceis e a errada exatamente no caso que importa; deixe isso comentado no codigo. O barema e por (edicao, nivel): mestrado e doutorado tem itens independentes. Dinheiro/nota sempre DecimalField, nunca FloatField (CLAUDE.md Secao 8). Congelamento: ScholarshipEdition.bareme_editable() (f2) e a guarda -- escrita de item so com a edicao em draft, e open_submissions() congela.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/migrations/0002_baremeitem.py",
+        "backend/apps/scholarships/admin.py",
+        "backend/apps/scholarships/tests/test_bolsas_barema.py"
+      ],
+      "acceptance": "test_bolsas_barema.py cobre a aritmetica do plano sem banco: 1 semestre x 0,50 = 0,50; 12 meses x 0,25 = 3,00 batendo exatamente no teto; 3 h x 0,01 = 0,03; e o teto por item aplicado sobre a soma de dois lancamentos, nao sobre cada um. Nenhum FloatField no arquivo.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f2-edicao-e-comissao"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f4-inscricao-e-questionario",
+      "title": "Modela ScholarshipApplication com o questionario fixo em codigo",
+      "context": "Passo 4 da Secao 8. ScholarshipApplication (plano linhas 198-240): program FK PROTECT, edition, student PROTECT, level copiado do Student no ato (congela), submitted_at; unique (edition, student) -> duplicate_application. Questionario FIXO EM CODIGO (B7 -- pergunta nao e dado cadastravel; mudar norma e mudar codigo): oito BooleanField -- has_paid_activity (a chave: joga do bloco 2.1 para o 2.4), affirmative_action, socioeconomic_vulnerability, substitute_teacher, basic_education_or_collective_health, public_service, private_service, other_non_public_scholarship. Mais cadastro_unico (BooleanField), junto do bloco de vulnerabilidade: sem ele o criterio II do desempate e letra morta (plano linhas 300-304) -- marque em docstring como ASSUNCAO a confirmar no merge. monthly_income Decimal(10,2) null e weekly_hours PositiveSmallIntegerField null, OBRIGATORIOS quando has_paid_activity (clean() -> income_required), porque ordenam as faixas 2.4-V e 2.4-VI/VII/VIII. fump_level (0/1/2, default 0), lancado pela Secretaria. band_override (PriorityBand null) + band_override_reason, com clean() exigindo justificativa quando ha override -> override_reason_required (B6). Snapshot de publicacao, tudo null ate publicar: published_band, published_score Decimal(7,2), published_position int, draw_order int null, published_at (B10). Metodos derivados desta story: band() (override se houver; senao o derivado do questionario -- a derivacao completa entra em f14), ensure_editable() (so na janela aberta e so pelo proprio aluno; o aluno pode excluir a propria inscricao enquanto a janela esta aberta, depois nao). Os metodos de nota (committee_score, candidate_score, final_score, subtotal, fully_reviewed, pending_docs) dependem de BaremeEntry e entram em f6/f14.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/migrations/0003_scholarshipapplication.py",
+        "backend/apps/scholarships/admin.py",
+        "backend/apps/scholarships/tests/test_bolsas_inscricao.py"
+      ],
+      "acceptance": "clean() levanta income_required quando has_paid_activity e falta renda ou carga horaria, e override_reason_required quando band_override vem sem justificativa; unique (edition, student) vira duplicate_application; level e copiado do Student na criacao e nao acompanha mudanca posterior no Student.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-barema-item"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f5-documentos-da-inscricao",
+      "title": "Modela ApplicationDocument com upload validado e permissao propria de download",
+      "context": "Plano linhas 268-275. ApplicationDocument: application CASCADE, kind (os 7 ApplicationDocumentKind, um por resposta 'Sim' que exige comprovante), file; unique (application, kind) -- reenviar SUBSTITUI, nao empilha. Espelha RequestDocument (backend/apps/academic/models.py:1655-1740) inclusive na permissao propria Meta.permissions ('download_applicationdocument', ...): baixar o anexo e mais do que ver a inscricao, sao dados pessoais do candidato. validate_upload(filename, size) segue o contrato de RequestDocument.validate_upload (backend/apps/academic/models.py:1723). Sem FK program: chega ao programa pelo pai. Metodo pending_docs() em ScholarshipApplication: resposta 'Sim' no questionario sem o documento correspondente -- e o 'Sim - Nao enviado' do export do legado.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/migrations/0004_applicationdocument.py",
+        "backend/apps/scholarships/admin.py",
+        "backend/apps/scholarships/tests/test_bolsas_documentos.py"
+      ],
+      "acceptance": "Upload fora das extensoes ou acima do limite levanta DomainError; reenviar o mesmo kind substitui o arquivo e nao cria segunda linha; pending_docs() lista exatamente os kinds cujo booleano e True e cujo documento falta; a permissao download_applicationdocument existe na migration.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f4-inscricao-e-questionario"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f6-lancamento-e-observacao-por-item",
+      "title": "Modela BaremeEntry com comprovante obrigatorio, as duas notas e ItemReview",
+      "context": "Passo 5 da Secao 8. BaremeEntry (plano linhas 242-266): application CASCADE, item PROTECT, description, quantity Decimal(6,2) (Decimal e nao inteiro: o barema mede semestres, meses e horas), candidate_score Decimal(7,2) gravado = item.raw_score(quantity), committee_score Decimal(7,2) NULL = nao avaliado, committee_note blank, reviewed_at. proof = FileField(upload_to=caminho_do_comprovante) NAO NULO E NAO BLANK: sem comprovante o lancamento nao existe, e a comissao nunca recebe item vazio para zerar (B8). caminho_do_comprovante(instance, filename) e funcao DE MODULO (a migration precisa serializar a referencia), particionando 'bolsas/edicao-{edition_id}/inscricao-{application_id}/{filename}'. validate_upload de classe: mesmo contrato de RequestDocument.validate_upload, mas SO PDF e 10 MB -- comprovante de barema e certificado, nao foto. clean(): (a) item.edition_id == application.edition_id e item.level == application.level -> bareme_item_mismatch; (b) quantity > 0; (c) committee_note OBRIGATORIA quando committee_score != candidate_score -> note_required (B9: a divergencia e o que o recurso ataca). Meta.permissions: ('review_baremeentry', 'Pode avaliar lancamento do barema') -- avaliar NAO e change: o aluno tem change sobre o proprio lancamento e nao pode encostar na nota da comissao. ItemReview (plano linhas 261-266): application CASCADE, item PROTECT, note; unique (application, item) -- e a observacao POR ITEM DO BAREMA que o legado tem alem da observacao por lancamento. Nesta story entram tambem os metodos de nota em ScholarshipApplication: committee_score() (soma por item, apply_cap por item), candidate_score() (idem com as notas do candidato), subtotal(section), fully_reviewed() (DERIVADO: nenhum lancamento com committee_score nulo -- e o 'Todos itens analisados' do legado, e nao um botao).",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/migrations/0005_baremeentry_itemreview.py",
+        "backend/apps/scholarships/admin.py",
+        "backend/apps/scholarships/tests/test_bolsas_barema.py"
+      ],
+      "acceptance": "clean() levanta bareme_item_mismatch para item de outra edicao ou de outro nivel, e note_required quando a nota da comissao diverge da do candidato sem observacao; committee_score() aplica o teto do item sobre a SOMA dos lancamentos daquele item (dois lancamentos de 3,00 com cap 18,00 somam 6,00; dois de 12,00 com cap 18,00 somam 18,00); lancamento nao avaliado conta zero e fully_reviewed() e False; a permissao review_baremeentry existe na migration.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f5-documentos-da-inscricao"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f7-recurso-model",
+      "title": "Modela ScholarshipAppeal, sem anexo, com judge() exigindo fundamentacao",
+      "context": "Plano linhas 277-286. ScholarshipAppeal: application OneToOneField CASCADE (um recurso por candidato por edicao), text (do candidato), submitted_at, outcome (AppealOutcome, null enquanto nao julgado), reasoning blank, decided_at. SEM MODEL DE DOCUMENTO: o item 1.3 do edital veta postagem fora do prazo, ao contrario do recurso das isoladas -- a ausencia e DELIBERADA e vai comentada no arquivo, senao alguem 'conserta' isso depois. judge(outcome, reasoning) exige a edicao em appeals_under_review e reasoning nao vazia, levantando InvalidStateTransition/DomainError. A transicao nao salva. O recalculo da nota apos deferimento nao e coisa deste model: o deferimento reabre o lancamento porque committee_can_review() (f2) ja e verdadeiro em appeals_under_review, e a nota e derivada -- nao ha campo a recalcular. Deixe isso explicito na docstring.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/migrations/0006_scholarshipappeal.py",
+        "backend/apps/scholarships/admin.py",
+        "backend/apps/scholarships/tests/test_bolsas_recurso.py"
+      ],
+      "acceptance": "judge() recusa fora de appeals_under_review e recusa reasoning vazia; OneToOne impede segundo recurso na mesma inscricao; teste prova que, com a edicao em appeals_under_review, alterar committee_score de um lancamento muda committee_score() da inscricao sem nenhuma rotina de recalculo.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f6-lancamento-e-observacao-por-item"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f8-papeis-e-seed",
+      "title": "Cria a data migration dos papeis da bolsa e semeia uma edicao nos dois programas",
+      "context": "Secao 5 do plano (linhas 344-372). Data migration 0007_papeis_da_bolsa.py, espelho de backend/apps/academic/migrations/0011_papeis_da_isolada.py INCLUSIVE na docstring que explica quem faz o que e por que. Grupo novo: 'Comissao de Bolsas'. NENHUM grupo recebe delete_*, is_staff ou is_superuser (CLAUDE.md Secao 5: papel de dominio e Group, is_superuser e de quem opera a plataforma). Discente: add/view/change de ScholarshipApplication e BaremeEntry, view de ScholarshipEdition e BaremeItem, add/view de ScholarshipAppeal. Comissao de Bolsas: view de inscricao, lancamento, edicao e barema; review_baremeentry; download_applicationdocument; change_scholarshipappeal (o julgamento). Secretaria: add/change/view de edicao, barema e CommitteeMember; view de inscricao e lancamento; download_applicationdocument; publish_scholarshipedition, set_fump_level e override_band como PERMISSOES PROPRIAS (publicar congela o ano; a Secretaria mexe em dado de inscricao alheia sem ter change sobre ela) -- as tres precisam existir em Meta.permissions dos models correspondentes, entao esta story tambem toca models.py e gera a migration de permissoes. Coordenacao: so view. seed_demo (backend/apps/core/management/commands/seed_demo.py) ganha uma edicao de bolsas NOS DOIS programas que ele ja semeia -- e a unica forma de o vazamento de tenant aparecer em teste.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/migrations/0007_permissoes_proprias.py",
+        "backend/apps/scholarships/migrations/0008_papeis_da_bolsa.py",
+        "backend/apps/core/management/commands/seed_demo.py",
+        "backend/apps/scholarships/tests/test_bolsas_papeis.py"
+      ],
+      "acceptance": "test_bolsas_papeis.py assegura o conjunto exato de permissoes de cada um dos quatro grupos e que nenhum tem delete_*, is_staff ou is_superuser; `make seed` roda idempotente e cria uma edicao de bolsas em cada um dos dois programas semeados.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f7-recurso-model"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f9-api-edicao-e-comissao",
+      "title": "Expoe as rotas de edicao, as cinco transicoes e a composicao da comissao",
+      "context": "Secao 4 do plano (linhas 306-342). Prefixo /api/v1/scholarships/, no router registrado em f1. Rotas: GET/POST/PATCH /editions/, POST /editions/{id}/{transicao} (CINCO rotas nomeadas, uma por transicao -- open-submissions, start-review, publish-preliminary, open-appeals, publish-final; as duas de publicacao delegam ao service de f16, aqui basta a de abrir inscricao, iniciar analise e abrir recurso), GET/POST/DELETE /editions/{id}/committee/. TODA rota abre com require_perm(request, ...) (apps/core/permissions.py) e LOGO DEPOIS current_program(request) (apps/core/tenancy.py) -- sem excecao e sem nenhuma rota publica neste modulo, o aluno ja esta logado. Rota sem checagem explicita de permissao nao passa em review (CLAUDE.md Secao 5). Schemas de saida EXPLICITOS em schemas.py, nunca serializar model direto. Toda escrita relevante grava AuditLog no mesmo transaction.atomic(). Espelhe o desenho do router de editais em backend/apps/selection/router.py.",
+      "files": [
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/tests/test_bolsas_edital.py"
+      ],
+      "acceptance": "Teste de API pelo client do Django cobre: cada transicao a partir do estado correto (200) e do errado (409 com corpo {detail, code}); usuario sem a permissao recebe 403; edicao de outro programa nao aparece na listagem nem e alcancavel por id; cada escrita deixa um AuditLog.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f8-papeis-e-seed"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f10-api-barema-e-clonagem",
+      "title": "Expoe o CRUD do barema e a clonagem de uma edicao para outra",
+      "context": "Plano, Secao 4 (linha 322) e Secao 3 (clone_bareme, linha 296). Rotas GET/POST/PATCH/DELETE /editions/{id}/bareme/ e POST /editions/{id}/bareme/clone. ESCRITA SO COM A EDICAO EM DRAFT -- a guarda e ScholarshipEdition.bareme_editable() (f2); com a edicao aberta o barema esta congelado e a rota devolve 409. clone_bareme(origem, destino, request) vai em services.py (cruza dois agregados, ADR-002): copia os BaremeItem de uma edicao para outra, so com o destino em draft, dentro de transaction.atomic() com um AuditLog. Nao crie service para o que toca um model so -- o CRUD chama o manager direto do router. require_perm + current_program em toda rota; schemas de saida explicitos.",
+      "files": [
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/services.py",
+        "backend/apps/scholarships/tests/test_bolsas_barema.py"
+      ],
+      "acceptance": "POST/PATCH/DELETE de item com a edicao fora de draft devolve 409; clone copia todos os itens dos dois niveis preservando code, unit, points_per_unit e cap, recusa destino fora de draft, e grava um unico AuditLog; item duplicado por (edition, level, code) devolve duplicate_bareme_item.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f9-api-edicao-e-comissao"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f11-api-inscricao-e-documentos",
+      "title": "Expoe a inscricao do discente e o upload/download dos documentos do questionario",
+      "context": "Plano, Secao 4 (linhas 324-326). Rotas: GET /editions/{id}/my-application, POST /applications/, PATCH /applications/{id}, DELETE /applications/{id}; POST /applications/{id}/documents (multipart) e GET /documents/{id}/download. A janela e a guarda: ScholarshipApplication.ensure_editable() -- so com submission_open() e so o proprio aluno; o aluno pode excluir a propria inscricao enquanto a janela esta aberta, depois nao. O download tem permissao PROPRIA (download_applicationdocument), nao basta ver a inscricao -- mesmo desenho do download de RequestDocument em backend/apps/academic/router.py. require_perm + current_program em toda rota; AuditLog em toda escrita; schemas explicitos (o de saida nunca expoe caminho de arquivo cru).",
+      "files": [
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/tests/test_bolsas_inscricao.py",
+        "backend/apps/scholarships/tests/test_bolsas_documentos.py"
+      ],
+      "acceptance": "Aluno cria uma inscricao e nao consegue criar a segunda na mesma edicao (duplicate_application); com a janela fechada, POST/PATCH/DELETE devolvem 409; aluno A nao le nem edita a inscricao do aluno B (404/403); download sem download_applicationdocument devolve 403 mesmo para quem tem view da inscricao; reenviar o mesmo kind substitui o arquivo.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f10-api-barema-e-clonagem"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f12-api-lancamentos",
+      "title": "Expoe o CRUD dos lancamentos do barema com o comprovante no mesmo POST",
+      "context": "Plano, Secao 4 (linha 328). GET/POST/PATCH/DELETE /applications/{id}/entries/. O POST e MULTIPART: o comprovante vem junto, porque sem comprovante o lancamento nao existe (B8) -- nao ha caminho de criar lancamento vazio e anexar depois. candidate_score e GRAVADO pelo servidor como item.raw_score(quantity); o payload nao aceita candidate_score, committee_score nem committee_note. Todas as escritas passam por ensure_editable() da inscricao (janela aberta, proprio aluno). require_perm + current_program; AuditLog. O front usa o bodySerializer multipart que ja existe em frontend/src/lib/api/client.ts:49, entao o schema de entrada precisa ser compativel com multipart no OpenAPI.",
+      "files": [
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/tests/test_bolsas_barema.py"
+      ],
+      "acceptance": "POST multipart cria o lancamento com o PDF e candidate_score calculado pelo servidor; POST sem arquivo devolve 422; arquivo que nao e PDF ou acima de 10 MB devolve erro de dominio; enviar candidate_score no payload nao muda a nota gravada; lancamento apontando para item de outra edicao/nivel devolve bareme_item_mismatch; com a janela fechada toda escrita devolve 409.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f11-api-inscricao-e-documentos"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f13-api-analise-da-comissao",
+      "title": "Expoe a fila de analise com os filtros do legado e a avaliacao lancamento a lancamento",
+      "context": "Plano, Secao 4 (linhas 330-334). GET /editions/{id}/applications/ e A FILA DE TRABALHO da comissao: filtro por nivel OBRIGATORIO, mais linha de pesquisa, orientador, ano de entrada, cada uma das 8 respostas do questionario, estado do recurso, e pending_review=true (o 'somente candidatos com itens a analisar' do legado, derivado de fully_reviewed()). PATCH /entries/{id}/review aceita SO committee_score e committee_note -- o schema de entrada nao tem os outros campos, e e assim que 'a comissao nao mexe no que o aluno digitou' vira codigo e nao combinado (B9); exige a permissao review_baremeentry e committee_can_review() da edicao (verdadeiro em under_review E appeals_under_review). PUT /applications/{id}/item-review grava a observacao por item (ItemReview, unique por (application, item)). require_perm + current_program; AuditLog em cada avaliacao. Visivel para Comissao, Secretaria e Coordenacao (esta so leitura).",
+      "files": [
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/tests/test_bolsas_analise.py"
+      ],
+      "acceptance": "test_bolsas_analise.py prova que a comissao nao altera quantity nem description por /review (campo enviado e ignorado, nota do candidato intacta); nota divergente sem observacao devolve note_required; review com a edicao em draft ou submissions_open devolve 409 e em appeals_under_review passa; pending_review=true traz so quem tem lancamento com committee_score nulo; cada filtro do legado tem um caso de teste; nivel ausente devolve 422.",
+      "verify": "make ready",
+      "effort_label": "high",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f12-api-lancamentos"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "effort high por causa da matriz de filtros da fila; se o loop travar, quebre em 'fila com filtros' e 'review + item-review'."
+    },
+    {
+      "id": "f14-api-fump-e-override-de-faixa",
+      "title": "Expoe o lancamento do nivel FUMP e a sobrescrita de faixa com justificativa",
+      "context": "Passo 7 da Secao 8. PATCH /applications/{id}/fump e PATCH /applications/{id}/band, ambas da Secretaria e ambas com permissao PROPRIA (set_fump_level, override_band, criadas em f8): a Secretaria mexe em dado de inscricao alheia sem ter change sobre ela. fump_level 0/1/2 -- a FUMP manda o resultado direto a Comissao, fora do sistema; o campo vale por ser tambem o 1o criterio de desempate. band_override e a valvula do B6: resolve 2.4-I e 2.4-II (que nao tem pergunta no questionario) e todo caso omisso; exige band_override_reason nao vazia -> override_reason_required. Decisao sobre a vida academica: AuditLog obrigatorio com o valor anterior e o novo no payload.",
+      "files": [
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/tests/test_bolsas_analise.py"
+      ],
+      "acceptance": "Membro da Comissao (que tem view mas nao set_fump_level/override_band) recebe 403 nas duas rotas; override sem justificativa devolve override_reason_required; o AuditLog registra o valor anterior e o novo; band() da inscricao passa a devolver a faixa sobrescrita.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f13-api-analise-da-comissao"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f15-classificacao-nota-e-faixa",
+      "title": "Implementa a nota final e a derivacao da faixa de prioridade",
+      "context": "Primeira metade do passo 8 (Secao 2 do plano, itens 1 a 3, linhas 190-207). Metodo de ScholarshipEdition, nao modulo novo (ADR-002). (1) Nota da comissao: para cada BaremeItem, soma os committee_score dos lancamentos daquele item e aplica item.apply_cap(); a nota e a soma dos itens JA LIMITADOS. Lancamento nao avaliado conta ZERO, e fully_reviewed() avisa que a lista ainda nao esta madura. (2) Nota final = nota da comissao + BONUS_FUMP[fump_level] ({1: 15.00, 2: 9.00}, item 3.2 do edital) -- e ESTA que sai na coluna 'Nota do Barema' do documento publicado. (3) Faixa: band_override quando existe; senao, has_paid_activity False -> 2.1-I se (affirmative_action OU socioeconomic_vulnerability), senao 2.1-II; has_paid_activity True -> PRIMEIRO INCISO APLICAVEL na ordem substitute_teacher (2.4-III) -> basic_education_or_collective_health (2.4-IV) -> public_service (2.4-V) -> private_service (2.4-VI/VII/VIII) -> other_non_public_scholarship (2.4-IX); nenhum se aplicando -> residual. 2.4-I e 2.4-II SO POR OVERRIDE (B6). subtotal(section) ja existe de f6 e usa os subtotais DA COMISSAO, nao os do candidato -- assuncao a confirmar no merge, marque em docstring.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/tests/test_bolsas_classificacao.py"
+      ],
+      "acceptance": "Testes de model sem banco (ou com fixtures minimas) cobrem: teto por item aplicado sobre a soma; lancamento nao avaliado contando zero; bonus FUMP 0/9/15; e a tabela completa da derivacao de faixa, incluindo a ordem de precedencia dos incisos quando mais de um booleano e True, e o fato de 2.4-I e 2.4-II so aparecerem por override.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f14-api-fump-e-override-de-faixa"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "Story que mais pede olho humano no merge, junto com f16."
+    },
+    {
+      "id": "f16-classificacao-ordenacao-e-desempate",
+      "title": "Implementa classify(level) com a ordenacao por faixa, os cinco desempates e o sorteio",
+      "context": "Segunda metade do passo 8 (Secao 2 do plano, itens 4 a 7, linhas 208-232). ScholarshipEdition.classify(level) -> list[BandResult]. (4) Ordenacao DENTRO da faixa por ORDENACAO_DA_FAIXA (f1): nota decrescente na maioria; 2.4-V por MENOR rendimento com a nota desempatando; 2.4-VI/VII/VIII por menor rendimento -> MENOR carga horaria -> nota. (5) Desempate geral (item 3.3), SO onde o criterio da faixa nao resolveu: I menor fump_level -- CUIDADO COM A INVERSAO: 0 = sem nivel e o PIOR, nao o melhor -> II cadastro_unico -> III maior subtotal em Formacao Academica -> IV maior subtotal em Producao Bibliografica -> V sorteio. (6) Sorteio (B5): random.Random(f'{edition.pk}:{draw_seed}') embaralha os ainda empatados e grava draw_order; a semente e gerada uma vez, na primeira publicacao, e NUNCA REGERADA -- republicar tem de dar a mesma lista. (7) Saida: as 10 faixas na ordem canonica, TODAS PRESENTES MESMO VAZIAS, cada uma com titulo, o rotulo 'Ordem de prioridade: N' derivado da posicao (com 2.4-II e 2.4-III publicadas, a residual e a DECIMA -- assuncao a confirmar no merge), a regra de ordenacao escrita, e as linhas com Nome, Nota, Classificacao, mais Remuneracao em 2.4-V e 2.4-VI/VII/VIII. Uma chamada por nivel: mestrado e doutorado correm independentes. classify() nao escreve nada no banco alem de draw_order na publicacao -- quem persiste snapshot e o service de f17.",
+      "files": [
+        "backend/apps/scholarships/models.py",
+        "backend/apps/scholarships/tests/test_bolsas_classificacao.py"
+      ],
+      "acceptance": "test_bolsas_classificacao.py reproduz os volumes de 2026 registrados no plano (mestrado 6+18+4+0+2+6+0+8 = 44; doutorado 5+17+2+0+4+3+0+2 = 33) e o caso que prova a regra da faixa VI/VII/VIII -- nota 59,20 em 1o e 73,29 em 5o, porque ali a nota NAO ordena; cobre cada um dos cinco desempates isoladamente, com um caso provando que fump_level 0 perde para 1 e 2; roda classify() duas vezes com a mesma semente e obtem draw_order identico; a saida tem sempre 10 faixas, inclusive as vazias.",
+      "verify": "make ready",
+      "effort_label": "high",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f15-classificacao-nota-e-faixa"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Coracao do modulo. effort high e assumido: a regra nao se quebra em pedacos independentes sem perder o teste que a prova. Teste verde nao prova criterio certo -- conferencia humana no merge."
+    },
+    {
+      "id": "f17-api-recurso",
+      "title": "Expoe a interposicao e o julgamento do recurso",
+      "context": "Passo 9 da Secao 8. POST /applications/{id}/appeal (Discente) e PATCH /appeals/{id}/judge (Comissao). SEM ANEXO -- o edital veta postagem fora do prazo. A interposicao so com appeal_open() (edicao em preliminary_result/appeals_under_review conforme as guardas de f2) e so pelo proprio aluno; o julgamento chama ScholarshipAppeal.judge(outcome, reasoning) e exige change_scholarshipappeal. O deferimento nao dispara recalculo: reabre o lancamento porque committee_can_review() ja e verdadeiro em appeals_under_review, e a nota e derivada. require_perm + current_program; AuditLog nos dois atos.",
+      "files": [
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/tests/test_bolsas_recurso.py"
+      ],
+      "acceptance": "Teste de API cobre o fluxo inteiro: publicar preliminar -> aluno interpoe -> comissao abre recurso -> julga deferido com fundamentacao -> altera committee_score do lancamento atacado -> a nota da inscricao muda sozinha; recurso fora da janela devolve 409; julgamento sem reasoning devolve erro de dominio; aluno nao julga o proprio recurso (403).",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f16-classificacao-ordenacao-e-desempate"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f18-publicacao-e-snapshot",
+      "title": "Implementa publish_preliminary e publish_final com snapshot, sorteio e AuditLog unico",
+      "context": "Passo 10 da Secao 8, Secao 3 do plano (linhas 288-296). Em services.py, porque cruza mais de um model (ADR-002). publish_preliminary(edition, request): gera draw_seed SE AINDA NAO HOUVER (nunca regera -- republicar tem de dar a mesma lista), roda classify() nos DOIS niveis, grava o snapshot em cada inscricao (published_band, published_score, published_position, draw_order, published_at), transiciona a edicao e escreve UM AuditLog com as contagens no payload -- mesmo desenho de close_isolated_cycle (backend/apps/academic/services.py:379): o ato e 'publiquei o preliminar', nao N eventos soltos. publish_final(edition, request): identico, a partir de appeals_under_review. Tudo em transaction.atomic(); exige a permissao propria publish_scholarshipedition. Rota GET /editions/{id}/result?level= devolve o JSON das 10 faixas -- para o Discente so a partir de preliminary_result (results_visible_to_student()); BandOut carrega band, title, priority_label, ordering_rule e as linhas, e e O MESMO OBJETO que alimenta a tela e o PDF.",
+      "files": [
+        "backend/apps/scholarships/services.py",
+        "backend/apps/scholarships/router.py",
+        "backend/apps/scholarships/schemas.py",
+        "backend/apps/scholarships/tests/test_bolsas_classificacao.py"
+      ],
+      "acceptance": "Publicar preliminar duas vezes (via publish_final depois) mantem a mesma draw_seed e a mesma ordem; o snapshot fica gravado em todas as inscricoes dos dois niveis; ha exatamente um AuditLog por publicacao, com as contagens; aluno recebe 403/404 em /result antes de preliminary_result e 200 depois; publicar sem publish_scholarshipedition devolve 403.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f17-api-recurso"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f19-pdf-do-resultado",
+      "title": "Monta o PDF do resultado com ReportLab e registra o ADR-010",
+      "context": "Passo 10 da Secao 8, B2. apps/scholarships/pdf.py com funcao PURA montar_resultado(edition, level, kind) -> bytes; a rota GET /editions/{id}/result.pdf?level= so devolve o FileResponse. Um documento por nivel, as 10 secoes na ordem canonica (todas presentes mesmo vazias), colunas variando por faixa (Remuneracao aparece em 2.4-V e 2.4-VI/VII/VIII), cabecalho de cada secao com o titulo, o rotulo 'Ordem de prioridade: N' e a regra de ordenacao escrita. Consome o mesmo BandOut de f18. ATENCAO -- a base mudou desde que o plano foi escrito: reportlab>=5.0.1 JA ESTA em backend/pyproject.toml:15 e ja tem stub em [[tool.mypy.overrides]] (linha 70), entao NAO adicione dependencia nem rode `uv add`; e o ADR de PDF ja existe como docs/adr/008-pdf-da-ata-com-reportlab.md. O que esta story escreve e docs/adr/010-pdf-do-resultado-de-bolsas.md, curto (meia pagina), referenciando o 008 em vez de reescrever a decisao. Espelhe o desenho de backend/apps/selection/pdf.py.",
+      "files": [
+        "backend/apps/scholarships/pdf.py",
+        "backend/apps/scholarships/router.py",
+        "docs/adr/010-pdf-do-resultado-de-bolsas.md",
+        "backend/apps/scholarships/tests/test_bolsas_pdf.py"
+      ],
+      "acceptance": "test_bolsas_pdf.py prova que as 10 secoes saem no documento mesmo quando vazias, que a coluna Remuneracao aparece so nas duas faixas previstas, e que o byte de saida comeca com %PDF; a rota devolve 403 para quem nao tem view e respeita a mesma regra de visibilidade do JSON; backend/pyproject.toml NAO e alterado.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f18-publicacao-e-snapshot"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f20-tenant-e-tipos-da-api",
+      "title": "Fecha o backend com o teste de tenant e regenera os tipos TypeScript",
+      "context": "Secao 7 do plano. test_bolsas_tenant.py: a lista de um programa NUNCA traz inscricao do outro -- vazamento de tenant nao aparece em lint e, com um so programa semeado, nem em teste; por isso o seed_demo semeia dois (f8). Cubra TODAS as rotas de listagem e de detalhe por id do modulo, sempre com current_program(request) como segundo passo depois do require_perm; o programa sai da(s) Person ativa(s) do usuario, nunca de um program_id que o chamador escolhe. Depois, com o backend de pe, rode `make gen-api` para regenerar frontend/src/lib/api/openapi.json e schema.d.ts -- sao GERADOS, PR que os edita a mao e recusado.",
+      "files": [
+        "backend/apps/scholarships/tests/test_bolsas_tenant.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "test_bolsas_tenant.py cobre cada rota de listagem e de detalhe do modulo com um usuario do programa A tentando alcancar dado do programa B, esperando lista vazia ou 404; `make gen-api` roda e o schema.d.ts passa a conhecer os tipos de /api/v1/scholarships/; `make ready` verde.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f19-pdf-do-resultado"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f21-tela-edital",
+      "title": "Escreve a tela da Secretaria: edicao, cronograma, barema, comissao e transicoes",
+      "context": "Secao 6 do plano. frontend/src/routes/(app)/bolsas/edital/+page.svelte, Svelte 5 com runas ($state, $derived, $props) -- nada de sintaxe legada de stores para estado local. Toda chamada via lib/api/client.ts tipado; fetch cru e proibido nas telas. A tela cobre: dados da edicao e as cinco datas do cronograma, o barema por nivel com o botao de clonar da edicao anterior, a composicao da comissao, as cinco transicoes e o publicar. O barema fica somente-leitura quando a edicao sai de draft (a API ja devolve 409; a tela nao deve oferecer o botao). Item de menu em (app)/+layout.svelte POR PERMISSAO e nao por papel -- mesmo criterio ja comentado ali em :121. Navegacao interna sempre por resolve() de $app/paths; URL de /api/ e /media/ nao e rota da SPA e leva o eslint-disable local, que e o padrao do projeto.",
+      "files": [
+        "frontend/src/routes/(app)/bolsas/edital/+page.svelte",
+        "frontend/src/routes/(app)/+layout.svelte"
+      ],
+      "acceptance": "`make ready` verde (inclui svelte-check e eslint); com `make up` + `make seed`, o usuario da Secretaria abre http://localhost:8080/bolsas/edital, cria o barema dos dois niveis, clona de outra edicao e percorre as cinco transicoes; o usuario Discente nao ve o item de menu.",
+      "verify": "make ready && make up",
+      "effort_label": "high",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f20-tenant-e-tipos-da-api"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "effort high pela quantidade de blocos na mesma tela; se o loop travar, quebre em 'edicao + cronograma + transicoes' e 'barema + comissao'."
+    },
+    {
+      "id": "f22-tela-inscricao",
+      "title": "Escreve a tela do Discente: questionario, documentos e lancamentos por secao",
+      "context": "Secao 6 do plano. frontend/src/routes/(app)/bolsas/inscricao/+page.svelte. Questionario com as 8 perguntas, e os campos de rendimento mensal e carga horaria semanal APARECENDO ao marcar atividade remunerada ($derived sobre has_paid_activity) -- a validacao que vale e a do schema Ninja, o front so cuida da UX. Upload dos documentos de cada resposta 'Sim' e dos comprovantes dos lancamentos usa o bodySerializer multipart que ja existe em frontend/src/lib/api/client.ts:49. Lista de lancamentos AGRUPADA POR SECAO DO BAREMA (I..VI), com o texto normativo do item como cabecalho no formato '1.3 - ... - 0,50 pts/semestre - Limite: 3,00'. Enquanto a janela esta aberta o aluno edita e pode excluir a propria inscricao; fora dela a tela mostra somente leitura. Item de menu por permissao em (app)/+layout.svelte.",
+      "files": [
+        "frontend/src/routes/(app)/bolsas/inscricao/+page.svelte",
+        "frontend/src/routes/(app)/+layout.svelte"
+      ],
+      "acceptance": "`make ready` verde; com `make up` + `make seed`, o Discente semeado abre a tela, responde o questionario, anexa documento, lanca um item com PDF e ve a nota do candidato calculada pelo servidor; com a edicao fora de submissions_open a tela nao oferece escrita.",
+      "verify": "make ready && make up",
+      "effort_label": "high",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f21-tela-edital"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Se travar, quebre em 'questionario + documentos' e 'lancamentos por secao'."
+    },
+    {
+      "id": "f23-tela-analise",
+      "title": "Escreve a tela da Comissao: fila com filtros e a analise item a item",
+      "context": "Secao 6 do plano -- e a tela que mais reproduz o legado. frontend/src/routes/(app)/bolsas/analise/+page.svelte. A fila traz todos os filtros do legado (nivel obrigatorio, linha, orientador, ano de entrada, cada uma das 8 respostas, estado do recurso) mais o toggle 'somente candidatos com itens a analisar' (pending_review=true). A tela de um candidato reproduz o legado: cabecalho 'Candidato: X -- Comissao: Y' com as duas notas lado a lado, corpo agrupado por secao e por item, com o texto normativo do item como cabecalho ('1.3 - ... - 0,50 pts/semestre - Limite: 3,00'), 'Nota total' por item COM O TETO JA APLICADO, e a observacao da comissao em destaque sob cada lancamento. A comissao edita apenas committee_score e committee_note (a API nem aceita o resto); a observacao por item vai por PUT /applications/{id}/item-review. O julgamento do recurso entra por aqui, nao pela tela do aluno. Menu por permissao.",
+      "files": [
+        "frontend/src/routes/(app)/bolsas/analise/+page.svelte",
+        "frontend/src/routes/(app)/+layout.svelte"
+      ],
+      "acceptance": "`make ready` verde; com `make up` + `make seed`, o membro da Comissao filtra a fila, abre um candidato, avalia um lancamento com nota divergente e a tela exige a observacao antes de salvar; a 'Nota total' por item respeita o teto; a Coordenacao ve a tela sem poder salvar.",
+      "verify": "make ready && make up",
+      "effort_label": "high",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f22-tela-inscricao"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Se travar, quebre em 'fila com filtros' e 'analise de um candidato + julgamento do recurso'."
+    },
+    {
+      "id": "f24-telas-resultado-e-recurso",
+      "title": "Escreve a tela do resultado com as 10 faixas e a tela de interposicao de recurso",
+      "context": "Secao 6 do plano. frontend/src/routes/(app)/bolsas/resultado/+page.svelte: as 10 faixas por nivel, na ordem canonica e TODAS presentes mesmo vazias, cada uma com o titulo, o rotulo 'Ordem de prioridade: N', a regra de ordenacao escrita e as linhas (Nome, Nota, Classificacao, mais Remuneracao nas duas faixas que a exibem), alimentadas pelo mesmo BandOut do PDF; mais o botao que abre GET /editions/{id}/result.pdf?level= (URL de /api/ nao e rota da SPA: eslint-disable local da regra svelte/no-navigation-without-resolve, que e o padrao do projeto). Para o Discente a tela so existe a partir de preliminary_result. frontend/src/routes/(app)/bolsas/recurso/+page.svelte: o Discente interpoe (texto, sem anexo -- o edital veta postagem fora do prazo) e acompanha o resultado do julgamento com a fundamentacao. Menu por permissao.",
+      "files": [
+        "frontend/src/routes/(app)/bolsas/resultado/+page.svelte",
+        "frontend/src/routes/(app)/bolsas/recurso/+page.svelte",
+        "frontend/src/routes/(app)/+layout.svelte"
+      ],
+      "acceptance": "`make ready` verde; com `make up` + `make seed`, o Discente ve o resultado apos a publicacao preliminar, baixa o PDF do proprio nivel, interpoe recurso e le a fundamentacao apos o julgamento; faixa vazia aparece com o titulo e a nota de que nao houve candidato.",
+      "verify": "make ready && make up",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f23-tela-analise"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

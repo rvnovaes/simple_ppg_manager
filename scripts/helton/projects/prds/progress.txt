@@ -1,0 +1,45 @@
+# Helton Progress Log
+Started: ter. 01 set 2026 11:06:15 -03
+---
+
+## Codebase Patterns
+- App novo do backend: `backend/apps/<app>/` com `__init__.py`, `apps.py`
+  (`AppConfig` com `default_auto_field = BigAutoField`, `name = "apps.<app>"`,
+  `verbose_name` em português), `models.py`, `admin.py`, `router.py`,
+  `schemas.py`, `migrations/__init__.py`, `tests/__init__.py`. Registro em
+  `INSTALLED_APPS` (`backend/config/settings/base.py`) e router montado em
+  `backend/api.py` com `api.add_router("/<prefixo>/", <app>_router)`.
+- `make ready` = `lint` → `typecheck` → `test`, nessa ordem, e o `lint` roda
+  `ruff format`/`ruff check --fix` e `prettier --write`: ele **altera arquivos**
+  antes de checar. Rode-o antes de olhar o `git status` final.
+- `make ready` completo leva vários minutos (a suíte de `selection` é grande);
+  rode em background e acompanhe o log, não no timeout curto do shell.
+- Todo `TextChoices` deste projeto vai no **nível do módulo** com nome único —
+  enum aninhado de nome repetido colide no gerador de OpenAPI e o último
+  registrado sobrescreve o outro sem erro no backend.
+- Ordem dos imports segue `ruff`/isort: `apps.scholarships` vem antes de
+  `apps.selection`.
+
+## 2026-09-01 - f1-app-scholarships-esqueleto
+- Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
+  arquivos, registro em `INSTALLED_APPS` depois de `apps.selection` e router
+  vazio montado em `/api/v1/scholarships/`.
+- Em `models.py`, só enums e constantes de módulo (Seção 1 do plano):
+  `ScholarshipEditionStatus`, `ScholarshipLevel`, `BaremeSection`,
+  `BaremeUnit`, `PriorityBand` (10 valores na ordem canônica),
+  `AppealOutcome`, `ApplicationDocumentKind` (7 tipos) e as constantes
+  `ORDEM_DAS_FAIXAS`, `BONUS_FUMP`, `ORDENACAO_DA_FAIXA`. Nenhum model.
+- Arquivos: `backend/apps/scholarships/{__init__,apps,models,admin,router,schemas}.py`,
+  `.../migrations/__init__.py`, `.../tests/__init__.py`,
+  `backend/config/settings/base.py`, `backend/api.py`.
+- **Learnings for future iterations:**
+  - `BONUS_FUMP` só tem as chaves 1 e 2 — o nível 0 ("sem nível") não pontua e
+    deve ser lido com `.get(fump_level, Decimal("0.00"))`, nunca com `[]`.
+  - `ORDENACAO_DA_FAIXA` só lista as duas faixas com regra própria; faixa
+    ausente ordena por nota decrescente. Não preencher as outras oito.
+  - `PriorityBand.B24_I` e `B24_II` não são deriváveis do questionário: só
+    entram por `band_override` da secretaria (decisão B6 do plano).
+  - `ScholarshipLevel` repete os valores de `Student.Level`
+    (`apps/academic/models.py`) de propósito — a inscrição copia e congela o
+    nível; não trocar por reuso do enum aninhado.
+---
