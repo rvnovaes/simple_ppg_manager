@@ -1011,6 +1011,1006 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/selection/processes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Processes
+         * @description Os editais do programa, do ano mais recente para o mais antigo.
+         */
+        get: operations["apps_selection_router_list_processes"];
+        put?: never;
+        /**
+         * Create Process
+         * @description A secretaria abre o edital do ano, em rascunho.
+         */
+        post: operations["apps_selection_router_create_process"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Process */
+        get: operations["apps_selection_router_get_process"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Process
+         * @description Correção do edital — só enquanto ele é rascunho.
+         *
+         *     `ensure_editable` é do model e devolve 409 `process_not_editable`:
+         *     depois de publicado o candidato já se inscreveu contra este conteúdo,
+         *     e vaga se corrige por realocação, com ofício da comissão.
+         */
+        patch: operations["apps_selection_router_update_process"];
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Process Endpoint
+         * @description Publica o edital: o trabalho (e a cobrança do que falta) está no
+         *     service, porque a conferência atravessa etapas, vagas e template.
+         */
+        post: operations["apps_selection_router_publish_process_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Process
+         * @description Encerra o edital — ato explícito da secretaria, nada expira por data.
+         *
+         *     Toca um model só, então fica no router (Seção 3): a regra de quando dá
+         *     para encerrar é do `close()` do model, que devolve 409
+         *     `process_not_published`.
+         */
+        post: operations["apps_selection_router_close_process"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/notice-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Notice File
+         * @description Anexa (ou substitui) o PDF do edital.
+         *
+         *     Substituir, e não empilhar: o edital tem um arquivo, e o reenvio é a
+         *     correção de quem subiu a versão errada. A remoção do arquivo anterior é
+         *     explícita porque o storage não participa do rollback da transação — sem
+         *     ela cada reenvio deixaria um órfão no MEDIA_ROOT.
+         *
+         *     Vale depois de publicado: o PDF é o documento que o edital publicado
+         *     divulga, e trocá-lo por uma retificação não muda vaga nem etapa.
+         */
+        post: operations["apps_selection_router_upload_notice_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/stages/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stages
+         * @description As etapas do edital, na ordem em que acontecem.
+         *
+         *     Sem paginação de propósito: são três etapas por edital, e a tela monta
+         *     a grade inteira de uma vez.
+         */
+        get: operations["apps_selection_router_list_stages"];
+        put?: never;
+        /** Create Stage */
+        post: operations["apps_selection_router_create_stage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/stages/{stage_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Stage
+         * @description Único DELETE do app.
+         *
+         *     Em rascunho a etapa ainda não tem nota, ata nem convocação pendurada,
+         *     então apagar a linha errada é a correção honesta. Depois de publicado
+         *     nada é apagado — o histórico do edital é o que a seleção prova.
+         *
+         *     A auditoria é gravada **antes** do `delete()`: depois dele a instância
+         *     perde o pk e o alvo do registro sairia vazio.
+         *
+         *     A permissão exigida é `change_selectionstage`, e não `delete_`: nenhum
+         *     papel de domínio recebe `delete_*` (migration `0006_papeis_da_selecao`,
+         *     com teste guardando), porque apagar dado da seleção é quebra-vidro de
+         *     sysadmin. Tirar uma linha da grade **em rascunho** não é isso — é a
+         *     mesma edição da grade que o PATCH faz, e quem trava o resto é o
+         *     `ensure_editable` logo abaixo.
+         */
+        delete: operations["apps_selection_router_delete_stage"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Stage
+         * @description `exclude_unset` sem `exclude_none`: `session_at` e `tiebreak_rank`
+         *     precisam poder voltar a nulo (desmarcar a sessão, tirar a etapa do
+         *     desempate).
+         */
+        patch: operations["apps_selection_router_update_stage"];
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/vacancies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vacancies
+         * @description A grade de vagas do edital. Sem paginação: é a grade inteira que a
+         *     tela soma para dizer quantas vagas o edital oferece.
+         */
+        get: operations["apps_selection_router_list_vacancies"];
+        put?: never;
+        /** Create Vacancy */
+        post: operations["apps_selection_router_create_vacancy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/vacancies/{vacancy_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Vacancy
+         * @description Correção da grade, só em rascunho.
+         *
+         *     Não existe DELETE de vaga (ao contrário de etapa): a linha zerada é o
+         *     histórico de que ali havia vaga, e `quantity=0` é permitido justamente
+         *     para isso.
+         */
+        patch: operations["apps_selection_router_update_vacancy"];
+        trace?: never;
+    };
+    "/selection/boards/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Boards
+         * @description As bancas do programa, com os filtros da tela.
+         *
+         *     `teacher_id` passa por `Board.objects.with_teacher`, o único lugar em
+         *     que o OU dos quatro papéis é escrito.
+         */
+        get: operations["apps_selection_router_list_boards"];
+        put?: never;
+        /**
+         * Create Board
+         * @description A secretaria designa a banca de um nível × alvo do edital.
+         */
+        post: operations["apps_selection_router_create_board"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Board */
+        get: operations["apps_selection_router_get_board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Board
+         * @description Troca de examinador ou correção do alvo, só enquanto a banca não
+         *     tem ata fora do rascunho (409 `board_in_use`).
+         */
+        patch: operations["apps_selection_router_update_board"];
+        trace?: never;
+    };
+    "/selection/boards/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Boards
+         * @description As bancas do docente da sessão, com as etapas de cada edital.
+         *
+         *     Sem paginação: um docente compõe poucas bancas, e a tela dele é a
+         *     lista inteira. Sem filtros pelo mesmo motivo.
+         *
+         *     Não colide com `/boards/{id}/` porque aquela rota usa o conversor
+         *     `int:` — "mine" nunca casa com ele.
+         */
+        get: operations["apps_selection_router_list_my_boards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Stage Scores
+         * @description A planilha da banca naquela etapa: um candidato vivo por linha.
+         */
+        get: operations["apps_selection_router_list_stage_scores"];
+        /**
+         * Set Stage Scores
+         * @description Lança as notas da etapa em lote e devolve a planilha atualizada.
+         *
+         *     Lote e não uma nota por requisição porque é assim que a banca
+         *     trabalha: ela avalia a sessão inteira e salva uma vez. O lote é
+         *     parcial de propósito — quem não vem no corpo fica como estava.
+         *
+         *     As duas permissões juntas (`add` e `change`): a mesma chamada cria a
+         *     linha de quem ainda não tinha nota e reescreve a de quem já tinha.
+         *
+         *     Inscrição fora do recorte da banca é 404, como qualquer id de fora do
+         *     escopo. Nota repetida no mesmo lote volta 400 `duplicate_score`, do
+         *     `clean()` — o corpo se contradiz e não há como escolher qual vale.
+         */
+        put: operations["apps_selection_router_set_stage_scores"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stage Record
+         * @description A ata vigente daquela etapa nesta banca.
+         */
+        get: operations["apps_selection_router_get_stage_record"];
+        put?: never;
+        /**
+         * Create Stage Record
+         * @description Abre a ata em rascunho, com as notas já lançadas.
+         */
+        post: operations["apps_selection_router_create_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Stage Record
+         * @description Regera o rascunho com as notas de agora.
+         */
+        post: operations["apps_selection_router_refresh_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Freeze Stage Record
+         * @description Fecha a ata para assinatura e emite o token do examinador externo.
+         */
+        post: operations["apps_selection_router_freeze_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Stage Record
+         * @description Devolve a ata congelada ao rascunho, se ninguém assinou.
+         */
+        post: operations["apps_selection_router_reopen_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/boards/{board_id}/stages/{stage_id}/record/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Stage Record
+         * @description Assina a ata congelada como examinador logado.
+         *
+         *     Não exige titularidade: quem assina é quem está na lista de
+         *     signatários da ata (`expected_signers`), e o suplente entra nela
+         *     quando substitui um titular impedido. Quem compõe a banca mas não
+         *     assina esta ata leva `not_the_signer`, não 404 — a ata existe e ele
+         *     pode lê-la.
+         *
+         *     A terceira assinatura fecha a etapa: desfechos aplicados e PDF
+         *     gravado, tudo na mesma transação (`_close_stage`).
+         */
+        post: operations["apps_selection_router_sign_stage_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/records/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Records
+         * @description As atas de um edital, da primeira etapa à última.
+         *
+         *     `process_id` é obrigatório: a tela é sempre "as atas deste edital", e
+         *     uma listagem de todas as atas do programa misturaria anos e não
+         *     responderia a pergunta de ninguém. O edital passa por
+         *     `_edital_do_programa`, então id de outro tenant dá 404 antes de a
+         *     consulta rodar.
+         *
+         *     Devolve **todas as versões**, inclusive as substituídas: a retificação
+         *     guarda a anterior como histórico, e é justamente a secretaria quem
+         *     precisa enxergar que houve uma. A versão vigente de cada chave é a de
+         *     maior `version`, e vem primeiro.
+         */
+        get: operations["apps_selection_router_list_records"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/records/{record_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Record Pdf
+         * @description O PDF da ata assinada — pelo Django, nunca por URL direta do MEDIA.
+         *
+         *     Só existe depois da terceira assinatura: é `_close_stage` que o grava.
+         *     Antes disso a resposta é 404, e não um PDF de rascunho — ata que não
+         *     foi assinada não é documento, e entregá-la como arquivo convida a
+         *     imprimi-la como se fosse.
+         *
+         *     A leitura é auditada. Auditar leitura é exceção no projeto (Seção 3),
+         *     e aqui vale pelo mesmo motivo do anexo da inscrição: o PDF é o
+         *     documento que registra a decisão da banca sobre pessoas, com as notas
+         *     de cada uma, e quem o baixou é parte do rastro.
+         */
+        get: operations["apps_selection_router_download_record_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/records/{record_id}/signatures/{signature_id}/resend-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Signature Token Endpoint
+         * @description Emite um token novo para o examinador externo e reenvia o e-mail.
+         *
+         *     O link anterior morre na hora: `issue_token` sorteia outro segredo e
+         *     sobrescreve o hash. É de propósito — dois links vivos para a mesma
+         *     assinatura significam que um deles, o que se perdeu, continua
+         *     assinando por alguém.
+         */
+        post: operations["apps_selection_router_resend_signature_token_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/processes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Public Processes
+         * @description Os editais com inscrição aberta agora, de todos os programas.
+         *
+         *     # público: é o cartaz do processo seletivo — edital publicado é
+         *     # documento público, e quem o lê ainda não tem conta para autenticar.
+         *     # Não escapa nada de pessoal: só edital, etapas e grade de vagas.
+         *     #
+         *     # Sem escopo de tenant, de propósito e ao contrário de toda rota
+         *     # autenticada: não há sessão de onde tirar `current_program`, e
+         *     # aceitar `program_id` do chamador só decidiria o que já é público.
+         *     # `program_acronym` no schema é o que distingue os editais na tela.
+         */
+        get: operations["apps_selection_router_list_public_processes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Public Application
+         * @description A inscrição inteira num POST: dados e anexos juntos.
+         *
+         *     # público: o candidato não tem conta (ver o bloco acima). Um POST só, e
+         *     # não um rascunho com anexos incrementais, porque sem login não há a
+         *     # quem devolver o rascunho depois.
+         *     #
+         *     # Os três anexos opcionais na assinatura são condicionais no domínio,
+         *     # não dispensáveis: resumo expandido é do Regular, memorial é do
+         *     # Suplementar e a comprovação é de quem concorre por cota. Quem cobra é
+         *     # `required_document_kinds()` do model, pelo edital e pela cota
+         *     # escolhidos — a assinatura só não pode exigir os três de todo mundo.
+         */
+        post: operations["apps_selection_router_submit_public_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/applications/{protocol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Public Application
+         * @description Consulta pública pelo protocolo.
+         *
+         *     # público: é como o candidato sem conta descobre se a inscrição dele
+         *     # foi homologada. O protocolo é o segredo que substitui a senha —
+         *     # `secrets` o gera (ver `gerar_protocolo`).
+         *     #
+         *     # A resposta não tem nome, CPF nem documento: quem digita o protocolo
+         *     # pode não ser o candidato. Protocolo inexistente é 404 genérico, sem
+         *     # dizer se o número nunca existiu ou se é de outro edital.
+         */
+        get: operations["apps_selection_router_get_public_application"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/signatures/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Public Signature
+         * @description A ata que o link do e-mail abre, para conferência antes de assinar.
+         *
+         *     # público: o examinador externo não tem conta (é professor de outra
+         *     # instituição, convidado para uma banca). O token do e-mail é o que
+         *     # substitui a sessão: ele identifica o signatário, vale uma vez e
+         *     # expira — ver `assinatura_por_token`.
+         *     #
+         *     # Sem escopo de tenant, e sem `program_id` no caminho: o programa sai
+         *     # da ata que o token encontrou. Token inexistente, expirado, já usado
+         *     # ou de ata reaberta dão o mesmo 404 genérico — distinguir os casos
+         *     # diria a quem chuta link se ele existiu algum dia.
+         */
+        get: operations["apps_selection_router_get_public_signature"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/public/signatures/{token}/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Public Signature
+         * @description Assina a ata pelo link do e-mail; na terceira, fecha a etapa.
+         *
+         *     # público: mesma justificativa da rota acima. O `csrf_protect`
+         *     # explícito é obrigatório aqui — `auth=None` desliga junto a checagem
+         *     # que o SessionAuth faria, e sem ele o link viraria alvo de CSRF.
+         *     #
+         *     # `content_hash` é o hash que a tela de conferência mostrou: se a ata
+         *     # foi reaberta e recongelada nesse meio-tempo, a assinatura é recusada
+         *     # com `record_changed` em vez de valer sobre um texto que o examinador
+         *     # não leu.
+         */
+        post: operations["apps_selection_router_sign_public_signature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Applications
+         * @description As inscrições do programa, com os filtros da tela de conferência.
+         */
+        get: operations["apps_selection_router_list_applications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/{application_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Application
+         * @description O detalhe com os anexos — a lista deles, não o conteúdo: abrir o
+         *     arquivo é a rota de download, com permissão própria.
+         */
+        get: operations["apps_selection_router_get_application"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/{application_id}/homologate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Homologate Application
+         * @description Homologa a inscrição: a partir daqui o candidato disputa as etapas.
+         *
+         *     A nota é opcional — homologar é o caminho normal, e não precisa de
+         *     justificativa.
+         */
+        post: operations["apps_selection_router_homologate_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/{application_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Application
+         * @description Indefere a inscrição — com justificativa obrigatória.
+         *
+         *     Quem cobra a nota é `Application.reject` (400 `rejection_requires_note`)
+         *     e não o schema: o candidato tem direito de saber por que ficou de fora,
+         *     e essa é regra do domínio, não validação de formulário.
+         */
+        post: operations["apps_selection_router_reject_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/documents/{document_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Application Document
+         * @description Entrega o anexo — pelo Django, nunca por URL direta do MEDIA.
+         *
+         *     Duas permissões, e as duas juntas: `view_application` para chegar até
+         *     a inscrição e `download_applicationdocument` para abrir o arquivo.
+         *     Coordenação e Docente enxergam a inscrição e mesmo assim levam 403
+         *     aqui — identidade, diploma e comprovante de pagamento não são insumo
+         *     de classificação. Só a Secretaria tem a segunda (migration 0006).
+         *
+         *     Diferente do download de `academic`, não há caminho por posse: o
+         *     candidato do processo seletivo não tem conta, e o que ele consulta
+         *     pelo protocolo é a situação, não o conteúdo que ele mesmo mandou.
+         */
+        get: operations["apps_selection_router_download_application_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/stages/{stage_id}/convocable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Convocable
+         * @description Quem esta etapa pode convocar — o que o botão de disparo vai mandar.
+         *
+         *     A regra de quem é convocável mora no manager (`convocable_for`); esta
+         *     rota só a expõe para a tela não ter de refazê-la. `already_convoked`
+         *     marca quem já recebeu e-mail nesta etapa em lote nenhum, que é
+         *     exatamente o que `_abrir_lote` exclui — a soma dos não marcados é o
+         *     tamanho do próximo lote.
+         *
+         *     Sem paginação, como a listagem de lotes: são os candidatos vivos de
+         *     uma etapa de um edital, e a tela mostra todos.
+         */
+        get: operations["apps_selection_router_list_convocable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/stages/{stage_id}/convocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Convocations
+         * @description Os lotes de convocação de uma etapa, com a contagem por situação.
+         *
+         *     Sem paginação: são poucos lotes por etapa (o primeiro disparo e os
+         *     reforços de quem foi homologado depois), e a tela mostra todos.
+         */
+        get: operations["apps_selection_router_list_convocations"];
+        put?: never;
+        /**
+         * Send Convocations Endpoint
+         * @description Dispara a convocação da etapa para quem ainda não foi chamado.
+         *
+         *     Reexecutar é seguro e é o fluxo previsto: quem já recebeu e-mail
+         *     nesta etapa fica de fora, então a secretaria clica de novo depois de
+         *     homologar mais uma inscrição e só ela é convocada. Se não sobrou
+         *     ninguém, a resposta é 4xx (`no_convocable_applications`) — e não um
+         *     lote vazio.
+         */
+        post: operations["apps_selection_router_send_convocations_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/convocations/{convocation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Convocation
+         * @description Um lote com os destinatários — quem recebeu, quem falhou e por quê.
+         *
+         *     A listagem por etapa devolve só a contagem; é aqui que a secretaria
+         *     abre o lote para achar o endereço errado antes de mandar reenviar.
+         */
+        get: operations["apps_selection_router_get_convocation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/convocations/{convocation_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Convocation Endpoint
+         * @description Reenvia os e-mails que falharam neste lote — só eles.
+         */
+        post: operations["apps_selection_router_resend_convocation_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/ranking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ranking
+         * @description A classificação já calculada do nível × alvo.
+         *
+         *     Sem cálculo nenhum: chave ainda não classificada devolve a grade de
+         *     vagas e a lista vazia, que é o que a tela mostra antes do primeiro
+         *     clique em "calcular".
+         */
+        get: operations["apps_selection_router_get_ranking"];
+        put?: never;
+        /**
+         * Compute Ranking Endpoint
+         * @description Calcula (ou recalcula) a classificação de um nível × alvo.
+         *
+         *     Rodar de novo é o fluxo previsto — depois de retificação de ata ou de
+         *     realocação de vaga a lista muda. A trava é o primeiro matriculado da
+         *     chave (`ranking_locked`), e antes dela a exigência é a ata da última
+         *     etapa assinada (`final_record_not_signed`).
+         */
+        post: operations["apps_selection_router_compute_ranking_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/processes/{process_id}/reallocations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reallocations
+         * @description O histórico de realocações do edital, da mais recente para a mais antiga.
+         */
+        get: operations["apps_selection_router_list_reallocations"];
+        put?: never;
+        /**
+         * Create Reallocation
+         * @description Registra a decisão da comissão e move a vaga.
+         *
+         *     Efeito colateral previsto: a classificação já calculada dos alvos
+         *     envolvidos é zerada — as posições saíram de uma grade que acabou de
+         *     mudar. A secretaria recalcula (`POST processes/{id}/ranking`) antes de
+         *     publicar a lista de novo.
+         */
+        post: operations["apps_selection_router_create_reallocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/selection/applications/{application_id}/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll Application
+         * @description Transforma o classificado em aluno regular, sem recadastro.
+         *
+         *     O projeto vem no payload mesmo quando a inscrição já tem um: no
+         *     Suplementar ela só tem linha de pesquisa, e é agora que a secretaria
+         *     escolhe o projeto dentro dela. Quem confere se ele casa com o alvo é
+         *     o service (`project_target_mismatch`).
+         *
+         *     Efeito colateral previsto: a classificação daquele nível × alvo trava
+         *     (`ranking_locked`) — a lista virou matrícula e não se recalcula mais.
+         */
+        post: operations["apps_selection_router_enroll_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1351,7 +2351,7 @@ export interface components {
          * Category
          * @enum {string}
          */
-        Category: "permanent" | "collaborator" | "visiting";
+        Category: "permanent" | "collaborator" | "visiting" | "external";
         /** PagedTeacherOut */
         PagedTeacherOut: {
             /** Items */
@@ -2268,6 +3268,1625 @@ export interface components {
             password: string;
             /** Program Id */
             program_id?: number | null;
+        };
+        /**
+         * SelectionKind
+         * @description Tipo do edital.
+         *
+         *     O Regular chaveia por projeto coletivo; o Suplementar (ações
+         *     afirmativas) chaveia por linha de pesquisa (decisão P4 do plano).
+         * @enum {string}
+         */
+        SelectionKind: "regular" | "supplementary";
+        /**
+         * SelectionProcessStatus
+         * @enum {string}
+         */
+        SelectionProcessStatus: "draft" | "published" | "closed";
+        /** PagedSelectionProcessOut */
+        PagedSelectionProcessOut: {
+            /** Items */
+            items: components["schemas"]["SelectionProcessOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * SelectionProcessOut
+         * @description O edital como a tela da secretaria o vê.
+         *
+         *     `submission_open` vem resolvido do servidor: comparar a janela no
+         *     navegador deixaria "as inscrições estão abertas" dependendo do relógio
+         *     de quem acessa.
+         *
+         *     `stage_count` e `vacancy_count` viajam porque a tela precisa dizer o
+         *     que falta para publicar sem fazer uma chamada por edital — as rotas de
+         *     listagem e de detalhe anotam os dois; o fallback conta na hora, para o
+         *     objeto recém-escrito que volta do POST/PATCH.
+         */
+        SelectionProcessOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            kind: components["schemas"]["SelectionKind"];
+            /** Kind Label */
+            kind_label: string;
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            status: components["schemas"]["SelectionProcessStatus"];
+            /** Status Label */
+            status_label: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /** Submission Open */
+            submission_open: boolean;
+            /** Notice Filename */
+            notice_filename: string;
+            /** Notice Url */
+            notice_url: string;
+            /** Convocation Subject */
+            convocation_subject: string;
+            /** Convocation Body */
+            convocation_body: string;
+            /** Published At */
+            published_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Stage Count */
+            stage_count: number;
+            /** Vacancy Count */
+            vacancy_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SelectionProcessIn
+         * @description Abertura do edital, digitada pela secretaria.
+         *
+         *     Sem `program_id`: o programa é o da requisição (`current_program`),
+         *     nunca o que o chamador escolher. Sem `status` também — o edital nasce
+         *     em rascunho e muda de estado só por `publish`/`close`, que cobram o
+         *     que a publicação exige e carimbam a data.
+         *
+         *     O template de convocação é opcional aqui porque ele costuma ser
+         *     escrito depois da grade de vagas; quem cobra é `publish_process`.
+         */
+        SelectionProcessIn: {
+            kind: components["schemas"]["SelectionKind"];
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /**
+             * Convocation Subject
+             * @default
+             */
+            convocation_subject: string;
+            /**
+             * Convocation Body
+             * @default
+             */
+            convocation_body: string;
+        };
+        /**
+         * SelectionProcessPatch
+         * @description Correção do edital em rascunho: só os campos presentes são aplicados.
+         *
+         *     Depois de publicado nada disto muda (`ensure_editable`): o candidato já
+         *     se inscreveu contra este conteúdo, e vaga se corrige por
+         *     `VacancyReallocation`, com ofício da comissão.
+         */
+        SelectionProcessPatch: {
+            kind?: components["schemas"]["SelectionKind"] | null;
+            /** Year */
+            year?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Submission Opens At */
+            submission_opens_at?: string | null;
+            /** Submission Closes At */
+            submission_closes_at?: string | null;
+            /** Convocation Subject */
+            convocation_subject?: string | null;
+            /** Convocation Body */
+            convocation_body?: string | null;
+        };
+        /**
+         * SelectionStageOut
+         * @description A etapa como a tela do edital a vê.
+         *
+         *     `program_id` viaja porque a etapa é filha de agregado e a tela não tem
+         *     o edital carregado em toda listagem; a propriedade do model resolve.
+         */
+        SelectionStageOut: {
+            /** Id */
+            id: number;
+            /** Process Id */
+            process_id: number;
+            /** Program Id */
+            program_id: number;
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at: string | null;
+            /** Location */
+            location: string;
+            /** Tiebreak Rank */
+            tiebreak_rank: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SelectionStageIn
+         * @description Etapa nova do edital, digitada pela secretaria.
+         *
+         *     Sem `process_id`: o edital é o da URL, escopado por programa. Sem
+         *     `program_id` pela mesma razão de sempre — quem escolhe o tenant é a
+         *     sessão.
+         *
+         *     `tiebreak_rank` nulo significa "esta etapa não entra no desempate"; é
+         *     o caso da última etapa dos dois tipos de edital.
+         */
+        SelectionStageIn: {
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at?: string | null;
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /** Tiebreak Rank */
+            tiebreak_rank?: number | null;
+        };
+        /**
+         * SelectionStagePatch
+         * @description Correção da etapa em rascunho: só os campos presentes são aplicados.
+         *
+         *     `session_at` e `tiebreak_rank` aceitam `null` explícito (desmarcar a
+         *     sessão, tirar a etapa do desempate), então aqui o corte é por
+         *     `exclude_unset` e não por `exclude_none`.
+         */
+        SelectionStagePatch: {
+            /** Name */
+            name?: string | null;
+            /** Order */
+            order?: number | null;
+            /** Session At */
+            session_at?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Tiebreak Rank */
+            tiebreak_rank?: number | null;
+        };
+        /**
+         * QuotaCategory
+         * @enum {string}
+         */
+        QuotaCategory: "open" | "racial" | "disability" | "quilombola" | "trans" | "indigenous";
+        /**
+         * SelectionLevel
+         * @description Mesmos valores de `Student.Level` — a conversão em aluno copia direto.
+         * @enum {string}
+         */
+        SelectionLevel: "masters" | "doctorate";
+        /**
+         * VacancyOut
+         * @description A vaga como a grade da secretaria a vê.
+         *
+         *     Os rótulos e o nome do alvo viajam resolvidos: a tela lista dezenas de
+         *     linhas e não deve ter que cruzar id de projeto com nome de projeto.
+         */
+        VacancyOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Quantity */
+            quantity: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * VacancyIn
+         * @description Linha da grade de vagas: nível × alvo × categoria de cota.
+         *
+         *     O alvo é XOR e amarrado ao tipo do edital (`ensure_target`): Regular
+         *     pede `project_id`, Suplementar pede `research_line_id`. Mandar os dois
+         *     (ou nenhum) volta `target_mismatch`, não um 500 da CheckConstraint.
+         */
+        VacancyIn: {
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quantity */
+            quantity: number;
+        };
+        /**
+         * VacancyPatch
+         * @description Correção da vaga em rascunho.
+         *
+         *     O caso comum é `quantity`; os demais campos existem porque em rascunho
+         *     a grade inteira ainda é rascunho. Depois de publicado nada disto muda —
+         *     a correção vira `VacancyReallocation`, com ofício da comissão.
+         */
+        VacancyPatch: {
+            level?: components["schemas"]["SelectionLevel"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            quota_category?: components["schemas"]["QuotaCategory"] | null;
+            /** Quantity */
+            quantity?: number | null;
+        };
+        /**
+         * BoardMemberOut
+         * @description Um examinador, como a tela da banca o mostra.
+         *
+         *     Nome, categoria e instituição viajam resolvidos porque a tela lista os
+         *     quatro papéis de cada banca e precisa distinguir o docente do programa
+         *     do externo — e, no externo, de onde ele vem (`home_institution` é
+         *     obrigatória nessa categoria).
+         */
+        BoardMemberOut: {
+            /** Id */
+            id: number;
+            /** Full Name */
+            full_name: string;
+            /** Category */
+            category: string;
+            /** Category Label */
+            category_label: string;
+            /** Home Institution */
+            home_institution: string;
+        };
+        /**
+         * BoardOut
+         * @description A banca como a tela da secretaria a vê.
+         *
+         *     Os quatro examinadores vêm expandidos (nome, categoria, instituição) —
+         *     a tela não deve cruzar id de professor com nome. `in_use` diz se a
+         *     banca ainda é editável: a listagem anota a contagem de atas fora do
+         *     rascunho; o fallback consulta na hora, para o objeto recém-escrito que
+         *     volta do POST/PATCH.
+         */
+        BoardOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            president: components["schemas"]["BoardMemberOut"];
+            member_1: components["schemas"]["BoardMemberOut"];
+            member_2: components["schemas"]["BoardMemberOut"];
+            alternate: components["schemas"]["BoardMemberOut"];
+            /** In Use */
+            in_use: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** PagedBoardOut */
+        PagedBoardOut: {
+            /** Items */
+            items: components["schemas"]["BoardOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * BoardIn
+         * @description Banca nova: nível × alvo do edital e os quatro examinadores.
+         *
+         *     Sem `program_id` (é o da sessão). `process_id` vem no corpo porque a
+         *     rota é `boards/` e não pende do edital — a tela de bancas lista as
+         *     bancas de vários editais.
+         *
+         *     O alvo é XOR e amarrado ao tipo do edital, como na vaga: Regular pede
+         *     `project_id`, Suplementar pede `research_line_id`.
+         */
+        BoardIn: {
+            /** Process Id */
+            process_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            /** President Id */
+            president_id: number;
+            /** Member 1 Id */
+            member_1_id: number;
+            /** Member 2 Id */
+            member_2_id: number;
+            /** Alternate Id */
+            alternate_id: number;
+        };
+        /**
+         * BoardPatch
+         * @description Correção da banca — enquanto nenhuma ata dela saiu do rascunho.
+         *
+         *     `process_id` não está aqui: mudar a banca de edital seria criar outra
+         *     banca. O alvo e os quatro papéis mudam porque impedimento e
+         *     substituição de examinador acontecem antes da primeira sessão.
+         */
+        BoardPatch: {
+            level?: components["schemas"]["SelectionLevel"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            /** President Id */
+            president_id?: number | null;
+            /** Member 1 Id */
+            member_1_id?: number | null;
+            /** Member 2 Id */
+            member_2_id?: number | null;
+            /** Alternate Id */
+            alternate_id?: number | null;
+        };
+        /**
+         * BoardStageOut
+         * @description A etapa do edital, como a tela do docente a vê dentro da banca.
+         *
+         *     Existe separada de `SelectionStageOut` porque o Docente **não** tem
+         *     `view_selectionstage` (migration 0006): quem compõe banca lê a etapa
+         *     pela própria banca, e não pela grade do edital. Sem `tiebreak_rank` e
+         *     sem carimbos — para lançar nota basta saber qual sessão é, quando e
+         *     onde.
+         */
+        BoardStageOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at: string | null;
+            /** Location */
+            location: string;
+        };
+        /**
+         * MyBoardOut
+         * @description Uma banca do docente da sessão, com as etapas do edital embutidas.
+         *
+         *     As etapas viajam junto pelo motivo acima: a tela "minhas bancas"
+         *     precisa oferecer a lista de sessões para lançar nota, e o docente não
+         *     tem rota para buscá-las.
+         */
+        MyBoardOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            president: components["schemas"]["BoardMemberOut"];
+            member_1: components["schemas"]["BoardMemberOut"];
+            member_2: components["schemas"]["BoardMemberOut"];
+            alternate: components["schemas"]["BoardMemberOut"];
+            /** In Use */
+            in_use: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Stages */
+            stages: components["schemas"]["BoardStageOut"][];
+        };
+        /**
+         * StageScoreOut
+         * @description Uma linha da planilha da banca: o candidato vivo e a nota atual.
+         *
+         *     A planilha nasce das **inscrições**, não das notas: enquanto a banca
+         *     não lançou, a linha existe com `scored: false` e `score: null`. É o
+         *     que faz a tela mostrar quem falta avaliar em vez de uma lista vazia.
+         *
+         *     A nota da etapa chega pré-carregada em `nota_da_etapa` (um
+         *     `Prefetch` com `to_attr` no router), então nenhuma linha desta lista
+         *     consulta o banco por conta própria.
+         */
+        StageScoreOut: {
+            /** Application Id */
+            application_id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            level: components["schemas"]["SelectionLevel"];
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Scored */
+            scored: boolean;
+            /** Score */
+            score: string | null;
+            /** Absent */
+            absent: boolean;
+            /** Passed */
+            passed: boolean;
+            /** Entered At */
+            entered_at: string | null;
+            /** Entered By */
+            entered_by: string;
+        };
+        /**
+         * StageScoreIn
+         * @description Uma linha do lote de notas: a inscrição e a nota — ou a ausência.
+         *
+         *     `score` e `absent` são XOR, e quem cobra é `StageScore.clean()`
+         *     (`absent_xor_score`), não o schema: é invariante do model, e vale
+         *     também para quem escrever fora da rota.
+         */
+        StageScoreIn: {
+            /** Application Id */
+            application_id: number;
+            /** Score */
+            score?: number | string | null;
+            /**
+             * Absent
+             * @default false
+             */
+            absent: boolean;
+        };
+        /**
+         * ExaminationRecordOut
+         * @description A ata de uma etapa, com o conteúdo congelado embutido.
+         *
+         *     É o schema das rotas que tratam de **uma** ata — a da banca, a do
+         *     examinador, a retificação. O `content` é a fotografia das notas no
+         *     instante do congelamento, e é sobre ele que o `content_hash` (herdado
+         *     do resumo) é calculado.
+         */
+        ExaminationRecordOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Board Id */
+            board_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            /** Replaced Member Id */
+            replaced_member_id: number | null;
+            /** Replaced Member Name */
+            replaced_member_name: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["RecordStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Hash Ok */
+            hash_ok: boolean;
+            /** Has Pdf */
+            has_pdf: boolean;
+            /** Frozen At */
+            frozen_at: string | null;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signatures */
+            signatures: components["schemas"]["RecordSignatureOut"][];
+            /** Pending Signatures */
+            pending_signatures: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Content */
+            content: components["schemas"]["RecordRowOut"][];
+        };
+        /**
+         * RecordRowOut
+         * @description Uma linha do `content` da ata — a nota como ela foi congelada.
+         *
+         *     Não é lida do `StageScore`: vem do JSON gravado na ata, que é o que o
+         *     `content_hash` cobre. Depois do congelamento a fonte da verdade da
+         *     ata é ela mesma, e não a tabela de notas, que pode ter sido corrigida
+         *     numa versão seguinte.
+         *
+         *     `score` é **string** de propósito (`"85.50"`): é assim que está no
+         *     JSON, porque `float` mudaria o hash entre gravações.
+         */
+        RecordRowOut: {
+            /** Application Id */
+            application_id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Quota Category */
+            quota_category: string;
+            /** Score */
+            score: string | null;
+            /** Absent */
+            absent: boolean;
+            /** Passed */
+            passed: boolean;
+        };
+        /**
+         * RecordSignatureOut
+         * @description Uma assinatura da ata, como as telas a mostram.
+         *
+         *     O `token_hash` **não** sai daqui, e nem o token: o que a secretaria
+         *     precisa saber é se o e-mail saiu (`token_sent_at`) e até quando o
+         *     link vale. Do hash assinado viajam só os 12 primeiros dígitos — o
+         *     suficiente para conferir a olho contra o rodapé do PDF, e nada além.
+         */
+        RecordSignatureOut: {
+            /** Id */
+            id: number;
+            /** Signer Id */
+            signer_id: number;
+            /** Signer Name */
+            signer_name: string;
+            /** Signer Category */
+            signer_category: string;
+            /** Signer Institution */
+            signer_institution: string;
+            method: components["schemas"]["SignatureMethod"];
+            /** Method Label */
+            method_label: string;
+            /** Signed */
+            signed: boolean;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signed Hash Prefix */
+            signed_hash_prefix: string;
+            /** Token Sent At */
+            token_sent_at: string | null;
+            /** Token Expires At */
+            token_expires_at: string | null;
+        };
+        /**
+         * RecordStatus
+         * @enum {string}
+         */
+        RecordStatus: "draft" | "awaiting_signatures" | "signed" | "superseded";
+        /**
+         * SignatureMethod
+         * @enum {string}
+         */
+        SignatureMethod: "login" | "token";
+        /**
+         * RecordFreezeIn
+         * @description Congelamento da ata, com o titular impedido quando houver.
+         *
+         *     Só isso: o conteúdo da ata não vem do cliente em hipótese nenhuma —
+         *     ele é lido das notas no servidor, no instante do congelamento.
+         */
+        RecordFreezeIn: {
+            /** Replaced Member Id */
+            replaced_member_id?: number | null;
+        };
+        /**
+         * RecordSignIn
+         * @description Assinatura da ata pelo examinador logado.
+         *
+         *     `content_hash` é o hash que a tela mostrou ao signatário. Vazio
+         *     significa "assino o que está aí agora"; preenchido, o servidor confere
+         *     e recusa com `record_changed` se a ata mudou desde a leitura — a
+         *     assinatura vale sobre um texto, não sobre um identificador de ata.
+         */
+        RecordSignIn: {
+            /**
+             * Content Hash
+             * @default
+             */
+            content_hash: string;
+        };
+        /** PagedRecordSummaryOut */
+        PagedRecordSummaryOut: {
+            /** Items */
+            items: components["schemas"]["RecordSummaryOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * RecordSummaryOut
+         * @description A ata sem o conteúdo: cabeçalho, situação e assinaturas.
+         *
+         *     É o que a listagem da secretaria (`GET /records/`) devolve. O
+         *     `content` fica de fora porque a lista traz **todas** as atas de um
+         *     edital — etapa × nível × alvo, mais as versões antigas —, e cada
+         *     conteúdo é a planilha inteira daquele alvo. Quem precisa das notas
+         *     abre a ata (ou o PDF); quem acompanha o edital precisa de situação e
+         *     de quem falta assinar.
+         *
+         *     As assinaturas viajam dentro da ata, e não numa rota própria, pelo
+         *     mesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem
+         *     `view_recordsignature` (migration 0006), e a tela dele precisa
+         *     mostrar quem já assinou. Uma ata tem três assinaturas — não há o que
+         *     paginar.
+         *
+         *     `content_hash` sai inteiro porque é ele que o examinador confere
+         *     antes de assinar (a rota de assinatura o recebe de volta).
+         */
+        RecordSummaryOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Board Id */
+            board_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            /** Replaced Member Id */
+            replaced_member_id: number | null;
+            /** Replaced Member Name */
+            replaced_member_name: string;
+            /** Version */
+            version: number;
+            status: components["schemas"]["RecordStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Hash Ok */
+            hash_ok: boolean;
+            /** Has Pdf */
+            has_pdf: boolean;
+            /** Frozen At */
+            frozen_at: string | null;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signatures */
+            signatures: components["schemas"]["RecordSignatureOut"][];
+            /** Pending Signatures */
+            pending_signatures: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * PublicOptionOut
+         * @description Uma opção do formulário público — nível ou categoria de cota.
+         *
+         *     Rótulo junto do valor porque a tela pública não tem a tabela de
+         *     `TextChoices` do backend e não pode inventar tradução.
+         */
+        PublicOptionOut: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * PublicProcessOut
+         * @description Edital aberto, como a página pública o mostra.
+         *
+         *     `program_acronym` viaja porque esta listagem NÃO é escopada por tenant
+         *     (não há sessão de onde tirar o programa, e edital publicado é
+         *     documento público): sem a sigla, dois editais de programas diferentes
+         *     apareceriam como dois títulos indistinguíveis.
+         *
+         *     `levels`, `targets` e `quota_categories` são derivados das vagas com
+         *     `quantity > 0` — é o que o formulário oferece. Oferecer combinação sem
+         *     vaga só levaria o candidato a preencher tudo para receber
+         *     `no_vacancy_for_choice` no fim.
+         */
+        PublicProcessOut: {
+            /** Id */
+            id: number;
+            kind: components["schemas"]["SelectionKind"];
+            /** Kind Label */
+            kind_label: string;
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            /** Program Acronym */
+            program_acronym: string;
+            /**
+             * Submission Opens At
+             * Format: date-time
+             */
+            submission_opens_at: string;
+            /**
+             * Submission Closes At
+             * Format: date-time
+             */
+            submission_closes_at: string;
+            /** Notice Url */
+            notice_url: string;
+            /** Stages */
+            stages: components["schemas"]["PublicStageOut"][];
+            /** Vacancies */
+            vacancies: components["schemas"]["PublicVacancyOut"][];
+            /** Levels */
+            levels: components["schemas"]["PublicOptionOut"][];
+            /** Targets */
+            targets: components["schemas"]["PublicTargetOut"][];
+            /** Quota Categories */
+            quota_categories: components["schemas"]["PublicOptionOut"][];
+        };
+        /**
+         * PublicStageOut
+         * @description Etapa como o candidato a vê no edital aberto.
+         *
+         *     Sem `id` de nada além da própria etapa e sem carimbo técnico: esta é a
+         *     página que qualquer um na internet abre, e o que não serve para o
+         *     candidato decidir se se inscreve não sai daqui.
+         */
+        PublicStageOut: {
+            /** Name */
+            name: string;
+            /** Order */
+            order: number;
+            /** Session At */
+            session_at: string | null;
+            /** Location */
+            location: string;
+        };
+        /**
+         * PublicTargetOut
+         * @description Alvo com vaga aberta: projeto coletivo (Regular) ou linha
+         *     (Suplementar). Um dos dois ids é sempre nulo — é o XOR do model.
+         */
+        PublicTargetOut: {
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Label */
+            label: string;
+        };
+        /**
+         * PublicVacancyOut
+         * @description Combinação nível × alvo × cota que ainda tem vaga.
+         *
+         *     A quantidade viaja porque o edital é público: quantas vagas há em cada
+         *     linha da grade é informação do próprio documento, não dado interno.
+         */
+        PublicVacancyOut: {
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Quantity */
+            quantity: number;
+        };
+        /**
+         * ApplicationReceiptOut
+         * @description O comprovante que o candidato anota: protocolo e instante.
+         *
+         *     Nada mais sai daqui. O que ele digitou já está na tela dele, e o que o
+         *     sistema decidiu depois (homologação) se consulta pelo protocolo.
+         */
+        ApplicationReceiptOut: {
+            /** Protocol */
+            protocol: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+        };
+        /**
+         * ApplicationIn
+         * @description O formulário público de inscrição, sem os anexos.
+         *
+         *     Vai por `Form(...)` porque a requisição é multipart: o candidato manda
+         *     os dados e os cinco a sete documentos num POST só (não há sessão para
+         *     guardar rascunho entre chamadas).
+         *
+         *     Sem `program_id`: o tenant é o programa do edital, resolvido por
+         *     `edital_com_inscricao_aberta`. Sem `status` nem `protocol` — os dois
+         *     são do servidor.
+         */
+        ApplicationIn: {
+            /** Process Id */
+            process_id: number;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /** Cpf */
+            cpf: string;
+            /**
+             * Birth Date
+             * Format: date
+             */
+            birth_date: string;
+            /**
+             * Phone Number
+             * @default
+             */
+            phone_number: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+            quota_category: components["schemas"]["QuotaCategory"];
+        };
+        /**
+         * ApplicationStatus
+         * @enum {string}
+         */
+        ApplicationStatus: "submitted" | "homologated" | "rejected" | "eliminated" | "approved" | "enrolled";
+        /**
+         * ApplicationStatusOut
+         * @description A consulta pública de protocolo.
+         *
+         *     Sem nome, CPF, e-mail ou documento: quem tem o protocolo pode não ser o
+         *     candidato (ele passa o número adiante), então a resposta diz só em que
+         *     pé está a inscrição.
+         */
+        ApplicationStatusOut: {
+            /** Protocol */
+            protocol: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Process Title */
+            process_title: string;
+        };
+        /**
+         * PublicSignatureOut
+         * @description A ata como o examinador externo a vê antes de assinar.
+         *
+         *     Cabeçalho, conteúdo e hash: é o mesmo documento que os examinadores
+         *     logados conferem, com o que o link precisa dizer a quem chegou por
+         *     e-mail (para quem é, e até quando vale).
+         *
+         *     O que **não** sai daqui, e sai em `ExaminationRecordOut`: os ids de
+         *     banca e programa, as outras assinaturas e o hash das demais. Quem tem
+         *     o link é examinador de uma ata, não usuário do sistema — ele confere
+         *     o texto que assina, e nada sobre o resto do processo.
+         */
+        PublicSignatureOut: {
+            /** Signer Name */
+            signer_name: string;
+            /** Signer Institution */
+            signer_institution: string;
+            /** Process Title */
+            process_title: string;
+            /** Stage Name */
+            stage_name: string;
+            /** Level Label */
+            level_label: string;
+            /** Target Label */
+            target_label: string;
+            /** Version */
+            version: number;
+            /** Content */
+            content: components["schemas"]["RecordRowOut"][];
+            /** Content Hash */
+            content_hash: string;
+            /** Hash Ok */
+            hash_ok: boolean;
+            /** Frozen At */
+            frozen_at: string | null;
+            /** Token Expires At */
+            token_expires_at: string | null;
+            /** Pending Signatures */
+            pending_signatures: number;
+        };
+        /**
+         * PublicSignatureReceiptOut
+         * @description O comprovante da assinatura por token.
+         *
+         *     O equivalente do `ApplicationReceiptOut` do candidato: quem assinou,
+         *     quando, sobre qual hash e o que falta. Depois disto o link não abre
+         *     mais (uso único), então a confirmação precisa vir na própria resposta
+         *     — não há tela para onde voltar.
+         */
+        PublicSignatureReceiptOut: {
+            /** Signer Name */
+            signer_name: string;
+            /** Signed At */
+            signed_at: string | null;
+            /** Signed Hash */
+            signed_hash: string;
+            record_status: components["schemas"]["RecordStatus"];
+            /** Record Status Label */
+            record_status_label: string;
+            /** Pending Signatures */
+            pending_signatures: number;
+        };
+        /**
+         * ApplicationOut
+         * @description A inscrição como a lista da secretaria a vê.
+         *
+         *     O CPF viaja inteiro: quem lê esta rota é a secretaria, que confere a
+         *     inscrição contra o documento anexado, e a busca da tela é por nome,
+         *     protocolo ou CPF. A rota pública de protocolo (`ApplicationStatusOut`)
+         *     continua sem nada disso.
+         */
+        ApplicationOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /** Cpf */
+            cpf: string;
+            /** Phone Number */
+            phone_number: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+        };
+        /** PagedApplicationOut */
+        PagedApplicationOut: {
+            /** Items */
+            items: components["schemas"]["ApplicationOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * ApplicationDetailOut
+         * @description O detalhe da inscrição: a lista mais os anexos.
+         *
+         *     `missing_documents` sai resolvido porque quem homologa precisa saber,
+         *     na mesma tela, se o candidato mandou tudo o que o edital e a cota dele
+         *     exigem — a conta é do model (`required_document_kinds`), não da tela.
+         */
+        ApplicationDetailOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Process Title */
+            process_title: string;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /** Cpf */
+            cpf: string;
+            /** Phone Number */
+            phone_number: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /**
+             * Birth Date
+             * Format: date
+             */
+            birth_date: string;
+            /** Documents */
+            documents: components["schemas"]["ApplicationDocumentOut"][];
+            /** Missing Documents */
+            missing_documents: string[];
+        };
+        /**
+         * ApplicationDocumentOut
+         * @description Um anexo da inscrição, sem o caminho do arquivo.
+         *
+         *     Nem `file` nem `file.url` entram aqui, pelo mesmo motivo de
+         *     `academic.RequestDocumentOut`: o MEDIA é servido pelo Nginx sem passar
+         *     pelo Django, então publicar a URL entregaria o documento de identidade
+         *     do candidato a quem descobrisse o endereço — e sem `AuditLog`. O único
+         *     caminho para o conteúdo é a rota de download, que exige
+         *     `download_applicationdocument` e registra a leitura.
+         */
+        ApplicationDocumentOut: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Kind Label */
+            kind_label: string;
+            /** Filename */
+            filename: string;
+            /** Size */
+            size: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
+         * ApplicationDecisionIn
+         * @description A justificativa da decisão da secretaria.
+         *
+         *     Uma entrada para as duas rotas: na homologação a nota é opcional
+         *     (registra a conferência, quando há algo a dizer) e no indeferimento é
+         *     obrigatória — quem cobra é `Application.reject`, com
+         *     `rejection_requires_note`, e não o schema: a regra é do domínio.
+         */
+        ApplicationDecisionIn: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * ConvocableApplicationOut
+         * @description Um candidato que a etapa pode convocar, como a tela o mostra antes
+         *     de disparar o lote.
+         *
+         *     Quem decide o que é "convocável" é `Application.objects.convocable_for`
+         *     — na etapa 1, quem está vivo; da 2 em diante, só as chaves cuja ata
+         *     anterior está assinada. A tela nunca refaz essa conta: ela lê esta
+         *     rota. `already_convoked` é o que o disparo vai pular (quem já recebeu
+         *     e-mail nesta etapa, em lote nenhum), e existe para a secretaria saber
+         *     de antemão quantos e-mails o botão manda.
+         */
+        ConvocableApplicationOut: {
+            /** Id */
+            id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Already Convoked */
+            already_convoked: boolean;
+        };
+        /**
+         * ConvocationOut
+         * @description Um lote de convocação, com a contagem por situação.
+         *
+         *     É o resumo que a listagem devolve (mesma separação de
+         *     `RecordSummaryOut`): a tela do edital mostra "10 enviados, 2
+         *     falharam" por lote, e só quem abre o lote precisa da lista de
+         *     destinatários.
+         *
+         *     `subject` é a cópia guardada no disparo, não o template atual do
+         *     edital — se alguém editou o edital depois, o que vale para o
+         *     candidato é o que saiu.
+         */
+        ConvocationOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Subject */
+            subject: string;
+            /** Sent By Name */
+            sent_by_name: string;
+            /** Total */
+            total: number;
+            /** Sent */
+            sent: number;
+            /** Failed */
+            failed: number;
+            /** Pending */
+            pending: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ConvocationDetailOut
+         * @description O lote com os destinatários — resposta do disparo e do reenvio,
+         *     onde a secretaria precisa ver na hora quem ficou de fora.
+         */
+        ConvocationDetailOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            /** Stage Id */
+            stage_id: number;
+            /** Stage Name */
+            stage_name: string;
+            /** Subject */
+            subject: string;
+            /** Sent By Name */
+            sent_by_name: string;
+            /** Total */
+            total: number;
+            /** Sent */
+            sent: number;
+            /** Failed */
+            failed: number;
+            /** Pending */
+            pending: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Emails */
+            emails: components["schemas"]["ConvocationEmailOut"][];
+        };
+        /**
+         * ConvocationEmailOut
+         * @description Um e-mail do lote, com o resultado da entrega.
+         *
+         *     O corpo renderizado **não** viaja: são dezenas por lote, e a tela
+         *     mostra situação, destinatário e o erro de quem falhou — que é o que
+         *     a secretaria usa para decidir reenviar ou corrigir o endereço.
+         */
+        ConvocationEmailOut: {
+            /** Id */
+            id: number;
+            /** Application Id */
+            application_id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** To Email */
+            to_email: string;
+            status: components["schemas"]["EmailDeliveryStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Attempts */
+            attempts: number;
+            /** Error */
+            error: string;
+            /** Sent At */
+            sent_at: string | null;
+        };
+        /**
+         * EmailDeliveryStatus
+         * @enum {string}
+         */
+        EmailDeliveryStatus: "pending" | "sent" | "failed";
+        /**
+         * RankedApplicationOut
+         * @description Um candidato na lista de classificação.
+         *
+         *     `tie_unresolved` não é campo do banco: é recalculado da nota e das
+         *     notas de desempate a cada leitura, e marca quem o edital não conseguiu
+         *     desempatar — a posição entre eles saiu do número da inscrição, que não
+         *     é critério nenhum. Quem vê isto na tela precisa decidir fora do
+         *     sistema.
+         */
+        RankedApplicationOut: {
+            /** Id */
+            id: number;
+            /** Protocol */
+            protocol: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Target Label */
+            target_label: string;
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Final Score */
+            final_score: string | null;
+            /** Final Rank */
+            final_rank: number | null;
+            /** Final Outcome */
+            final_outcome: string;
+            /** Final Outcome Label */
+            final_outcome_label: string;
+            /** Ranked At */
+            ranked_at: string | null;
+            /** Tie Unresolved */
+            tie_unresolved: boolean;
+            /** Student Id */
+            student_id: number | null;
+        };
+        /**
+         * RankingOut
+         * @description A classificação de um (nível × alvo): vagas, lista e a trava.
+         *
+         *     `locked` é o que desabilita o botão de recalcular na tela: com alguém
+         *     já matriculado na chave, a lista virou matrícula e não se reescreve
+         *     (`ranking_locked`). `computed_at` é o carimbo do último cálculo — nulo
+         *     quando a chave ainda não foi classificada.
+         */
+        RankingOut: {
+            /** Process Id */
+            process_id: number;
+            level: components["schemas"]["SelectionLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Research Line Id */
+            research_line_id: number | null;
+            /** Target Label */
+            target_label: string;
+            /** Seats */
+            seats: components["schemas"]["RankingSeatOut"][];
+            /** Total Seats */
+            total_seats: number;
+            /** Locked */
+            locked: boolean;
+            /** Computed At */
+            computed_at: string | null;
+            /** Applications */
+            applications: components["schemas"]["RankedApplicationOut"][];
+        };
+        /**
+         * RankingSeatOut
+         * @description Uma linha da grade de vagas do alvo, como a tela do resultado a mostra.
+         */
+        RankingSeatOut: {
+            quota_category: components["schemas"]["QuotaCategory"];
+            /** Quota Category Label */
+            quota_category_label: string;
+            /** Quantity */
+            quantity: number;
+        };
+        /**
+         * RankingIn
+         * @description O recorte a classificar: um nível e um alvo.
+         *
+         *     A classificação nunca é do edital inteiro — quem disputa entre si é
+         *     quem concorre ao mesmo nível e ao mesmo alvo, porque é dele a grade de
+         *     vagas. O alvo é XOR e amarrado ao tipo do edital (`ensure_target`).
+         */
+        RankingIn: {
+            level: components["schemas"]["SelectionLevel"];
+            /** Project Id */
+            project_id?: number | null;
+            /** Research Line Id */
+            research_line_id?: number | null;
+        };
+        /**
+         * ReallocationKind
+         * @enum {string}
+         */
+        ReallocationKind: "level_transfer" | "notice_rectification";
+        /**
+         * VacancyReallocationOut
+         * @description A realocação como o histórico da tela de resultado a mostra.
+         *
+         *     As duas vagas viajam inteiras (`VacancyOut`), com rótulo e nome do
+         *     alvo já resolvidos: a linha do histórico precisa dizer "1 vaga de
+         *     ampla, mestrado → doutorado" sem a tela cruzar ids.
+         *
+         *     `quantity` da vaga é o saldo **de agora**, não o do dia da decisão:
+         *     realocação não guarda foto da grade, e uma segunda realocação sobre a
+         *     mesma linha muda o número que aparece aqui.
+         */
+        VacancyReallocationOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Process Id */
+            process_id: number;
+            kind: components["schemas"]["ReallocationKind"];
+            /** Kind Label */
+            kind_label: string;
+            from_vacancy: components["schemas"]["VacancyOut"];
+            to_vacancy: components["schemas"]["VacancyOut"];
+            /** Quantity */
+            quantity: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Decided On
+             * Format: date
+             */
+            decided_on: string;
+            /** Decided By Note */
+            decided_by_note: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * VacancyReallocationIn
+         * @description A decisão da comissão que move vaga de uma linha da grade para outra.
+         *
+         *     Sem `program_id` e sem `process_id`: o programa é o da sessão e o
+         *     edital vem da URL. `decided_by_note` é o número do ofício ou da ata —
+         *     sem ele a realocação seria um número mudando no banco sem autoria.
+         *
+         *     A espécie decide o que pode mudar: `level_transfer` é o mesmo alvo
+         *     entre níveis diferentes, `notice_rectification` é o mesmo nível com
+         *     alvo diferente. A categoria de cota é sempre preservada.
+         */
+        VacancyReallocationIn: {
+            kind: components["schemas"]["ReallocationKind"];
+            /** From Vacancy Id */
+            from_vacancy_id: number;
+            /** To Vacancy Id */
+            to_vacancy_id: number;
+            /** Quantity */
+            quantity: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Decided On
+             * Format: date
+             */
+            decided_on: string;
+            /** Decided By Note */
+            decided_by_note: string;
+        };
+        /**
+         * EnrollmentOut
+         * @description O vínculo recém-criado e a inscrição que virou ele.
+         *
+         *     Os dois juntos porque a tela precisa dos dois: o aluno para o link de
+         *     `/alunos` e a inscrição já em `enrolled` para trocar a linha da lista
+         *     de classificação sem recarregar tudo.
+         *
+         *     `deadline` sai preenchido sem ter entrado: o prazo regimental é
+         *     calculado no `Student.save()` a partir do ingresso e do nível.
+         */
+        EnrollmentOut: {
+            /** Student Id */
+            student_id: number;
+            /** Person Id */
+            person_id: number;
+            /** Registration Number */
+            registration_number: string;
+            /** Level */
+            level: string;
+            /** Project Id */
+            project_id: number;
+            /**
+             * Admission Date
+             * Format: date
+             */
+            admission_date: string;
+            /** Deadline */
+            deadline: string | null;
+            application: components["schemas"]["ApplicationDetailOut"];
+        };
+        /**
+         * ApplicationEnrollIn
+         * @description O que a secretaria digita para transformar o classificado em aluno.
+         *
+         *     `registration_number` vem de fora: quem emite matrícula é o sistema da
+         *     UFMG. `project_id` é obrigatório mesmo no Regular, em que a inscrição
+         *     já traz o projeto — o vínculo do aluno não herda por acidente um campo
+         *     que a CheckConstraint do `Student` exige (armadilha 16 do plano), e no
+         *     Suplementar a inscrição só tem linha de pesquisa.
+         */
+        ApplicationEnrollIn: {
+            /** Registration Number */
+            registration_number: string;
+            /**
+             * Admission Date
+             * Format: date
+             */
+            admission_date: string;
+            /** Project Id */
+            project_id: number;
         };
     };
     responses: never;
@@ -3747,6 +6366,1277 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IsolatedSignupOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_processes: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["SelectionKind"] | null;
+                status?: components["schemas"]["SelectionProcessStatus"] | null;
+                year?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedSelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionProcessIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_update_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionProcessPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_publish_process_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_close_process: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_upload_notice_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionProcessOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_stages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionStageOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionStageIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionStageOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_delete_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_selection_router_update_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectionStagePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectionStageOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_vacancies: {
+        parameters: {
+            query?: {
+                level?: components["schemas"]["SelectionLevel"] | null;
+                quota_category?: components["schemas"]["QuotaCategory"] | null;
+            };
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_vacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VacancyIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_update_vacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                vacancy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VacancyPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_boards: {
+        parameters: {
+            query?: {
+                process_id?: number | null;
+                level?: components["schemas"]["SelectionLevel"] | null;
+                project_id?: number | null;
+                research_line_id?: number | null;
+                teacher_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedBoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_update_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_my_boards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyBoardOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_stage_scores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageScoreOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_set_stage_scores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StageScoreIn"][];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageScoreOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_refresh_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_freeze_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordFreezeIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_reopen_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_sign_stage_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSignIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationRecordOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_records: {
+        parameters: {
+            query: {
+                process_id: number;
+                stage_id?: number | null;
+                status?: components["schemas"]["RecordStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedRecordSummaryOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_download_record_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_selection_router_resend_signature_token_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: number;
+                signature_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordSignatureOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_public_processes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProcessOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_submit_public_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Process Id */
+                    process_id: number;
+                    /** Full Name */
+                    full_name: string;
+                    /** Email */
+                    email: string;
+                    /** Cpf */
+                    cpf: string;
+                    /**
+                     * Birth Date
+                     * Format: date
+                     */
+                    birth_date: string;
+                    /**
+                     * Phone Number
+                     * @default
+                     */
+                    phone_number?: string;
+                    /**
+                     * SelectionLevel
+                     * @description Mesmos valores de `Student.Level` — a conversão em aluno copia direto.
+                     * @enum {string}
+                     */
+                    level: "masters" | "doctorate";
+                    /** Project Id */
+                    project_id?: number | null;
+                    /** Research Line Id */
+                    research_line_id?: number | null;
+                    /**
+                     * QuotaCategory
+                     * @enum {string}
+                     */
+                    quota_category: "open" | "racial" | "disability" | "quilombola" | "trans" | "indigenous";
+                    /**
+                     * Identity
+                     * Format: binary
+                     */
+                    identity: string;
+                    /**
+                     * Diploma
+                     * Format: binary
+                     */
+                    diploma: string;
+                    /**
+                     * Lattes
+                     * Format: binary
+                     */
+                    lattes: string;
+                    /**
+                     * Payment Receipt
+                     * Format: binary
+                     */
+                    payment_receipt: string;
+                    /** Expanded Abstract */
+                    expanded_abstract?: string | null;
+                    /** Memorial */
+                    memorial?: string | null;
+                    /** Quota Proof */
+                    quota_proof?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationReceiptOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_public_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                protocol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationStatusOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_public_signature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSignatureOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_sign_public_signature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSignIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSignatureReceiptOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_applications: {
+        parameters: {
+            query?: {
+                process_id?: number | null;
+                status?: components["schemas"]["ApplicationStatus"] | null;
+                level?: components["schemas"]["SelectionLevel"] | null;
+                quota_category?: components["schemas"]["QuotaCategory"] | null;
+                project_id?: number | null;
+                research_line_id?: number | null;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedApplicationOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_homologate_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_reject_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_download_application_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_selection_router_list_convocable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocableApplicationOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_convocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_send_convocations_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+                stage_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_convocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                convocation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_resend_convocation_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                convocation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvocationDetailOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_get_ranking: {
+        parameters: {
+            query: {
+                /** @description Mesmos valores de `Student.Level` — a conversão em aluno copia direto. */
+                level: "masters" | "doctorate";
+                project_id?: number | null;
+                research_line_id?: number | null;
+            };
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankingOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_compute_ranking_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RankingIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RankingOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_list_reallocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyReallocationOut"][];
+                };
+            };
+        };
+    };
+    apps_selection_router_create_reallocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VacancyReallocationIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VacancyReallocationOut"];
+                };
+            };
+        };
+    };
+    apps_selection_router_enroll_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationEnrollIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentOut"];
                 };
             };
         };

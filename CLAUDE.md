@@ -319,6 +319,13 @@ não só no README).
 - Toda chamada de API via `lib/api/client.ts` tipado; `fetch` cru é
   proibido nas telas.
 - `schema.d.ts` é gerado; PR que o edita à mão é recusado.
+- Navegação interna sempre por `resolve()` de `$app/paths` — o lint
+  `svelte/no-navigation-without-resolve` recusa `href` literal, e a rota
+  tipada do SvelteKit só conhece o que já existe em `src/routes/`. Link
+  para tela ainda não escrita exige criar a rota (nem que seja um
+  `+page.svelte` marcador). URL de `/api/` e de `/media/` **não** é rota da
+  SPA: ali `resolve()` não se aplica e o `eslint-disable` local da regra é
+  o padrão do projeto.
 - Formulários: validação de UX no front, mas a validação que vale é a do
   schema Ninja no backend. Nunca confiar só no front.
 
@@ -381,6 +388,16 @@ consequências. Já valem como decididos:
   **todo o resto dos models de negócio carrega FK `program` direta**,
   mesmo quando alcançável por navegação — sem ela o `AuditLog` perde a
   chave de tenant.
+- **ADR-008**: o PDF da ata do processo seletivo sai do **ReportLab**, montado
+  em `apps/selection/pdf.py`; sem HTML-para-PDF e sem binário externo. O texto
+  da ata continua sendo o `content` congelado no banco — o PDF é renderização,
+  nunca a fonte.
+- **ADR-009**: e-mail (token de assinatura, convocação) vai por
+  `django.core.mail`, **síncrono e sem fila** — nada de Celery, retry automático
+  ou broker. Falha de envio vira linha visível e reenviável pela secretaria
+  (`ConvocationEmail` com status), não exceção engolida. O envio fica **fora**
+  do `transaction.atomic`. SPF/DKIM/relay de produção se alinham com a infra;
+  ambiente que envia precisa de `SITE_URL`.
 
 ## 12. O que este projeto NÃO faz (anti-padrões)
 
@@ -497,3 +514,25 @@ memória entre elas:
   dessas custa uma iteração inteira quando o agente descobre sozinho — e às vezes
   ele não descobre, e conclui que o código está errado.
 - **O glossário do domínio**, se a conversa é num idioma e o código em outro.
+
+As que já custaram iteração aqui:
+
+- **Dependência nova só entra no container com rebuild.** `uv add <pacote>`
+  atualiza `pyproject.toml` e o lockfile, mas a imagem continua a antiga: o
+  `pytest` do host passa e o container quebra com `ModuleNotFoundError` em
+  runtime. `docker compose up -d --build backend` (e `docker compose restart
+  nginx` junto, porque o `upstream django` resolve `backend:8000` uma vez e o
+  container novo ganha IP novo).
+- **E-mail em canteiro não sai para a internet** — vai para o serviço `mailpit`
+  do Compose (SMTP em 1025, API HTTP em `http://mailpit:8025`), e em `pytest` o
+  backend é `locmem` (`django.core.mail.outbox`). Nenhum dos dois falha visível
+  quando algo está errado: sem
+  `django_capture_on_commit_callbacks(execute=True)` o `on_commit` não roda e a
+  caixa fica vazia **em silêncio**. Como ler a caixa do canteiro está na Seção 5
+  do `manual_dev.md` — a imagem do backend não tem `curl`.
+- **Link que vai em e-mail se monta com `settings.SITE_URL`, nunca com
+  `request.build_absolute_uri()`.** O e-mail é aberto no navegador do
+  destinatário, fora de qualquer request: o `build_absolute_uri` traria o host
+  interno do container (`backend:8000`) ou o de quem disparou, e o link chegaria
+  quebrado. `SITE_URL` já vem sem barra final (`rstrip("/")` no settings) —
+  monte como `f"{settings.SITE_URL}/selecao/assinatura/{token}"`.

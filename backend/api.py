@@ -14,6 +14,7 @@ from apps.accounts.router import users_router as accounts_users_router
 from apps.core.exceptions import DomainError
 from apps.people.router import router as people_router
 from apps.programs.router import router as programs_router
+from apps.selection.router import router as selection_router
 
 api = NinjaAPI(
     title="PPGD Manager API",
@@ -72,3 +73,4 @@ api.add_router("/accounts/", accounts_users_router)
 api.add_router("/programs/", programs_router)
 api.add_router("/people/", people_router)
 api.add_router("/academic/", academic_router)
+api.add_router("/selection/", selection_router)

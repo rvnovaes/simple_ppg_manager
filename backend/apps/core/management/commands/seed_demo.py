@@ -23,6 +23,8 @@ exigir `program_id` em toda rota:
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from django.conf import settings
@@ -52,6 +54,25 @@ from apps.programs.models import (
     Program,
     ResearchLine,
 )
+from apps.selection import services as selecao
+from apps.selection.models import (
+    Application,
+    ApplicationDocument,
+    ApplicationStatus,
+    Board,
+    Convocation,
+    ExaminationRecord,
+    QuotaCategory,
+    RankingOutcome,
+    SelectionKind,
+    SelectionLevel,
+    SelectionProcess,
+    SelectionProcessStatus,
+    SelectionStage,
+    StageScore,
+    Vacancy,
+    gerar_protocolo,
+)
 
 User = get_user_model()
 
@@ -68,6 +89,43 @@ PDF_MINIMO = (
     b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n"
     b"trailer<</Root 1 0 R>>\n%%EOF\n"
 )
+
+
+# Ano do processo seletivo da carga (PS2027) — é o ano do ingresso, e não
+# o ano em que o edital saiu. Fixo de propósito: a janela de inscrição é
+# que é relativa ao instante da carga, para nunca nascer vencida.
+ANO_DA_SELECAO = 2027
+
+# Onde a carga escreve as contas que criou. Fica na raiz do repositório
+# (o `BASE_DIR` é `backend/`) e é ignorado pelo git — são senhas conhecidas.
+ARQUIVO_DE_CONTAS = "CONTAS-DEMO.txt"
+
+
+@dataclass(frozen=True)
+class InscricaoDemo:
+    """Um candidato do processo seletivo e o estado em que ele nasce.
+
+    `alvo` é o índice do projeto coletivo (edital Regular) ou o da linha
+    de pesquisa (Suplementar) — quem escolhe entre os dois é o tipo do
+    edital, exatamente como `SelectionProcess.ensure_target`.
+
+    `nota` é a da **primeira** etapa: é ela que a ata da carga congela.
+    `classificacao`/`desfecho` só existem para quem já nasce aprovado, que
+    é o atalho para a tela de resultado ter conteúdo sem percorrer as três
+    etapas de todas as chaves.
+    """
+
+    nome: str
+    email: str
+    nivel: str
+    cota: str
+    situacao: str
+    alvo: int
+    nota: Decimal | None = None
+    motivo: str = ""
+    classificacao: int | None = None
+    desfecho: str = ""
+    matricular: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,6 +177,17 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--email-backend",
+            default="django.core.mail.backends.console.EmailBackend",
+            help=(
+                "Backend de e-mail durante a carga. O padrão é o console "
+                "porque a carga dispara uma convocação de verdade e o SMTP "
+                "do canteiro nem sempre está de pé quando o comando roda no "
+                "host. Passe uma string vazia para respeitar o EMAIL_BACKEND "
+                "do ambiente (é assim que a mensagem cai no Mailpit)."
+            ),
+        )
+        parser.add_argument(
             "--force",
             action="store_true",
             help="Roda mesmo com DEBUG=False. Você está por sua conta.",
@@ -135,6 +204,9 @@ class Command(BaseCommand):
         self.dominio = options["email_domain"]
         self.criadas: dict[str, int] = {}
 
+        if options["email_backend"]:
+            settings.EMAIL_BACKEND = options["email_backend"]
+
         with transaction.atomic():
             programa = self._programa(options["acronym"], options["name"])
             linhas = self._linhas(programa)
@@ -147,6 +219,7 @@ class Command(BaseCommand):
             self._acertos(programa, alunos, disciplinas, periodos)
             ciclo, ofertas = self._ciclo(programa, disciplinas, docentes, periodos)
             self._requerimentos(programa, ciclo, ofertas, periodos)
+            self._selecao(programa, linhas, projetos, docentes)
 
         self._relatar(programa, equipe)
 
@@ -722,6 +795,597 @@ class Command(BaseCommand):
             self._contar("documento", True)
 
     # ------------------------------------------------------------------
+    # Processo seletivo
+    # ------------------------------------------------------------------
+
+    def _selecao(
+        self,
+        programa: Program,
+        linhas: list[ResearchLine],
+        projetos: list[CollectiveProject],
+        docentes: list[Teacher],
+    ) -> None:
+        """O módulo de seleção inteiro, do edital publicado à matrícula.
+
+        A ordem aqui é a ordem real do processo, e não é decorativa: a
+        ata só congela com as notas lançadas, a convocação da etapa 1 só
+        faz sentido antes de a ata eliminar alguém, e a conversão em
+        aluno é a última porta — depois dela a chave trava
+        (`ranking_locked`).
+        """
+        examinadores = self._examinadores(programa, linhas, projetos, docentes)
+        regular = self._edital(
+            programa,
+            kind=SelectionKind.REGULAR,
+            titulo=(
+                f"Edital PS{ANO_DA_SELECAO} — Seleção Regular (Mestrado e Doutorado)"
+            ),
+            etapas=[
+                ("Resumo expandido", 1, 1, 10, "Sala 201 — Faculdade de Direito"),
+                ("Prova oral", 2, 2, 17, "Auditório da Faculdade de Direito"),
+                ("Entrevista", 3, None, 24, "Sala da Coordenação"),
+            ],
+            vagas=[
+                (SelectionLevel.MASTERS, projetos[0], QuotaCategory.OPEN, 2),
+                (SelectionLevel.MASTERS, projetos[0], QuotaCategory.RACIAL, 1),
+                (SelectionLevel.DOCTORATE, projetos[1], QuotaCategory.OPEN, 2),
+                (SelectionLevel.DOCTORATE, projetos[1], QuotaCategory.RACIAL, 1),
+                (SelectionLevel.MASTERS, projetos[2], QuotaCategory.OPEN, 1),
+            ],
+        )
+        suplementar = self._edital(
+            programa,
+            kind=SelectionKind.SUPPLEMENTARY,
+            titulo=(
+                f"Edital PS{ANO_DA_SELECAO} — Seleção Suplementar (ações afirmativas)"
+            ),
+            etapas=[
+                ("Memorial", 1, 1, 12, "Sala 305 — Faculdade de Direito"),
+                ("Prova oral", 2, 2, 19, "Auditório da Faculdade de Direito"),
+                ("Análise documental", 3, None, 26, "Secretaria do programa"),
+            ],
+            vagas=[
+                (SelectionLevel.MASTERS, linhas[0], QuotaCategory.DISABILITY, 1),
+                (SelectionLevel.MASTERS, linhas[0], QuotaCategory.INDIGENOUS, 1),
+                (SelectionLevel.DOCTORATE, linhas[1], QuotaCategory.QUILOMBOLA, 1),
+                (SelectionLevel.DOCTORATE, linhas[1], QuotaCategory.TRANS, 1),
+            ],
+        )
+
+        self._bancas(regular, suplementar, projetos, linhas, examinadores)
+        self._inscricoes(regular, suplementar, projetos, linhas)
+        self._convocacao(regular)
+        self._ata_assinada(regular, projetos[0])
+        self._matricula(regular, projetos[1])
+
+    def _examinadores(
+        self,
+        programa: Program,
+        linhas: list[ResearchLine],
+        projetos: list[CollectiveProject],
+        docentes: list[Teacher],
+    ) -> list[Teacher]:
+        """Os três docentes do programa mais dois que só a seleção usa.
+
+        A banca tem quatro nomes distintos (presidente, dois membros e um
+        suplente) e o edital tem quatro bancas: com três docentes não dá
+        para montar nenhuma. O externo é `Teacher.Category.EXTERNAL` e
+        nasce **sem conta** de propósito — é exatamente por não ter login
+        que ele assina a ata por token.
+        """
+        pessoa = self._pessoa(
+            programa,
+            nome="Núbia Prates",
+            email="nubia.prates@ppgd.test",
+            papel="Docente",
+        )
+        presidente, criado = Teacher.objects.get_or_create(
+            person=pessoa,
+            defaults={
+                "program": programa,
+                "category": Teacher.Category.PERMANENT,
+                "academic_degree": Teacher.AcademicDegree.DOCTORATE,
+                "accredited_since": date(2021, 3, 1),
+            },
+        )
+        self._contar("professor", criado)
+        presidente.research_lines.add(linhas[0])
+        presidente.projects.add(projetos[0])
+
+        email_externo = self._email("otavio.bastos@externo.test")
+        pessoa_externa, criada = Person.objects.get_or_create(
+            program=programa,
+            primary_email=email_externo,
+            defaults={"full_name": "Otávio Bastos"},
+        )
+        self._contar("pessoa", criada)
+        externo, criado_externo = Teacher.objects.get_or_create(
+            person=pessoa_externa,
+            defaults={
+                "program": programa,
+                "category": Teacher.Category.EXTERNAL,
+                "academic_degree": Teacher.AcademicDegree.DOCTORATE,
+                "accredited_since": date(2024, 3, 1),
+                "home_institution": "PUC Minas",
+            },
+        )
+        self._contar("professor", criado_externo)
+
+        # A Comissão de Seleção é o único papel que realoca vaga; sem uma
+        # conta dela, a tela de resultado nasce sem quem aperte o botão.
+        self._pessoa(
+            programa,
+            nome="Regina Sales",
+            email="comissao@ppgd.test",
+            papel="Comissão de Seleção",
+        )
+        return [*docentes, presidente, externo]
+
+    def _edital(
+        self,
+        programa: Program,
+        *,
+        kind: str,
+        titulo: str,
+        etapas: list[tuple[str, int, int | None, int, str]],
+        vagas: list[tuple[str, Any, str, int]],
+    ) -> SelectionProcess:
+        """Edital publicado, com etapas e grade de vagas, aceitando inscrição.
+
+        A janela é relativa ao instante da carga (aberta há uma semana,
+        fechando em três) pelo mesmo motivo do ciclo de isoladas: janela
+        fixa vence, e a tela pública de inscrição fica inútil no dia
+        seguinte. Publicar é `publish_process`, e não `status=published`
+        na mão — é ele que cobra etapa, vaga e template de convocação.
+        """
+        agora = timezone.now()
+        edital, criado = SelectionProcess.objects.get_or_create(
+            program=programa,
+            kind=kind,
+            year=ANO_DA_SELECAO,
+            defaults={
+                "title": titulo,
+                "submission_opens_at": agora - timedelta(days=7),
+                "submission_closes_at": agora + timedelta(days=21),
+                "convocation_subject": "[{edital}] Convocação para {etapa}",
+                "convocation_body": (
+                    "Prezado(a) {nome},\n\n"
+                    "A inscrição de protocolo {protocolo} está convocada para "
+                    "a etapa {etapa}, em {data_hora}, no local {local}.\n\n"
+                    "Compareça com documento de identidade original.\n\n"
+                    "Secretaria do programa."
+                ),
+            },
+        )
+        self._contar("edital de seleção", criado)
+
+        for nome, ordem, desempate, dias, local in etapas:
+            _, criada = SelectionStage.objects.get_or_create(
+                process=edital,
+                order=ordem,
+                defaults={
+                    "name": nome,
+                    "tiebreak_rank": desempate,
+                    "session_at": agora + timedelta(days=dias),
+                    "location": local,
+                },
+            )
+            self._contar("etapa da seleção", criada)
+
+        for nivel, alvo, cota, quantidade in vagas:
+            chave: dict[str, Any] = {"project": None, "research_line": None}
+            chave["project" if kind == SelectionKind.REGULAR else "research_line"] = (
+                alvo
+            )
+            _, criada_vaga = Vacancy.objects.get_or_create(
+                process=edital,
+                level=nivel,
+                quota_category=cota,
+                **chave,
+                defaults={"program": programa, "quantity": quantidade},
+            )
+            self._contar("vaga", criada_vaga)
+
+        if edital.status == SelectionProcessStatus.DRAFT:
+            selecao.publish_process(process=edital)
+        return edital
+
+    def _bancas(
+        self,
+        regular: SelectionProcess,
+        suplementar: SelectionProcess,
+        projetos: list[CollectiveProject],
+        linhas: list[ResearchLine],
+        examinadores: list[Teacher],
+    ) -> None:
+        """Quatro bancas, uma por chave avaliada, com o externo em duas.
+
+        Na banca do mestrado × primeiro projeto o externo é **suplente**:
+        é essa a banca que assina a ata da carga, e todos os titulares
+        dela têm conta (assinatura por login, sem token pendente). Na do
+        doutorado ele é titular, que é o caso que a tela de bancas
+        precisa mostrar — e o que produziria token se aquela ata
+        congelasse.
+        """
+        ana, bruno, carla, presidente, externo = examinadores
+        definicoes = [
+            (
+                regular,
+                SelectionLevel.MASTERS,
+                projetos[0],
+                None,
+                presidente,
+                ana,
+                bruno,
+                externo,
+            ),
+            (
+                regular,
+                SelectionLevel.DOCTORATE,
+                projetos[1],
+                None,
+                ana,
+                bruno,
+                externo,
+                carla,
+            ),
+            (
+                suplementar,
+                SelectionLevel.MASTERS,
+                None,
+                linhas[0],
+                bruno,
+                carla,
+                presidente,
+                ana,
+            ),
+            (
+                suplementar,
+                SelectionLevel.DOCTORATE,
+                None,
+                linhas[1],
+                carla,
+                presidente,
+                ana,
+                bruno,
+            ),
+        ]
+        for edital, nivel, projeto, linha, chefe, m1, m2, suplente in definicoes:
+            banca, criada = Board.objects.get_or_create(
+                process=edital,
+                level=nivel,
+                project=projeto,
+                research_line=linha,
+                defaults={
+                    "program": edital.program,
+                    "president": chefe,
+                    "member_1": m1,
+                    "member_2": m2,
+                    "alternate": suplente,
+                },
+            )
+            self._contar("banca", criada)
+
+    def _inscricoes(
+        self,
+        regular: SelectionProcess,
+        suplementar: SelectionProcess,
+        projetos: list[CollectiveProject],
+        linhas: list[ResearchLine],
+    ) -> None:
+        """Uma inscrição em cada situação, com documentação completa.
+
+        `eliminated` não está na lista de propósito: quem elimina é a ata
+        assinada (`_close_stage`), e semear o status na mão apagaria
+        justamente a prova de que o caminho funciona. Sofia Tavares nasce
+        homologada com 62 e cai quando a ata da etapa 1 é assinada.
+        """
+        situacoes = ApplicationStatus
+        regulares = [
+            InscricaoDemo(
+                nome="Paula Rezende",
+                email="paula.rezende@externo.test",
+                nivel=SelectionLevel.MASTERS,
+                cota=QuotaCategory.OPEN,
+                situacao=situacoes.HOMOLOGATED,
+                alvo=0,
+                nota=Decimal("88.00"),
+                motivo="Documentação completa.",
+            ),
+            InscricaoDemo(
+                nome="Rafael Muniz",
+                email="rafael.muniz@externo.test",
+                nivel=SelectionLevel.MASTERS,
+                cota=QuotaCategory.RACIAL,
+                situacao=situacoes.HOMOLOGATED,
+                alvo=0,
+                nota=Decimal("76.50"),
+                motivo="Documentação completa.",
+            ),
+            InscricaoDemo(
+                nome="Sofia Tavares",
+                email="sofia.tavares@externo.test",
+                nivel=SelectionLevel.MASTERS,
+                cota=QuotaCategory.OPEN,
+                situacao=situacoes.HOMOLOGATED,
+                alvo=0,
+                nota=Decimal("62.00"),
+                motivo="Documentação completa.",
+            ),
+            InscricaoDemo(
+                nome="Tiago Vilela",
+                email="tiago.vilela@externo.test",
+                nivel=SelectionLevel.MASTERS,
+                cota=QuotaCategory.OPEN,
+                situacao=situacoes.SUBMITTED,
+                alvo=2,
+            ),
+            InscricaoDemo(
+                nome="Úrsula Pinho",
+                email="ursula.pinho@externo.test",
+                nivel=SelectionLevel.MASTERS,
+                cota=QuotaCategory.OPEN,
+                situacao=situacoes.REJECTED,
+                alvo=2,
+                motivo="Diploma ilegível; o prazo de recurso está no edital.",
+            ),
+            InscricaoDemo(
+                nome="Vinícius Assis",
+                email="vinicius.assis@externo.test",
+                nivel=SelectionLevel.DOCTORATE,
+                cota=QuotaCategory.OPEN,
+                situacao=situacoes.APPROVED,
+                alvo=1,
+                nota=Decimal("94.00"),
+                classificacao=1,
+                desfecho=RankingOutcome.CLASSIFIED_OPEN,
+                matricular=True,
+            ),
+            InscricaoDemo(
+                nome="Wanda Coelho",
+                email="wanda.coelho@externo.test",
+                nivel=SelectionLevel.DOCTORATE,
+                cota=QuotaCategory.OPEN,
+                situacao=situacoes.APPROVED,
+                alvo=1,
+                nota=Decimal("81.00"),
+                classificacao=2,
+                desfecho=RankingOutcome.CLASSIFIED_OPEN,
+            ),
+        ]
+        suplementares = [
+            InscricaoDemo(
+                nome="Yara Nogueira",
+                email="yara.nogueira@externo.test",
+                nivel=SelectionLevel.MASTERS,
+                cota=QuotaCategory.DISABILITY,
+                situacao=situacoes.HOMOLOGATED,
+                alvo=0,
+                nota=Decimal("84.00"),
+                motivo="Documentação completa.",
+            ),
+            InscricaoDemo(
+                nome="Zeca Andrade",
+                email="zeca.andrade@externo.test",
+                nivel=SelectionLevel.MASTERS,
+                cota=QuotaCategory.INDIGENOUS,
+                situacao=situacoes.HOMOLOGATED,
+                alvo=0,
+                nota=Decimal("79.00"),
+                motivo="Documentação completa.",
+            ),
+            InscricaoDemo(
+                nome="Alice Bittencourt",
+                email="alice.bittencourt@externo.test",
+                nivel=SelectionLevel.DOCTORATE,
+                cota=QuotaCategory.QUILOMBOLA,
+                situacao=situacoes.SUBMITTED,
+                alvo=1,
+            ),
+        ]
+        for edital, definicoes, alvos in (
+            (regular, regulares, projetos),
+            (suplementar, suplementares, linhas),
+        ):
+            for indice, definicao in enumerate(definicoes):
+                self._inscricao(edital, definicao, alvos[definicao.alvo], indice)
+
+    def _inscricao(
+        self,
+        edital: SelectionProcess,
+        definicao: InscricaoDemo,
+        alvo: Any,
+        indice: int,
+    ) -> Application:
+        """Grava uma inscrição já no estado final, com anexos e nota.
+
+        Não passa por `submit_application` de propósito: aquele service é
+        a borda pública (rate limit, protocolo, janela) e devolveria
+        sempre uma inscrição `submitted`. Aqui o que interessa é ter uma
+        de cada situação para olhar na tela.
+        """
+        agora = timezone.now()
+        cpf = self._cpf(edital.pk * 100 + indice)
+        chave: dict[str, Any] = {"project": None, "research_line": None}
+        campo = "project" if edital.kind == SelectionKind.REGULAR else "research_line"
+        chave[campo] = alvo
+        decidida = definicao.situacao != ApplicationStatus.SUBMITTED
+
+        inscricao, criada = Application.objects.get_or_create(
+            process=edital,
+            cpf=cpf,
+            defaults={
+                "program": edital.program,
+                "protocol": gerar_protocolo(edital),
+                "full_name": definicao.nome,
+                "email": self._email(definicao.email),
+                "birth_date": date(1990 + indice, 4, 12),
+                "phone_number": f"(31) 98800-00{indice:02d}",
+                "level": definicao.nivel,
+                "quota_category": definicao.cota,
+                "status": definicao.situacao,
+                "decision_note": definicao.motivo,
+                "decided_at": agora - timedelta(days=1) if decidida else None,
+                "final_score": (
+                    definicao.nota
+                    if definicao.situacao == ApplicationStatus.APPROVED
+                    else None
+                ),
+                "final_rank": definicao.classificacao,
+                "final_outcome": definicao.desfecho,
+                "ranked_at": agora if definicao.desfecho else None,
+                "submitted_at": agora - timedelta(days=3),
+                **chave,
+            },
+        )
+        self._contar("inscrição", criada)
+        self._anexos(inscricao)
+
+        if definicao.nota is not None:
+            self._nota(inscricao, definicao.nota)
+        return inscricao
+
+    def _cpf(self, semente: int) -> str:
+        """Um CPF bem formado e estável para a semente dada.
+
+        `Application.clean()` roda o mod-11 (`cpf_valido`), então número
+        inventado à mão faria a carga falhar. A semente entra na base para
+        que a mesma inscrição caia sempre no mesmo CPF — é ele, com o
+        edital, que identifica a linha no `get_or_create`.
+        """
+        base = f"{100000000 + semente * 137:09d}"
+        digitos = [int(d) for d in base]
+        for posicao in (9, 10):
+            soma = sum(
+                d * peso
+                for d, peso in zip(
+                    digitos[:posicao], range(posicao + 1, 1, -1), strict=True
+                )
+            )
+            digitos.append((soma * 10 % 11) % 10)
+        return "".join(str(d) for d in digitos)
+
+    def _anexos(self, inscricao: Application) -> None:
+        """Anexa o que o edital exige desta inscrição.
+
+        Mesmo desenho de `_documentos`: a lista sai de
+        `required_document_kinds()` — que já sabe que fora da ampla
+        concorrência entra a comprovação da cota — para a carga não
+        divergir da regra no dia em que ela mudar.
+        """
+        for tipo in inscricao.required_document_kinds():
+            if ApplicationDocument.objects.filter(
+                application=inscricao, kind=tipo
+            ).exists():
+                continue
+            documento = ApplicationDocument(application=inscricao, kind=tipo)
+            documento.file.save(f"{tipo}.pdf", ContentFile(PDF_MINIMO), save=False)
+            documento.save()
+            self._contar("documento de inscrição", True)
+
+    def _nota(self, inscricao: Application, nota: Decimal) -> None:
+        """Lança a nota da primeira etapa, com o presidente da banca como autor."""
+        etapa = inscricao.process.stages.get(order=1)
+        banca = Board.objects.filter(
+            process=inscricao.process,
+            level=inscricao.level,
+            project=inscricao.project,
+            research_line=inscricao.research_line,
+        ).first()
+        _, criada = StageScore.objects.get_or_create(
+            application=inscricao,
+            stage=etapa,
+            defaults={
+                "program": inscricao.program,
+                "score": nota,
+                "entered_by": None if banca is None else banca.president,
+            },
+        )
+        self._contar("nota de etapa", criada)
+
+    def _convocacao(self, edital: SelectionProcess) -> None:
+        """Convoca para a primeira etapa quem está vivo no edital regular.
+
+        Antes da ata, e não depois: a convocação chama para a prova, e
+        quem a ata elimina só é eliminado quando ela é assinada. O lote é
+        criado uma vez — na segunda carga `send_convocations` recusaria
+        com `no_convocable_applications`, porque todo mundo já recebeu.
+        """
+        etapa = edital.stages.get(order=1)
+        if Convocation.objects.filter(process=edital, stage=etapa).exists():
+            return
+        selecao.send_convocations(process=edital, stage=etapa)
+        self._contar("convocação", True)
+
+    def _ata_assinada(
+        self, edital: SelectionProcess, projeto: CollectiveProject
+    ) -> None:
+        """A ata da etapa 1 do mestrado × primeiro projeto, assinada e em PDF.
+
+        Percorre o caminho de verdade — gerar, congelar, assinar — porque
+        é a última assinatura que fecha a etapa: ela é que elimina quem
+        ficou abaixo do corte e que grava o PDF (`_close_stage`). Ata
+        montada na mão não teria nem hash nem PDF.
+        """
+        etapa = edital.stages.get(order=1)
+        banca = Board.objects.get(
+            process=edital, level=SelectionLevel.MASTERS, project=projeto
+        )
+        if ExaminationRecord.objects.filter(
+            process=edital, stage=etapa, level=banca.level, project=projeto
+        ).exists():
+            return
+
+        ata = selecao.generate_record(board=banca, stage=etapa)
+        selecao.freeze_record(record=ata)
+        self._contar("ata de banca", True)
+        for assinatura in list(ata.signatures.select_related("signer__person__user")):
+            if assinatura.uses_token:
+                # Examinador externo: não tem conta, e o token do
+                # congelamento saiu por e-mail — o texto dele não fica no
+                # banco. A carga reemite o seu (invalidando o anterior) e
+                # o consome na hora, que é o caminho do link do e-mail.
+                bruto = assinatura.issue_token(timezone.now())
+                assinatura.save(
+                    update_fields=[
+                        "token_hash",
+                        "token_expires_at",
+                        "token_sent_at",
+                        "token_used_at",
+                        "updated_at",
+                    ]
+                )
+                selecao.sign_record_with_token(token=bruto)
+            else:
+                selecao.sign_record(record=ata, user=assinatura.signer.person.user)
+            self._contar("assinatura de ata", True)
+
+    def _matricula(self, edital: SelectionProcess, projeto: CollectiveProject) -> None:
+        """Converte a primeira classificada do doutorado em aluna regular.
+
+        É a porta final do fluxo, e a que trava a chave: a partir daqui
+        recalcular a classificação daquele nível × alvo devolve
+        `ranking_locked`. Uma só, de propósito — a segunda classificada
+        fica `approved` para a tela de resultado ter o botão de matricular
+        com o que trabalhar.
+        """
+        inscricao = (
+            Application.objects.for_process(edital.pk)
+            .approved()
+            .filter(level=SelectionLevel.DOCTORATE, project=projeto, final_rank=1)
+            .first()
+        )
+        if inscricao is None:
+            return
+        selecao.convert_to_student(
+            application=inscricao,
+            registration_number=f"{edital.program.acronym}{ANO_DA_SELECAO}110005",
+            admission_date=date(ANO_DA_SELECAO, 3, 1),
+            project=projeto,
+        )
+        self._contar("aluno", True)
+
+    # ------------------------------------------------------------------
     # Relato
     # ------------------------------------------------------------------
 
@@ -739,16 +1403,68 @@ class Command(BaseCommand):
 
         self.stdout.write("")
         self.stdout.write(f"Contas (senha: {self.senha}):")
+        for papel, email in self._contas():
+            self.stdout.write(f"  {email:<32} {papel}")
+        caminho = self._gravar_contas(programa)
+        self.stdout.write("")
+        self.stdout.write(f"As contas também ficaram em {caminho}.")
+        self.stdout.write("Entre por http://localhost:8080 — nunca por :5173.")
+
+    def _contas(self) -> list[tuple[str, str]]:
+        """Papel → e-mail das contas que a carga deixa prontas.
+
+        Uma lista só, usada pela saída do comando e pelo `CONTAS-DEMO.txt`:
+        duas listas divergiriam na primeira conta nova.
+        """
         contas = [
             ("Secretaria", "secretaria@ppgd.test"),
             ("Coordenação", "coordenacao@ppgd.test"),
+            ("Comissão de Seleção (realoca vaga)", "comissao@ppgd.test"),
             ("Docente / orientador", "ana.matos@ppgd.test"),
             ("Docente de oferta", "bruno.rocha@ppgd.test"),
+            ("Docente presidente de banca", "nubia.prates@ppgd.test"),
             ("Discente com acerto aberto", "daniel.prado@ppgd.test"),
             ("Candidato em rascunho", "isabela.fontes@externo.test"),
             ("Candidato deferido", "karina.belo@externo.test"),
         ]
-        for papel, email in contas:
-            self.stdout.write(f"  {self._email(email):<32} {papel}")
-        self.stdout.write("")
-        self.stdout.write("Entre por http://localhost:8080 — nunca por :5173.")
+        return [(papel, self._email(email)) for papel, email in contas]
+
+    def _gravar_contas(self, programa: Program) -> Path:
+        """Escreve (ou reescreve) o bloco deste programa no `CONTAS-DEMO.txt`.
+
+        O arquivo é de todos os tenants carregados, e a carga do segundo
+        não pode apagar o do primeiro: o bloco é identificado pela sigla e
+        só ele é substituído. Fica na raiz do repositório e é ignorado pelo
+        git — são senhas conhecidas, e escrevê-las num arquivo versionado
+        seria vazá-las.
+        """
+        caminho = Path(settings.BASE_DIR).parent / ARQUIVO_DE_CONTAS
+        cabecalho = (
+            "# Contas de demonstração — geradas por `make seed`.\n"
+            "# Arquivo ignorado pelo git; some com o banco do canteiro.\n"
+        )
+        marca = f"## {programa.acronym}"
+        bloco = [
+            f"{marca} — {programa.name}",
+            f"Senha: {self.senha}",
+            *(f"  {email:<34} {papel}" for papel, email in self._contas()),
+        ]
+
+        anteriores = []
+        if caminho.exists():
+            atual: list[str] = []
+            for linha in caminho.read_text(encoding="utf-8").splitlines():
+                if linha.startswith("## "):
+                    if atual:
+                        anteriores.append(atual)
+                    atual = [linha]
+                elif atual:
+                    atual.append(linha)
+            if atual:
+                anteriores.append(atual)
+        blocos = [b for b in anteriores if not b[0].startswith(f"{marca} ")]
+        blocos.append(bloco)
+
+        corpo = "\n\n".join("\n".join(b).rstrip() for b in blocos)
+        caminho.write_text(f"{cabecalho}\n{corpo}\n", encoding="utf-8")
+        return caminho

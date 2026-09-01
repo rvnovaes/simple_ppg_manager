@@ -161,6 +161,78 @@
 								</div>
 							</details>
 						{/if}
+						<!-- Processo seletivo: mestrado e doutorado. Fica separado de
+						"Disciplina isolada" porque é outro edital, outro público e outro
+						fluxo — juntar os dois num menu só faria a secretaria escolher
+						errado. `view_selectionprocess` é o que Secretaria, Coordenação e
+						Comissão de Seleção têm (selection.0006_papeis_da_selecao).
+
+						Os itens sem tela pronta apontam para um marcador de rota (um
+						`+page.svelte` que só diz "ainda não construída"): `resolve()` e o
+						lint `svelte/no-navigation-without-resolve` exigem que a rota
+						exista, e um 404 seria pior do que a frase. A story de cada tela
+						substitui o marcador. -->
+						{#if sessao.pode('selection.view_selectionprocess')}
+							<details class="group relative">
+								<summary class="item-menu cursor-pointer list-none marker:content-['']">
+									<Icone nome="selecao" tamanho={14} />
+									Processo seletivo
+									<span aria-hidden="true" class="text-cinza text-[0.625rem]">▾</span>
+								</summary>
+								<div
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-48 flex-col border py-1 shadow-sm"
+								>
+									<a
+										class="item-submenu"
+										href={resolve('/selecao/editais')}
+										onclick={fecharSubmenu}
+									>
+										<Icone nome="edital" tamanho={14} />
+										Editais
+									</a>
+									<a class="item-submenu" href={resolve('/selecao/bancas')} onclick={fecharSubmenu}>
+										<Icone nome="banca" tamanho={14} />
+										Bancas
+									</a>
+									<a
+										class="item-submenu"
+										href={resolve('/selecao/inscricoes')}
+										onclick={fecharSubmenu}
+									>
+										<Icone nome="inscricao" tamanho={14} />
+										Inscrições
+									</a>
+									<a
+										class="item-submenu"
+										href={resolve('/selecao/convocacoes')}
+										onclick={fecharSubmenu}
+									>
+										<Icone nome="acompanhamento" tamanho={14} />
+										Convocações
+									</a>
+									<a class="item-submenu" href={resolve('/selecao/atas')} onclick={fecharSubmenu}>
+										<Icone nome="ata" tamanho={14} />
+										Atas
+									</a>
+									<a
+										class="item-submenu"
+										href={resolve('/selecao/resultado')}
+										onclick={fecharSubmenu}
+									>
+										<Icone nome="classificacao" tamanho={14} />
+										Resultado
+									</a>
+								</div>
+							</details>
+						{/if}
+						<!-- Fora do submenu de gestão: esta é a tela de quem avalia, e
+						`add_stagescore` é do Docente — quem monta o edital não a vê. -->
+						{#if sessao.pode('selection.add_stagescore')}
+							<a class="item-menu" href={resolve('/selecao/minhas-bancas')}>
+								<Icone nome="banca" tamanho={14} />
+								Minhas bancas
+							</a>
+						{/if}
 						<!-- As três telas do mesmo fluxo, uma por papel: o aluno pede, o
 						orientador decide, a secretaria acompanha. Cada item continua
 						condicional, então cada papel vê só a sua — o submenu junta as

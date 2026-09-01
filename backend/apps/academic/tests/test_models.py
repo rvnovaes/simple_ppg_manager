@@ -65,6 +65,47 @@ def test_clean_sem_pessoa_nao_levanta():
     professor.clean()
 
 
+def test_clean_rejeita_externo_sem_instituicao_de_origem():
+    programa = Program(pk=1, acronym="PPGD")
+    pessoa = Person(pk=1, program=programa, full_name="Ana Lima")
+    professor = _professor(program=programa, person=pessoa)
+    professor.category = Teacher.Category.EXTERNAL
+    professor.home_institution = "   "
+
+    with pytest.raises(DomainError) as exc:
+        professor.clean()
+
+    assert exc.value.code == "home_institution_required"
+    assert exc.value.status_code == 400
+
+
+def test_clean_aceita_externo_com_instituicao_de_origem():
+    programa = Program(pk=1, acronym="PPGD")
+    pessoa = Person(pk=1, program=programa, full_name="Ana Lima")
+    professor = _professor(program=programa, person=pessoa)
+    professor.category = Teacher.Category.EXTERNAL
+    professor.home_institution = "USP"
+
+    professor.clean()
+
+
+@pytest.mark.parametrize(
+    "categoria",
+    [
+        Teacher.Category.PERMANENT,
+        Teacher.Category.COLLABORATOR,
+        Teacher.Category.VISITING,
+    ],
+)
+def test_clean_nao_exige_instituicao_nas_categorias_capes(categoria):
+    programa = Program(pk=1, acronym="PPGD")
+    pessoa = Person(pk=1, program=programa, full_name="Ana Lima")
+    professor = _professor(program=programa, person=pessoa)
+    professor.category = categoria
+
+    professor.clean()
+
+
 def _aluno(**kwargs) -> Student:
     campos = {
         "program": Program(pk=1, acronym="PPGD"),

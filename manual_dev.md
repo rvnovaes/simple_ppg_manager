@@ -175,7 +175,125 @@ enfraquecer a maquinaria de verificação.
 
 ---
 
-## 5. Armadilhas já pagas
+## 5. O processo seletivo, ponta a ponta
+
+O app `backend/apps/selection/` é o módulo de edital: da criação do processo
+até o candidato aprovado virar `Student`. Vale a pena conhecer o caminho
+inteiro antes de mexer em qualquer pedaço dele — cada etapa trava a seguinte,
+e a trava costuma ser a resposta para "por que este botão está desabilitado?".
+
+### Quem faz o quê
+
+Os papéis são Groups do Django, criados/estendidos em
+`apps/selection/migrations/0006_papeis_da_selecao.py`:
+
+| Papel | O que pode |
+| --- | --- |
+| **Secretaria** | opera o edital: processo, etapas, vagas, bancas; homologa ou indefere inscrição; **único** que baixa anexo do candidato; dispara convocação |
+| **Docente** | compõe banca: lança nota, monta/congela ata e assina. Lê edital, banca e inscrição — **não** baixa documento |
+| **Comissão de Seleção** | lê tudo e é o único que **realoca vaga** entre alvos (decisão colegiada, não expediente da secretaria) |
+| **Coordenação** | só acompanha (leitura) |
+
+Ninguém recebe `delete_*`, `is_staff` ou `is_superuser`. Ata assinada não se
+apaga: retifica-se com versão nova (`ExaminationRecord.supersedes`).
+
+### O caminho
+
+1. **Edital** — secretaria em `/selecao/editais`: cria o `SelectionProcess`
+   (Regular ou Suplementar), as `SelectionStage` em ordem, a grade de `Vacancy`
+   e o template de convocação; anexa o PDF do edital. **Publicar é
+   `publish_process`**, nunca `status = "published"` na mão — é o service que
+   cobra etapa, vaga e template. Depois de publicado, etapa e vaga não mudam
+   mais (escrita só em `draft`).
+2. **Bancas** — ainda a secretaria, em `/selecao/bancas`: uma `Board` por chave
+   avaliada (nível × alvo × etapa). Examinador de fora da casa é um `Teacher`
+   com `category = EXTERNAL` e `home_institution` obrigatória — ele existe só
+   para compor banca, **não é categoria CAPES**, e normalmente nem tem conta:
+   é por isso que assina por token.
+3. **Inscrição pública** — o candidato, **sem login**, em `/selecao/inscricao`:
+   escolhe edital aberto, preenche e sobe os anexos que
+   `required_document_kinds()` exige. Recebe um **protocolo**, que é a chave
+   para consultar em `/selecao/protocolo`. As rotas são `/public/*`, com
+   `auth=None`, rate limit e `csrf_protect` explícitos; o tenant sai do edital
+   encontrado, nunca de `program_id` do chamador.
+4. **Homologação** — secretaria em `/selecao/inscricoes`: lista filtrável,
+   detalhe com os documentos, homologa ou indefere (com nota). Só inscrição
+   homologada entra em banca.
+5. **Notas** — o docente em `/selecao/minhas-bancas`: `GET /boards/mine` lista
+   as bancas dele; a tela do id lança as notas da etapa em lote. Enquanto a ata
+   está `frozen` ou `signed`, o lançamento recusa com `record_frozen`.
+6. **Ata** — presidente da banca: `generate_record` monta o conteúdo a partir
+   das notas, `refresh_record` reconstrói enquanto está em rascunho,
+   `freeze_record` congela (calcula o hash, emite os tokens e **manda e-mail ao
+   examinador externo**). `reopen_record` desfaz o congelamento enquanto
+   ninguém assinou.
+7. **Assinaturas** — quem tem conta assina logado, pela própria tela da banca
+   (`sign_record`); o externo assina pelo link do e-mail, em
+   `/selecao/assinatura/<token>` (`sign_record_with_token`). A secretaria
+   acompanha em `/selecao/atas`, reenvia token e baixa o PDF. **Quando a última
+   assinatura entra**, `_close_stage` roda: promove quem passou, elimina quem
+   ficou abaixo da nota de corte, aprova na etapa final e gera o PDF.
+8. **Convocação** — secretaria em `/selecao/convocacoes`: os convocáveis de cada
+   edital × etapa, envio em lote, status por destinatário e reenvio das falhas.
+   O lote e as linhas `pending` são gravados **dentro** da transação; o envio
+   acontece **fora** dela, um destinatário por vez — falha de SMTP vira
+   `ConvocationEmail` com status `failed`, nunca 500 nem rollback do que já saiu.
+9. **Resultado** — `/selecao/resultado`: `compute_ranking` (POST) classifica e
+   grava; exige a ata da etapa final assinada. A Comissão pode `reallocate_vacancy`
+   (o que invalida a classificação e obriga recalcular), e a secretaria converte
+   o aprovado em aluno com `convert_to_student` (`POST /applications/{id}/enroll`),
+   que cria ou reaproveita a `Person` e o `Student`. Daí em diante ele aparece em
+   `/alunos`.
+
+### Exercitar isso no canteiro
+
+`make seed` já deixa o caminho quase todo andado nos **dois** programas: dois
+editais publicados, quatro bancas (uma com externo), dez inscrições cobrindo
+todos os status, uma ata assinada com PDF, um lote de convocação enviado e uma
+matrícula feita. As contas e a senha saem em `CONTAS-DEMO.txt`, na raiz do
+repositório (gitignored — some com o banco do canteiro).
+
+O **PPGA** é o tenant limpo: é lá que a carga aparece como nasce. O PPGD do seu
+canteiro pode ter dado antigo de stories anteriores, porque `_edital` é
+`get_or_create` por (programa, tipo, ano) e **adota** o edital que já existia.
+
+### O Mailpit
+
+Todo e-mail deste projeto — token de assinatura e convocação — sai por
+`django.core.mail`, síncrono, sem fila (ADR-009). No canteiro o destino é o
+serviço `mailpit` do Compose: ele recebe SMTP em 1025, guarda em memória
+(`MP_MAX_MESSAGES=500`, sem volume — o histórico some no `down`) e **nada sai
+para a internet**. É isso que torna seguro exercitar convocação e link de
+assinatura aqui dentro.
+
+Para ler as mensagens sem UI publicada — **a imagem do backend não tem `curl`**:
+
+```bash
+docker compose exec -T backend python -c "
+import json, urllib.request
+d = json.load(urllib.request.urlopen('http://mailpit:8025/api/v1/messages'))
+print(d['total'])
+for m in d['messages'][:5]:
+    print(m['From']['Address'], '->', [t['Address'] for t in m['To']], '|', m['Subject'])
+"
+```
+
+O corpo de uma mensagem (é dele que se colhe o link de assinatura) sai em
+`/api/v1/message/<ID>`. Para abrir a UI no navegador, `docker compose port
+mailpit 8025` — publicar `MAILPIT_UI_PORT` por canteiro é story gate à parte.
+
+Fora do canteiro, quem manda são as variáveis de ambiente: `EMAIL_BACKEND`
+(default **console**, para que ambiente sem configuração nenhuma não tente
+falar com servidor de e-mail), `EMAIL_HOST/PORT/USE_TLS/HOST_USER/HOST_PASSWORD`,
+`DEFAULT_FROM_EMAIL` e **`SITE_URL`**. Em teste, o `pytest-django` troca o
+backend por `locmem` sozinho: teste de e-mail se escreve com
+`django.core.mail.outbox`, sem mock — e precisa de
+`django_capture_on_commit_callbacks(execute=True)`, senão o `on_commit` não roda
+e a caixa fica vazia em silêncio.
+
+---
+
+## 6. Armadilhas já pagas
 
 Cada uma destas custou tempo. Estão aqui para não custarem de novo.
 
@@ -219,7 +337,7 @@ Qualquer linha antes do `ok` é problema.
 
 ---
 
-## 6. Pendências
+## 7. Pendências
 
 - **O ensaio (`--ensaio`) nunca rodou.** É ele que prova a instalação de ponta a
   ponta — monta um canteiro, migra, semeia e desmonta:

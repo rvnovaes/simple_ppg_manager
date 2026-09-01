@@ -50,6 +50,11 @@ class Teacher(models.Model):
         PERMANENT = "permanent", "Permanente"
         COLLABORATOR = "collaborator", "Colaborador"
         VISITING = "visiting", "Visitante"
+        # NÃO é categoria CAPES: não entra no relatório do programa. Existe
+        # só para o professor de outra instituição compor banca do processo
+        # seletivo (app `selection`). Por isso `home_institution` é
+        # obrigatória nela — ver `clean()`.
+        EXTERNAL = "external", "Externo (banca)"
 
     class AcademicDegree(models.TextChoices):
         DOCTORATE = "doctorate", "Doutor"
@@ -123,8 +128,19 @@ class Teacher(models.Model):
         """A FK `program` é direta (ADR-007 dec. 5) e por isso pode
         divergir de `person.program`. Divergir significa AuditLog com a
         chave de tenant errada — é invariante, não detalhe de formulário.
+
+        Externo (banca) sem `home_institution` também é invariante: a
+        categoria só existe para dizer de onde o professor vem.
         """
         super().clean()
+        if (
+            self.category == self.Category.EXTERNAL
+            and not self.home_institution.strip()
+        ):
+            raise DomainError(
+                "Professor externo precisa ter instituição de origem.",
+                code="home_institution_required",
+            )
         try:
             person = self.person
         except ObjectDoesNotExist:

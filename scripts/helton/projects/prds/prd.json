@@ -1,0 +1,940 @@
+{
+  "project": "simple_ppg_manager",
+  "branchName": "helton/processo-seletivo",
+  "description": "Processo seletivo de mestrado e doutorado: edital, vagas, bancas, inscrição pública, notas, ata assinada (login e token), PDF, convocação por e-mail, classificação com cotas e conversão em aluno.",
+  "execution": "sandboxed",
+  "userStories": [
+    {
+      "id": "f0-app-selection",
+      "title": "cria o app Django `selection` vazio, registrado em settings, api.py e com conftest de testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:26 (P1: app novo `backend/apps/selection/`, nada de seleção em `academic`) e scripts/helton/projects/plans/processo-seletivo.md:432. Criar `backend/apps/selection/` com `__init__.py`, `apps.py` (name `apps.selection`), `models.py` (vazio por ora), `admin.py`, `router.py` (Router Ninja vazio), `schemas.py`, `migrations/__init__.py`, `tests/__init__.py` e `tests/conftest.py`. Registrar `\"apps.selection\"` em `backend/config/settings/base.py` INSTALLED_APPS logo depois de `apps.academic` (linha ~49) e `api.add_router(\"/selection/\", router)` em `backend/api.py` (ver como `academic` está registrado). O conftest de `selection` precisa de fixture autouse que aponte `settings.MEDIA_ROOT` para `tmp_path` (armadilha 4: FileField em teste grava em disco) e de fixtures `edital_regular`, `edital_suplementar`, `docente`, `externo` — as duas primeiras ficam como stub que levanta `pytest.skip` até `f0-process-stage`; as de docente podem ser criadas já usando `Teacher` de `apps.academic.models` (modelo: `backend/apps/academic/tests/conftest.py`, que também mostra de onde vem a fixture `program`). Não criar model nem migration nesta story.",
+      "files": [
+        "backend/apps/selection/__init__.py",
+        "backend/apps/selection/apps.py",
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/admin.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/migrations/__init__.py",
+        "backend/apps/selection/tests/__init__.py",
+        "backend/apps/selection/tests/conftest.py",
+        "backend/config/settings/base.py",
+        "backend/api.py"
+      ],
+      "acceptance": "`apps.selection` aparece em INSTALLED_APPS; `/api/v1/selection/` está registrado no NinjaAPI sem rota; `uv run pytest apps/selection -q` roda (mesmo que só colete o conftest); `make ready` verde.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f0-teacher-external",
+      "title": "adiciona `Teacher.Category.EXTERNAL` com `home_institution` obrigatória e migration academic/0012",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:28 (P3) e scripts/helton/projects/plans/processo-seletivo.md:205-209. Em `backend/apps/academic/models.py` o enum `Teacher.Category` está na linha ~49: acrescentar `EXTERNAL = \"external\", \"Externo (banca)\"` com docstring avisando que a categoria NÃO é CAPES (existe só para compor banca de seleção). Em `Teacher.clean()` acrescentar ramo que exige `home_institution` quando `category == EXTERNAL`, levantando `DomainError(code=\"home_institution_required\")`. Gerar migration `academic/migrations/0012_categoria_externa.py` (AlterField de choices) com `make migrations`, renomear para esse nome e LER o arquivo antes de commitar. Teste em memória em `backend/apps/academic/tests/test_models.py` (externo sem instituição falha; com instituição passa; outras categorias não exigem). Não mexer em mais nada de `academic`.",
+      "files": [
+        "backend/apps/academic/models.py",
+        "backend/apps/academic/migrations/0012_categoria_externa.py",
+        "backend/apps/academic/tests/test_models.py"
+      ],
+      "acceptance": "`Teacher(category=EXTERNAL)` sem `home_institution` levanta `DomainError` código `home_institution_required`; migration 0012 existe, aplica e `makemigrations --check` fica limpo.",
+      "verify": "make ready; cd backend && uv run python manage.py makemigrations --check",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f0-process-stage",
+      "title": "cria enums, helpers, `SelectionProcess` e `SelectionStage` com migration 0001 e testes em memória",
+      "context": "{CONV} Enums e constantes: scripts/helton/projects/plans/processo-seletivo.md:59-73. Helper `xor_de_alvo(nome) -> CheckConstraint` e caminhos de upload (`caminho_do_edital`): scripts/helton/projects/plans/processo-seletivo.md:75-88. `SelectionProcess`: scripts/helton/projects/plans/processo-seletivo.md:92-104 (campos, unique `(program, kind, year)` → `duplicate_process`, QuerySet `published()`/`open_for_submission(at)`, métodos `clean()` → `invalid_submission_window`, `allowed_quota_categories()`, `ensure_quota_category` → `quota_category_not_allowed`, `ensure_target(project, research_line)` → `target_mismatch` (Regular exige project, Suplementar exige research_line), `submission_open(at)`, `ensure_editable()` → `process_not_editable`, `publish()` → `process_not_draft`, `close()` → `process_not_published`, `render_convocation(application, stage)` com `format_map` tolerante). `SelectionStage`: scripts/helton/projects/plans/processo-seletivo.md:106-112 (CASCADE `stages`, uniques `(process, order)`, `(process, name)`, `(process, tiebreak_rank)` condicional a não-nulo; `is_first`, `is_last`, `previous()`, `clean()` → `invalid_stage_order`/`duplicate_stage`). `render_convocation` pode receber application como objeto simples nesta story (Application só existe em `f0-application-document`) — usar duck typing e testar com stub. Migration `selection/0001_initial.py` deve depender de `academic/0012` e `programs/0006` (armadilha 10). Preencher as fixtures `edital_regular`/`edital_suplementar` do conftest (publicados, janela aberta). Testes em `tests/test_models.py` sem `django_db` para os invariantes.",
+      "files": [
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/migrations/0001_initial.py",
+        "backend/apps/selection/tests/conftest.py",
+        "backend/apps/selection/tests/test_models.py"
+      ],
+      "acceptance": "Models e migration 0001 existem; testes cobrem janela inválida, publish/close fora de estado, `ensure_target` nos dois kinds, `ensure_quota_category` por kind, `render_convocation` com placeholder desconhecido literal; `makemigrations --check` limpo.",
+      "verify": "make ready; cd backend && uv run python manage.py makemigrations --check",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-app-selection",
+        "f0-teacher-external"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f0-vacancy-board",
+      "title": "cria `Vacancy` e `Board` com migration e testes de XOR, unicidade com nulos e membros",
+      "context": "{CONV} `Vacancy`: scripts/helton/projects/plans/processo-seletivo.md:114-118 (quantity 0 permitido; unique `(process, level, project, research_line, quota_category)` `nulls_distinct=False` → `duplicate_vacancy`; `target_key()`). `Board`: scripts/helton/projects/plans/processo-seletivo.md:120-128 (president/member_1/member_2/alternate FK `academic.Teacher` PROTECT com `related_name=\"selection_boards_as_<papel>\"`; unique `(process, level, project, research_line)` `nulls_distinct=False` → `duplicate_board`; QuerySet `for_process`, `with_teacher(teacher)` com o `Q()` de 4 ramos escrito UMA vez; `clean()` → `duplicate_board_member`, `teacher_from_other_program`, `teacher_not_accredited`; `titular_members()`, `is_member(teacher)`, `expected_signers(replaced_member=None)` → 3 titulares, ou titulares − impedido + suplente, `not_a_titular_member`). Ambos usam `xor_de_alvo` e chamam `process.ensure_target` no `clean()`. Verificar o que `Teacher` já tem de credenciamento em `apps/academic/models.py` antes de definir `teacher_not_accredited`. Migration `0002_vacancy_board.py`, lida antes de commitar (conferir `nulls_distinct=False`).",
+      "files": [
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/migrations/0002_vacancy_board.py",
+        "backend/apps/selection/tests/test_models.py"
+      ],
+      "acceptance": "Testes: XOR de alvo (nenhum/ambos falham), duas vagas com `research_line=NULL` e mesmo projeto colidem (`duplicate_vacancy`), membros repetidos falham, docente de outro programa falha, alvo incompatível com o kind falha, `expected_signers` com e sem impedido.",
+      "verify": "make ready; cd backend && uv run python manage.py makemigrations --check",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-process-stage"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f0-application-document",
+      "title": "cria `Application` e `ApplicationDocument` com migration e testes de CPF, documentos e transições",
+      "context": "{CONV} `Application`: scripts/helton/projects/plans/processo-seletivo.md:130-147 (protocolo unique, cpf 11 dígitos, unique `(process, cpf)` → `duplicate_application`; checks `final_score` 0–100 ou null, `eliminated ⇒ eliminated_at_stage`, `enrolled ⇒ student`; QuerySet `for_process`, `alive()` (= homologated), `for_target(level, project, research_line)`, `approved()`, `convocable_for(stage)` (stub simples aqui, refinado em `f4-convocacoes-api`); `clean()` → `invalid_cpf` (mod-11), `invalid_birth_date`; `required_document_kinds()` = identity, diploma, lattes, payment_receipt + expanded_abstract (Regular) | memorial (Suplementar) + quota_proof se cota ≠ open; `missing_documents()`; transições `homologate(note=\"\")`, `reject(note)` → `rejection_requires_note`, `eliminate(stage)`, `approve(score)`, `reinstate()`, `enroll(student)` → `not_classified`, `_exigir_status()`). Máquina de estados: scripts/helton/projects/plans/processo-seletivo.md:226-236. `ApplicationDocument`: scripts/helton/projects/plans/processo-seletivo.md:149-153 (upload_to `selecao/edital-{process_id}/inscricao-{application_id}/{filename}`, unique `(application, kind)`, `validate_upload(filename, size)` importando `EXTENSOES_DE_DOCUMENTO` e `TAMANHO_MAXIMO_DO_DOCUMENTO` de `apps.academic.models` (linhas 1643-1646), permissão custom `download_applicationdocument` em `Meta.permissions`). Gerador de protocolo `PS{year}{R|S}-{8 hex maiúsculos}` como função de módulo. Migration `0003_application.py`.",
+      "files": [
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/migrations/0003_application.py",
+        "backend/apps/selection/tests/test_models.py"
+      ],
+      "acceptance": "Testes: CPF inválido falha, CPF válido passa; documentos exigidos por kind e cota; cada transição válida e cada inválida (409); `enroll` sem `classified_*` → `not_classified`; formato do protocolo.",
+      "verify": "make ready; cd backend && uv run python manage.py makemigrations --check",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-vacancy-board"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f0-score-record-signature",
+      "title": "cria `StageScore`, `ExaminationRecord` e `RecordSignature` com migration e testes de hash, versão e token",
+      "context": "{CONV} `StageScore`: scripts/helton/projects/plans/processo-seletivo.md:155-161 (unique `(application, stage)`; checks `absent XOR score` e range 0–100; `passed` property com corte `NOTA_DE_CORTE`; `clean()` → `stage_mismatch`). `ExaminationRecord`: scripts/helton/projects/plans/processo-seletivo.md:163-177 (versionável: `version`, `supersedes` OneToOne self null, check `version=1 ⇔ supersedes IS NULL`; unique `(process, stage, level, project, research_line, version)` `nulls_distinct=False`; invariante 'uma ata corrente por chave' no `clean()` → `record_already_exists`; `content` JSON ordenado por nome com score como `str` (armadilha 7); `content_hash` = sha256 de `json.dumps(sort_keys=True, separators=(\",\",\":\"), ensure_ascii=False)` + cabeçalho com ids/version (armadilha 9); `pdf` FileField `selecao/edital-{process_id}/atas/ata-{id}-v{version}.pdf`; métodos `freeze(content, at)` → `record_not_draft`/`no_candidates`, `reopen()`, `mark_signed(at)`, `supersede()`, `is_current`, `expected_signers()` delegando ao Board com `replaced_member`, `compute_hash()`, `verify_hash()`). `RecordSignature`: scripts/helton/projects/plans/processo-seletivo.md:179-189 (method token se `signer.category == EXTERNAL`; unique `(record, signer)`; check `method=\"token\" OR token_hash=\"\"`; `sign(at, content_hash, user=None, ip=None)` → `already_signed`/`record_changed`; `issue_token(at, ttl=7d)` com `secrets.token_urlsafe(32)` gravando só o sha256 e devolvendo o texto uma vez, `token_not_applicable`; `consume_token(at)` → `token_expired`/`token_already_used`; `ensure_can_sign_by_login(user)` → `NotAllowed`; QuerySet `pending()`, `by_token(raw)`). Máquina da ata: scripts/helton/projects/plans/processo-seletivo.md:242-250. Migration `0004_stagescore_examinationrecord_recordsignature.py`.",
+      "files": [
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/migrations/0004_stagescore_examinationrecord_recordsignature.py",
+        "backend/apps/selection/tests/test_models.py"
+      ],
+      "acceptance": "Testes: absent XOR score; `passed` no corte exato 70.00; hash canônico estável e `verify_hash` detecta alteração; `version=2` exige `supersedes`; `issue_token` devolve texto e persiste só hash; `consume_token` expirado/reusado falha; `sign` com hash divergente → `record_changed`.",
+      "verify": "make ready; cd backend && uv run python manage.py makemigrations --check",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-application-document"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f0-reallocation-convocation",
+      "title": "cria `VacancyReallocation`, `Convocation` e `ConvocationEmail` com migration e testes",
+      "context": "{CONV} `VacancyReallocation`: scripts/helton/projects/plans/processo-seletivo.md:191-197 (imutável; `clean()` → `process_mismatch`, `same_target_required` para level_transfer (mesmo alvo, níveis diferentes), `same_level_required` para notice_rectification, `insufficient_vacancies`, `process_still_draft`, e categoria de cota preservada `from.quota_category == to.quota_category` — assunção documentada em scripts/helton/projects/plans/processo-seletivo.md:38, marcar em docstring). `Convocation` e `ConvocationEmail`: scripts/helton/projects/plans/processo-seletivo.md:199-203 (cópias de subject/body no instante do envio; unique `(convocation, application)`; `mark_sent`, `mark_failed` incrementando `attempts`). Migration `0005_vacancyreallocation_convocation_convocationemail.py`.",
+      "files": [
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/migrations/0005_vacancyreallocation_convocation_convocationemail.py",
+        "backend/apps/selection/tests/test_models.py"
+      ],
+      "acceptance": "Testes em memória de cada código de erro do `clean()` da realocação e das transições de `ConvocationEmail`; `makemigrations --check` limpo.",
+      "verify": "make ready; cd backend && uv run python manage.py makemigrations --check",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-score-record-signature"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f0-papeis-admin",
+      "title": "cria a data migration de papéis da seleção (grupo Comissão de Seleção + permissões) e o admin completo",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:211-220. Molde: `backend/apps/academic/migrations/0011_papeis_da_isolada.py`. Migration `selection/migrations/0006_papeis_da_selecao.py`: grupo novo **Comissão de Seleção** (`add/view_vacancyreallocation` + `view_*` do app); **Secretaria** ganha `add/change/view` de selectionprocess, selectionstage, vacancy, board; `change/view_application`; `download_applicationdocument`; `add/view_convocation`; `view_*`; **Docente** ganha `view_selectionprocess/board/application/examinationrecord`, `add/change/view_stagescore`, `add/change/view_examinationrecord` e a custom `sign_examinationrecord` (declarar em `Meta.permissions` de ExaminationRecord se ainda não existir); **Coordenação** `view_*`. Ninguém recebe `delete_*`. `admin.py`: registrar todos os models com `list_display`/`search_fields`/`list_filter` úteis e `readonly_fields` para hash/pdf/token; toda escrita no Admin gera AuditLog (ver como `academic/admin.py` faz). Teste no molde de `academic/tests/test_papeis.py` conferindo cada grupo.",
+      "files": [
+        "backend/apps/selection/migrations/0006_papeis_da_selecao.py",
+        "backend/apps/selection/admin.py",
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/tests/test_papeis.py"
+      ],
+      "acceptance": "Após `migrate`, os quatro grupos têm exatamente as permissões listadas e nenhum `delete_*`; Admin lista todos os models do app; teste de papéis verde.",
+      "verify": "make ready",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-reallocation-convocation"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f1-processes-api",
+      "title": "expõe schemas e rotas de `processes` (CRUD, publish/close, notice-file) com `publish_process` e testes de API",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:306-327 (padrão de rota: `require_perm` → `current_program` → model/service → schema de saída explícito → `audit.record` no mesmo `atomic`) e scripts/helton/projects/plans/processo-seletivo.md:282 (`publish_process` exige ≥1 etapa, ≥1 vaga e template de convocação → `process_incomplete`; evento `selection.process.publish`). Rotas: `processes/` GET paginado, POST, GET id, PATCH (com `ensure_editable`), POST `publish`, POST `close`, POST `notice-file` multipart (usar `comoFormData`/padrão de upload de `academic/router.py`). Criar `services.py` com `publish_process(*, process, request)` (`@transaction.atomic`, `clean()` antes de `save()`, `audit.record` de `apps/core/audit.py`). Schemas em `schemas.py` com `Decimal` via `Field(max_digits=5, decimal_places=2, ge=0, le=100)` quando houver. Helpers `require_perm` (`apps/core/permissions.py:13`) e `current_program` (`apps/core/tenancy.py:26`). Testes de API no molde de `academic/tests/test_isolada_edital_escrita.py`, criando dado nos DOIS programas e afirmando que o outro não aparece (tenant). Rodar `make gen-api` ao final.",
+      "files": [
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/tests/test_api_editais.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Secretaria cria, edita, publica e encerra edital pela API; usuário sem permissão recebe 403; edital do outro programa não aparece nem é editável; `publish` sem etapa/vaga/template → 4xx `process_incomplete`; AuditLog registrado.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-papeis-admin"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f1-stages-vacancies-api",
+      "title": "expõe rotas de `stages` e `vacancies` (escrita só com edital em draft) com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:313-315. `processes/{<built-in function id>}/stages/` GET, POST, PATCH, DELETE (só em draft — único DELETE de etapa; `ensure_editable` → `process_not_editable`); `processes/{id}/vacancies/` GET, POST, PATCH (só em draft). Operações de um model só ficam no router com `audit.record` no mesmo `atomic`. Reaproveitar helpers de `f1-processes-api`. Testes: escrita em edital publicado → 409, unicidade de order/name/tiebreak_rank → 4xx com code, vaga duplicada com nulos → `duplicate_vacancy`, tenant.",
+      "files": [
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_etapas_vagas.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Etapas e vagas são criadas/alteradas só em draft; erros de domínio voltam com `code` estável; tenant respeitado.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-processes-api"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f1-boards-api",
+      "title": "expõe rotas de `boards` com filtros, `with_teacher` e `board_in_use`, com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:315-317. `boards/` GET com filtros `process_id`, `level`, `project_id`, `research_line_id`, `teacher_id` (este via `Board.objects.with_teacher`); POST; GET id; PATCH com `ensure_editable` → `board_in_use` se existe `ExaminationRecord` não-draft da banca. Schema de saída expande os quatro docentes (nome, categoria, instituição). Testes: filtros, membro repetido, docente de outro programa, `board_in_use`, tenant.",
+      "files": [
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_bancas.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "CRUD de banca funciona com os filtros listados; banca com ata congelada não é editável (`board_in_use`); tenant.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-stages-vacancies-api"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f1-email-settings-mailpit",
+      "title": "configura e-mail (`django.core.mail`), `SITE_URL`, serviço `mailpit` no compose e escreve o ADR-009",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:31 (P6), scripts/helton/projects/plans/processo-seletivo.md:402-412 e scripts/helton/projects/plans/processo-seletivo.md:415-417. `config/settings/base.py`: `EMAIL_BACKEND = os.getenv(\"EMAIL_BACKEND\", \"django.core.mail.backends.console.EmailBackend\")`, `EMAIL_HOST/EMAIL_PORT/EMAIL_USE_TLS/EMAIL_HOST_USER/EMAIL_HOST_PASSWORD` via env, `DEFAULT_FROM_EMAIL`, `SITE_URL = os.getenv(\"SITE_URL\", \"http://localhost:8080\")`. `docker-compose.yml`: serviço `mailpit` (`axllent/mailpit`, sem porta publicada nesta story — publicar a UI é a story gate `f6-gate-mailpit-ui-port`) e, no `backend`, `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, `EMAIL_HOST=mailpit`, `EMAIL_PORT=1025`, `SITE_URL=http://localhost:${NGINX_PORT:-8080}` (o front do canteiro responde na NGINX_PORT do .env). Em `pytest-django` o backend vira `locmem` sozinho (armadilha 2). ADR em `docs/adr/009-email-de-convocacao-sem-fila.md` (molde `docs/adr/000-template.md`): sem Celery/fila, falha visível e reenviável, registra que o corte de SMTP das isoladas não vale aqui, SPF/DKIM/relay com a infra. NÃO tocar em `.env.example` nem `.env.worktree` (stories gate).",
+      "files": [
+        "backend/config/settings/base.py",
+        "docker-compose.yml",
+        "docs/adr/009-email-de-convocacao-sem-fila.md"
+      ],
+      "acceptance": "Com a stack de pé, `docker compose exec backend python manage.py shell -c \"from django.core.mail import send_mail; send_mail('t','t','a@b.c',['d@e.f'])\"` faz a mensagem aparecer em `docker compose exec backend curl -s http://mailpit:8025/api/v1/messages`; `make ready` verde.",
+      "verify": "make ready; docker compose up -d mailpit backend; docker compose exec backend curl -s http://mailpit:8025/api/v1/messages | head",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-app-selection"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f1-tela-editais",
+      "title": "cria a tela `selecao/editais` (edital, etapas, grade de vagas, PDF, publicar/encerrar, template), menu e ícones",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:353-358 (padrão `professores/+page.svelte`: CRUD inline com runas, `api` de `lib/api/client.ts`, `mensagemDeErro`, classes de `app.css`; upload com `comoFormData`) e scripts/helton/projects/plans/processo-seletivo.md:368-371, scripts/helton/projects/plans/processo-seletivo.md:391-394. Rota `frontend/src/routes/(app)/selecao/editais/+page.svelte` — ATENÇÃO: já existe `(app)/editais/` (edital da isolada) e `(app)/inscricao/`; as rotas novas vivem TODAS sob `/selecao/` (armadilha 17). Conteúdo: lista + form do edital; sub-blocos de etapas (nome, ordem, data/hora, local, tiebreak_rank) e vagas em grade nível × alvo × categoria (categorias conforme kind); upload do PDF do edital; botões publicar/encerrar; template da convocação com os placeholders documentados. Menu em `(app)/+layout.svelte`: item \"Processo seletivo\" com submenu (Editais, Bancas, Inscrições, Convocações, Atas, Resultado) sob `{#if sessao.pode('selection.view_selectionprocess')}` (padrão nas linhas ~57-71); item \"Minhas bancas\" sob `selection.add_stagescore`. Ícones novos `selecao`, `banca`, `ata` no mapa `FORMAS` de `lib/Icone.svelte` (linha 35; o union `Nome` precisa dos três). Rótulos de enums em `frontend/src/lib/selecao.ts` (molde `lib/isolada.ts`). Links do submenu para telas ainda inexistentes podem apontar para a rota futura (SvelteKit dá 404 até a story dela). `sessao.rotaInicial` não muda.",
+      "files": [
+        "frontend/src/routes/(app)/selecao/editais/+page.svelte",
+        "frontend/src/routes/(app)/+layout.svelte",
+        "frontend/src/lib/Icone.svelte",
+        "frontend/src/lib/selecao.ts"
+      ],
+      "acceptance": "Logada como secretaria, a tela cria um edital com etapas e vagas, sobe o PDF, publica e encerra; erros da API aparecem em português; menu só aparece para quem tem a permissão; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-stages-vacancies-api"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f1-tela-bancas",
+      "title": "cria a tela `selecao/bancas` e adiciona `external` (com instituição obrigatória) à tela de professores",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:371-374 e scripts/helton/projects/plans/processo-seletivo.md:382-383. `frontend/src/routes/(app)/selecao/bancas/+page.svelte`: listagem agrupada linha → projeto → presidente/titular 1/titular 2/suplente, filtro por edital e nível; form numa linha só com 4 `<select>` de docentes credenciados (inclui externos mostrando a instituição); validação de UX de membro repetido (a que vale é a do backend). Em `(app)/professores/+page.svelte`: acrescentar `external` às `CATEGORIAS` e tornar instituição obrigatória na UX quando a categoria é externo.",
+      "files": [
+        "frontend/src/routes/(app)/selecao/bancas/+page.svelte",
+        "frontend/src/routes/(app)/professores/+page.svelte",
+        "frontend/src/lib/selecao.ts"
+      ],
+      "acceptance": "Secretaria cadastra um docente externo em `/professores` e monta uma banca com ele em `/selecao/bancas`; membro repetido é barrado na UX e na API; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-boards-api",
+        "f1-tela-editais"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Tela e ajuste de professores prontos; make ready verde. Verificação de browser pendente: o plugin browser-use ficou travado no consentimento 'Allow remote debugging?' do Chrome. O fluxo foi exercitado ponta a ponta pela API da stack (externo com instituição, banca com externo, duplicate_board_member, home_institution_required)."
+    },
+    {
+      "id": "f2-inscricao-publica-api",
+      "title": "implementa `submit_application` e as rotas públicas de editais, inscrição e protocolo, com rate limit e nginx",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:32 (P7: candidato sem login, um POST multipart com todos os anexos, devolve protocolo), scripts/helton/projects/plans/processo-seletivo.md:229 (guardas da submissão), scripts/helton/projects/plans/processo-seletivo.md:283 e scripts/helton/projects/plans/processo-seletivo.md:337-345. Padrão de rota pública: `academic/router.py:1462-1480` (`auth=None`, comentário `# público` com justificativa, `enforce_rate_limit` de `apps/core/ratelimit.py`, `@decorate_view(csrf_protect)` na escrita). Rotas: `GET public/processes` (editais abertos agora com etapas, níveis, alvos, categorias com vaga>0 e sigla do programa; rate limit `selection-public-read` 60/min; sem dado pessoal); `POST public/applications` (campos `Form(...)` + `identity/diploma/lattes/payment_receipt: UploadedFile = File(...)`, `expanded_abstract/memorial/quota_proof: UploadedFile | None = File(None)`; devolve `{protocol, submitted_at}`; rate limit `selection-apply` 5/h; tenant = `process_id` validado por `open_for_submission(now)` — NUNCA `current_program` (armadilha 12); `validate_upload` antes de qualquer escrita); `GET public/applications/{protocol}` → `{status, submitted_at, process_title}` (20/min; 404 genérico). Service `submit_application(*, process, dados, files, request)`: `@transaction.atomic`, guardas `submission_window_closed`, `no_vacancy_for_choice`, `duplicate_application`, `missing_documents`, protocolo com retry em `IntegrityError` (5×), `audit.record(program=process.program, ...)` explícito com payload SEM CPF. `nginx/nginx.conf`: `client_max_body_size 80m` só em `location /api/v1/selection/public/` (default 25m na linha 25 continua; armadilha 11). Testes: janela fechada, cota × kind, sem vaga, CPF duplicado, documentos faltando, upload inválido, edital do outro programa invisível, rate limit.",
+      "files": [
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/tests/test_api_inscricao_publica.py",
+        "nginx/nginx.conf",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Anônimo lista editais abertos, inscreve-se com todos os anexos num POST e consulta o protocolo; cada guarda devolve 4xx com `code`; nenhuma escrita parcial em falha; AuditLog sem CPF; nginx aceita 80m só na rota pública.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-stages-vacancies-api"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f2-applications-api",
+      "title": "expõe rotas de `applications` (lista filtrável, detalhe com documentos, homologar/indeferir, download) com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:317-320 e scripts/helton/projects/plans/processo-seletivo.md:230. `applications/` GET paginado com filtros `process_id`, `status`, `level`, `quota_category`, `project_id`, `research_line_id` e busca por nome/protocolo/CPF; GET id com documentos expandidos; POST `homologate` e POST `reject` (nota obrigatória → `rejection_requires_note`) — um model só, direto no router com `audit.record`; `documents/{id}/download` exige `selection.download_applicationdocument`, audita a leitura e devolve `FileResponse` (molde: download de `RequestDocument` em `academic/router.py`). Testes: filtros, transições, download com e sem permissão, tenant nos dois programas.",
+      "files": [
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_inscricoes.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Secretaria lista, filtra, vê documentos, homologa e indefere; download exige a permissão custom e é auditado; inscrição do outro programa não aparece.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f2-inscricao-publica-api"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f2-telas-publicas-inscricao",
+      "title": "cria as telas públicas `(publico)/selecao/inscricao` e `(publico)/selecao/protocolo`",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:360-364. Novo grupo de rotas `frontend/src/routes/(publico)/` com `+layout.svelte` mínimo, no molde de `(auth)/cadastro` (sem sessão). `inscricao/+page.svelte`: escolhe edital aberto → nível → alvo (projeto ou linha conforme kind) → categoria de cota; dados pessoais (nome, e-mail, CPF, nascimento, telefone); um `<input type=file>` por documento exigido conforme kind/cota; `garantirCsrf()` antes do POST (ver como `(auth)/cadastro` faz); mostra o protocolo e manda guardar. `protocolo/+page.svelte`: consulta situação por protocolo. Toda chamada via `lib/api/client.ts` (fetch cru é proibido). Não confundir com `(app)/inscricao` (isolada).",
+      "files": [
+        "frontend/src/routes/(publico)/+layout.svelte",
+        "frontend/src/routes/(publico)/selecao/inscricao/+page.svelte",
+        "frontend/src/routes/(publico)/selecao/protocolo/+page.svelte",
+        "frontend/src/lib/selecao.ts"
+      ],
+      "acceptance": "Anônimo completa uma inscrição pelo browser com anexos e recebe protocolo; consulta o protocolo e vê `submitted`; erros da API (janela, CPF duplicado, documento faltando) aparecem legíveis; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f2-inscricao-publica-api"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f2-tela-inscricoes",
+      "title": "cria a tela `selecao/inscricoes` (lista filtrável, detalhe com documentos, homologar/indeferir com nota)",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:374-376. `frontend/src/routes/(app)/selecao/inscricoes/+page.svelte`: lista filtrável por edital, status, nível, categoria, alvo e busca; detalhe com documentos para download (link para `documents/{id}/download`); botões homologar e indeferir (indeferir exige nota). Padrão de `professores/+page.svelte`.",
+      "files": [
+        "frontend/src/routes/(app)/selecao/inscricoes/+page.svelte",
+        "frontend/src/lib/selecao.ts"
+      ],
+      "acceptance": "Secretaria filtra inscrições, abre o detalhe, baixa um documento, homologa uma e indefere outra com nota; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f2-applications-api",
+        "f1-tela-editais"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-scores-api",
+      "title": "cria `teacher_da_sessao`, rotas `boards/mine` e `scores` (GET/PUT lote, `record_frozen`) com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:329-335 e scripts/helton/projects/plans/processo-seletivo.md:238-240. Helper `teacher_da_sessao(request, program) -> Teacher` em `router.py` (ou módulo auxiliar do app) → `NotAllowed(\"not_a_board_member\")` quando o usuário não tem Teacher no programa (secretaria: NotAllowed, não 404 — armadilha 13). `boards/mine` GET: bancas do Teacher da sessão via `Board.objects.with_teacher`. `boards/{id}/stages/{sid}/scores` GET: candidatos vivos (`alive()` + `for_target`) do alvo da banca com a nota atual; PUT lote `[{application_id, score|absent}]` — cria/atualiza `StageScore` com `entered_by`, 409 `record_frozen` se a ata corrente da (etapa × nível × alvo) está `awaiting_signatures`/`signed`. Recorte real é `Board.is_member(teacher)` na rota (`NotAllowed`), nunca a permissão sozinha. Testes: docente de outra banca → 403, secretaria → 403, lote com absent XOR score, `record_frozen`.",
+      "files": [
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_notas.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Docente membro lança notas em lote na sua banca; não-membro recebe 403; nota é recusada quando a ata está congelada.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-boards-api",
+        "f2-applications-api"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-record-services-api",
+      "title": "implementa `generate/refresh/freeze/reopen_record` com token + e-mail do externo, rotas e testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:242-247, scripts/helton/projects/plans/processo-seletivo.md:284-286 e scripts/helton/projects/plans/processo-seletivo.md:332-334. Services: `generate_record` (edital published; Board existe; sem ata corrente na chave → `record_already_exists`; etapa k>1 exige ata da k-1 signed → `previous_stage_open`; `content` vem das notas vivas), `refresh_record` (regera enquanto draft), `freeze_record(*, record, replaced_member, request)` — só presidente; toda inscrição viva do alvo tem `StageScore` (`scores_incomplete` com payload listando protocolos); calcula hash; cria as `RecordSignature` por `expected_signers(replaced_member)`; para signer EXTERNAL emite token e agenda e-mail em `transaction.on_commit` (armadilha 3: nunca enviar dentro da transação); falha de envio → `token_sent_at=None` + evento `selection.record.token_email_failed`; `reopen_record` exige zero assinaturas (`record_has_signatures`) e apaga as pendentes — único `delete` do app (armadilha 15). `emails.py`: `enviar_token_de_assinatura(signature, token)` com `EmailMessage` e link `{SITE_URL}/selecao/assinatura/{token}` (nunca `build_absolute_uri` — armadilha 18). Rotas `boards/{id}/stages/{sid}/record` GET (ata corrente), POST (gera), POST `refresh`, POST `freeze` (com `replaced_member_id` opcional), POST `reopen`. Testes com `django_capture_on_commit_callbacks(execute=True)` e `mail.outbox` (armadilha 2); `expected_signers` com impedimento; `verify_hash`.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/emails.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_ata.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Presidente gera, atualiza, congela (com ou sem impedido) e reabre a ata; congelar com nota faltando → `scores_incomplete` listando protocolos; congelar cria 3 assinaturas e o externo recebe e-mail com link em `mail.outbox`; etapa 2 sem ata 1 assinada → `previous_stage_open`.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-scores-api",
+        "f1-email-settings-mailpit"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-pdf-reportlab",
+      "title": "adiciona ReportLab (ADR-008) e `pdf.py` com `render_record_pdf` e teste de bytes válidos",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:30 (P5), scripts/helton/projects/plans/processo-seletivo.md:297-299, scripts/helton/projects/plans/processo-seletivo.md:399-401 e scripts/helton/projects/plans/processo-seletivo.md:415. `cd backend && uv add reportlab` (pyproject + uv.lock mudam) e REBUILD da imagem: `docker compose up -d --build backend` — o venv está em `/opt/venv` na imagem, não no volume (armadilha 1). `apps/selection/pdf.py`: `render_record_pdf(record) -> bytes` com `SimpleDocTemplate` + `Table`, Helvetica; cabeçalho com edital/etapa/nível/alvo/banca; tabela do `content`; rodapé com `content_hash`, versão e, por assinatura, nome/método/`signed_at`/12 hex do `signed_hash`. ADR em `docs/adr/008-pdf-da-ata-com-reportlab.md` (puro Python, sem libs de sistema). Teste: bytes começam com `%PDF` para uma ata em memória com e sem assinaturas. Se o mypy reclamar de stubs, adicionar `reportlab` em `[[tool.mypy.overrides]] ignore_missing_imports` no pyproject (isso NÃO afrouxa a verificação do projeto).",
+      "files": [
+        "backend/pyproject.toml",
+        "backend/uv.lock",
+        "backend/apps/selection/pdf.py",
+        "backend/apps/selection/tests/test_pdf.py",
+        "docs/adr/008-pdf-da-ata-com-reportlab.md"
+      ],
+      "acceptance": "`render_record_pdf` devolve bytes `%PDF` com hash e assinaturas no rodapé; `uv sync --locked` passa; `docker compose exec backend python -c 'import reportlab'` funciona após rebuild.",
+      "verify": "make ready; docker compose up -d --build backend; docker compose exec backend python -c 'import reportlab'",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-score-record-signature"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-sign-close-stage",
+      "title": "implementa `sign_record` e `_close_stage` (promove/elimina/aprova, PDF, `select_for_update`) com rota e testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:231-235, scripts/helton/projects/plans/processo-seletivo.md:248-250, scripts/helton/projects/plans/processo-seletivo.md:287 e scripts/helton/projects/plans/processo-seletivo.md:289. `sign_record(*, record, user, ip, request)`: `ensure_can_sign_by_login(user)` (signer é o Teacher do user e method=login), `sign(at, content_hash, user, ip)` conferindo `verify_hash()` → `record_changed`; `select_for_update()` na ata ANTES de contar assinaturas (armadilha 14); na 3ª chama `_close_stage(record)`. `_close_stage`: `mark_signed`, aplica desfechos a cada linha do `content` — `absent` ou `< NOTA_DE_CORTE` → `eliminate(stage)`; `≥ 70` em etapa não-final → status não muda (promoção deriva da ata signed); última etapa ∧ `≥ 70` → `approve(score)` com `final_score`; se `version > 1`, `supersede()` da anterior e re-sincroniza desfechos só de quem mudou `passed` (inclui `reinstate()`); gera PDF via `render_record_pdf` e salva em `record.pdf` — tudo num `atomic`, evento `selection.stage.close` com payload promoted/eliminated/approved/version. Rota `boards/{id}/stages/{sid}/record/sign` POST (login) com permissão `selection.sign_examinationrecord` + `is_member`. Testes de fechamento: 1ª etapa, intermediária, última; ausente; corte exato 70.00 passa e 69.99 elimina; `record_changed` quando o content muda entre congelar e assinar; duas assinaturas do mesmo signer → `already_signed`.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_fechamento_de_etapa.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Três assinatturas por login fecham a ata: status `signed`, PDF gravado, eliminados/promovidos/aprovados corretos por etapa; `final_score` carimbado na última; assinatura com hash divergente é recusada.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-record-services-api",
+        "f3-pdf-reportlab"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-sign-token-public",
+      "title": "implementa `sign_record_with_token`, `resend_signature_token` e as rotas públicas de assinatura, com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:287-288 e scripts/helton/projects/plans/processo-seletivo.md:344-345. `sign_record_with_token(*, token, ip, request)` público: lookup por sha256 (`RecordSignature.objects.by_token`), `consume_token(at)` + `sign(...)` na mesma transação, chama `_close_stage` na 3ª; `audit.record(program=record.program)` explícito (armadilha 12). `resend_signature_token(*, signature, request)`: invalida o anterior (novo `issue_token`), reenvia e-mail no `on_commit`, evento `selection.record.token_reissued`. Rotas: `GET public/signatures/{token}` (cabeçalho + `content` + hash para conferência; pendente e não expirado; 404 genérico; rate limit) e `POST public/signatures/{token}/sign` (`csrf_protect`; rate limit 10/h) — ambas `auth=None` com `# público` justificado; `records/{id}/signatures/{sid}/resend-token` POST (secretaria). Testes: expirado, reuso, reemissão invalida o anterior, `record_changed`, token de outro programa não vaza dado, fechamento quando o externo é o 3º.",
+      "files": [
+        "backend/apps/selection/migrations/0007_secretaria_reenvia_token.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/tests/test_api_assinatura_token.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Externo assina pelo token e a ata fecha quando é a 3ª; token expirado/reusado → 4xx com `code`; reenvio invalida o token anterior e manda novo e-mail.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-sign-close-stage"
+      ],
+      "priority": 23,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-rectify-record",
+      "title": "implementa `rectify_record` como service com teste (sem rota nem tela — fase 2)",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:34 (P9), scripts/helton/projects/plans/processo-seletivo.md:236 e scripts/helton/projects/plans/processo-seletivo.md:290. `rectify_record(*, record, reason, request)`: exige ata `signed`; cria nova `ExaminationRecord` draft com `version = n+1`, `supersedes = record`, `rectification_reason`; libera edição das notas da chave (a checagem `record_frozen` de `f3-scores-api` considera a ata CORRENTE — a nova draft); evento `selection.record.rectify`. Ao fechar a versão n+1, `_close_stage` já faz `supersede()` e re-sincroniza (`reinstate()` de quem passou a `passed`). Teste: retificar, corrigir uma nota, congelar/assinar e conferir que a anterior fica `superseded` e o candidato eliminado volta a `homologated`.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/tests/test_retificacao.py"
+      ],
+      "acceptance": "Service existe, não há rota; teste de ponta a ponta da versão 2 com reinstate verde.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-sign-close-stage"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-tela-minhas-bancas",
+      "title": "cria as telas `selecao/minhas-bancas` (lista) e `minhas-bancas/[id]` (notas, ata, assinaturas)",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:385-389 e scripts/helton/projects/plans/processo-seletivo.md:394. `(app)/selecao/minhas-bancas/+page.svelte`: bancas do docente (`boards/mine`). `minhas-bancas/[id]/+page.svelte`: por etapa, grade de notas com campo decimal (a API devolve `string` — armadilha 7) e checkbox \"ausente\" (exclusivo com a nota), salvar lote; gerar/atualizar ata; presidente congela (escolhendo impedido → suplente) e reabre; cada membro assina; status das assinaturas (pendente/assinada, método); após assinada, link do PDF e resumo promovidos/eliminados. Estados de erro `record_frozen`, `scores_incomplete` (listar protocolos do payload). Menu \"Minhas bancas\" já criado em `f1-tela-editais`.",
+      "files": [
+        "frontend/src/routes/(app)/selecao/minhas-bancas/+page.svelte",
+        "frontend/src/routes/(app)/selecao/minhas-bancas/[id]/+page.svelte",
+        "frontend/src/lib/selecao.ts"
+      ],
+      "acceptance": "Docente vê suas bancas, lança notas, presidente congela, membros assinam e a tela mostra a ata `signed` com PDF; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-sign-close-stage",
+        "f1-tela-editais"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-tela-assinatura-token",
+      "title": "cria a tela pública `(publico)/selecao/assinatura/[token]`",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:365-366. `(publico)/selecao/assinatura/[token]/+page.svelte`: carrega `GET public/signatures/{token}`, mostra cabeçalho da ata, tabela do `content`, hash, e botão \"Assinar\" (`garantirCsrf()` antes do POST); estados assinado/expirado/inválido (404 genérico → \"link inválido ou expirado\"). O link chega por e-mail em `{SITE_URL}/selecao/assinatura/{token}` — conferir que a rota bate com o que `emails.py` monta.",
+      "files": [
+        "frontend/src/routes/(publico)/selecao/assinatura/[token]/+page.svelte"
+      ],
+      "acceptance": "Colhendo o link no Mailpit, o externo abre a ata sem login, confere o hash e assina; link reusado mostra estado assinado; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-sign-token-public",
+        "f2-telas-publicas-inscricao"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f3-records-api-tela-atas",
+      "title": "expõe `records/` e `records/{id}/pdf` e cria a tela `selecao/atas` (status, assinaturas, reenviar token, PDF)",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:323-325 e scripts/helton/projects/plans/processo-seletivo.md:377-379. Rotas (secretaria): `records/` GET por `process_id` com status e assinaturas (nome, método, `signed_at`, `token_sent_at`), `records/{id}/pdf` GET (`FileResponse`, auditar leitura). Tela `(app)/selecao/atas/+page.svelte`: todas as atas do edital, status, assinaturas pendentes, botão reenviar token (rota de `f3-sign-token-public`), baixar PDF.",
+      "files": [
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_atas_secretaria.py",
+        "frontend/src/routes/(app)/selecao/atas/+page.svelte",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Secretaria vê as atas do edital com status e assinaturas, reenvia token do externo e baixa o PDF; tenant nos testes.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar; make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-sign-token-public",
+        "f1-tela-editais"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f4-convocacoes-api",
+      "title": "implementa `send_convocations`/`resend_convocation_emails`, `enviar_convocacao`, `convocable_for` e rotas com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:31 (P6), scripts/helton/projects/plans/processo-seletivo.md:293-294, scripts/helton/projects/plans/processo-seletivo.md:300-302 e scripts/helton/projects/plans/processo-seletivo.md:321-323. `Application.objects.convocable_for(stage)`: homologados do processo que, para etapa 1, ainda não foram eliminados; para etapa k>1, passaram na ata signed da k-1 (ou seja, `alive()` sem `eliminated_at_stage`). `send_convocations(*, process, stage, request)`: bloco atômico cria `Convocation` (cópia de subject/body do edital) + um `ConvocationEmail` `pending` por convocável que ainda não tem e-mail nesta etapa (reexecução pega só novos); FORA da transação envia um a um via `enviar_convocacao` com `try/except (OSError, smtplib.SMTPException)` → `mark_sent`/`mark_failed`; nunca 500 (armadilha 3). `resend_convocation_emails` reenvia só os `failed`. `render_convocation` do edital preenche `{nome} {protocolo} {etapa} {data_hora} {local} {edital}`. Rotas: `processes/{id}/stages/{sid}/convocations` POST (envia lote) e GET (lotes com contagem por status), `convocations/{id}/resend` POST. Testes: `mail.outbox`; falha simulada com `mock` no `send` não derruba o lote e marca `failed`; reexecução não duplica; tenant.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/emails.py",
+        "backend/apps/selection/models.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_convocacao.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Lote de convocação chega ao Mailpit/`mail.outbox` com placeholders renderizados; falha de um destinatário fica `failed` sem derrubar os demais; reenvio pega só falhas.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar; docker compose exec backend curl -s http://mailpit:8025/api/v1/messages | head",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f3-sign-close-stage"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f4-tela-convocacoes",
+      "title": "cria a tela `selecao/convocacoes` (convocáveis por edital × etapa, enviar lote, status, reenviar falhas)",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:376-377. `(app)/selecao/convocacoes/+page.svelte`: seleciona edital e etapa, mostra quem é convocável, botão enviar lote, lista de lotes com status por destinatário, botão reenviar falhas.",
+      "files": [
+        "frontend/src/routes/(app)/selecao/convocacoes/+page.svelte",
+        "frontend/src/lib/selecao.ts"
+      ],
+      "acceptance": "Secretaria envia um lote pela tela e vê os status; e-mails aparecem no Mailpit; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f4-convocacoes-api",
+        "f1-tela-editais"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f5-ranking-puro",
+      "title": "implementa as funções puras de classificação (`sort_key`, `rank_regular`, `rank_supplementary`) com testes sem banco",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:33 (P8) e scripts/helton/projects/plans/processo-seletivo.md:253-272. Em `services.py` (ou `ranking.py` importado por ele): dataclasses congeladas `RankingCandidate(application_id, quota_category, final_score, tiebreak_scores: tuple, birth_date)` e `RankingResult(application_id, rank, outcome, tie_unresolved)`. `sort_key(c)` = `(-final_score, -tb1, -tb2, ..., birth_date)`; empate total → ordem por `application_id` e `tie_unresolved=True`. `rank_regular(candidates, *, open_seats, racial_seats)`: (1) os `open_seats` primeiros da ordem geral → `classified_open` (qualquer categoria); (2) dos restantes, `racial` em ordem até `racial_seats` → `classified_quota`; (3) reserva ociosa → próximos da ordem geral viram `classified_open`; (4) resto `not_classified`; `rank` = posição na ordem geral. `rank_supplementary(candidates, *, seats_by_category)`: por categoria, ordena só os dela; `seats` primeiros → `classified_quota`; `open` na entrada é `ValueError`. Testes em `tests/test_ranking.py` SEM `django_db`: cotista classificado na ampla não consome reserva; reserva ociosa reverte sem ultrapassar o total; desempate por etapa 1, 2, idade (mais velho na frente); empate total; categoria sem candidato; `open_seats=0`.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/tests/test_ranking.py"
+      ],
+      "acceptance": "Os seis casos mínimos do plano passam sem banco; `uv run pytest apps/selection/tests/test_ranking.py` não abre conexão.",
+      "verify": "make ready; cd backend && uv run pytest apps/selection/tests/test_ranking.py -q -p no:django",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f0-app-selection"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f5-compute-ranking-api",
+      "title": "implementa `compute_ranking` e as rotas `processes/{id}/ranking` (POST calcula, GET resultado) com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:234, scripts/helton/projects/plans/processo-seletivo.md:269 e scripts/helton/projects/plans/processo-seletivo.md:291, scripts/helton/projects/plans/processo-seletivo.md:325-326. `compute_ranking(*, process, level, project, research_line, request)`: exige ata da última etapa `signed` para o (nível × alvo); entrada = `approved()` do alvo com `tiebreak_scores` das etapas com `tiebreak_rank` (em ordem) e `birth_date`; vagas = `Vacancy.quantity` do alvo por categoria (já líquido de realocações); chama `rank_regular`/`rank_supplementary` conforme `kind`; grava `final_rank`, `final_outcome`, `ranked_at`; idempotente até existir `enrolled` no (nível × alvo) → `ranking_locked`; evento `selection.ranking.compute`. Rotas: POST `processes/{id}/ranking` com `{level, project_id|research_line_id}`; GET resultado (rank, nota, desfecho, `tie_unresolved`). Testes: sem ata final signed → 4xx; `ranking_locked`; tenant.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_classificacao.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Classificação calculada e persistida por (nível × alvo); recalcular é idempotente; após um `enrolled` → `ranking_locked`; sem ata final assinada → erro com `code`.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f5-ranking-puro",
+        "f3-sign-close-stage"
+      ],
+      "priority": 31,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f5-reallocate-api",
+      "title": "implementa `reallocate_vacancy` e as rotas `reallocations/` (permissão da Comissão) com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:191-197, scripts/helton/projects/plans/processo-seletivo.md:292 e scripts/helton/projects/plans/processo-seletivo.md:326. `reallocate_vacancy(*, from_vacancy, to_vacancy, quantity, kind, reason, decided_on, note, request)`: `select_for_update` nas duas vagas; valida via `VacancyReallocation.clean()`; debita/credita `quantity`; zera `final_rank`/`final_outcome`/`ranked_at` dos `approved` dos alvos afetados (rank invalidado — recalcular); evento `selection.vacancy.reallocate`. Rotas `reallocations/` GET e POST exigem `selection.add_vacancyreallocation` (grupo Comissão de Seleção). Testes: level_transfer entre níveis do mesmo alvo, notice_rectification no mesmo nível, saldo insuficiente, categoria diferente, invalida rank, tenant.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_realocacao.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Comissão realoca vagas pela API; secretaria sem o grupo recebe 403; quantidades batem e o rank afetado é zerado.",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f5-compute-ranking-api"
+      ],
+      "priority": 32,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f5-convert-to-student",
+      "title": "implementa `convert_to_student` e a rota `applications/{id}/enroll` com testes",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:235, scripts/helton/projects/plans/processo-seletivo.md:295 e scripts/helton/projects/plans/processo-seletivo.md:327; armadilha 16 (scripts/helton/projects/plans/processo-seletivo.md:546). `convert_to_student(*, application, registration_number, admission_date, project, request)`: exige `final_outcome ∈ classified_*` (`not_classified`); `Person` find-or-create por `(program, primary_email)`; `Student(person, program, modality=REGULAR, level, project, registration_number, admission_date, term?)` com `full_clean()` traduzido para `DomainError(invalid_student)` (molde: `enroll_isolated_request` em `apps/academic/services.py`); `project` OBRIGATÓRIO (no Suplementar a inscrição só tem linha — a secretaria escolhe o projeto dentro dela → `project_required`; validar que o projeto pertence à linha); `application.enroll(student)`; se a Person tiver user, incluir no grupo Discente (ver como a isolada faz); evento `selection.application.enroll`. Rota POST `applications/{id}/enroll` (secretaria). Testes: Person reaproveitada por e-mail, `project_required`, `invalid_student`, aprovado nos dois editais converte um e o outro fica `approved` sem `student` (assunção scripts/helton/projects/plans/processo-seletivo.md:39), tenant.",
+      "files": [
+        "backend/apps/selection/services.py",
+        "backend/apps/selection/router.py",
+        "backend/apps/selection/schemas.py",
+        "backend/apps/selection/tests/test_api_conversao.py",
+        "frontend/src/lib/api/openapi.json",
+        "frontend/src/lib/api/schema.d.ts"
+      ],
+      "acceptance": "Aprovado classificado vira `Student` regular sem recadastro e aparece em `/alunos`; a inscrição fica `enrolled` com `student`; ranking do alvo trava (`ranking_locked`).",
+      "verify": "make ready; make gen-api (backend de pé) e `git status` limpo em frontend/src/lib/api/openapi.json e schema.d.ts após regenerar",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": true,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f5-compute-ranking-api"
+      ],
+      "priority": 33,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f5-tela-resultado",
+      "title": "cria a tela `selecao/resultado` (classificação, realocação de vaga, converter em aluno)",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:379-381. `(app)/selecao/resultado/+page.svelte`: por edital → nível × alvo: botão calcular classificação, tabela com rank/nota/desfecho/empate (`tie_unresolved` destacado); form de realocação de vaga (só aparece com `sessao.pode('selection.add_vacancyreallocation')`); botão \"converter em aluno\" com nº de matrícula, data de admissão e projeto (obrigatório; no Suplementar, lista os projetos da linha).",
+      "files": [
+        "frontend/src/routes/(app)/selecao/resultado/+page.svelte",
+        "frontend/src/lib/selecao.ts"
+      ],
+      "acceptance": "Secretaria calcula a classificação, Comissão realoca, secretaria converte um aprovado e ele aparece em `/alunos`; `svelte-check` limpo.",
+      "verify": "make ready; docker compose up -d --build frontend; verificar no browser com o plugin browser-use em http://localhost:$NGINX_PORT (NGINX_PORT do .env desta worktree), logando com as contas de CONTAS-DEMO.txt (gerado por `make seed`)",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f5-reallocate-api",
+        "f5-convert-to-student",
+        "f1-tela-editais"
+      ],
+      "priority": 34,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f6-seed-demo",
+      "title": "estende o `seed_demo` com o módulo de seleção nos dois programas e atualiza as contas demo",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:420-423 e scripts/helton/projects/plans/processo-seletivo.md:527-528. Em `backend/apps/core/management/commands/seed_demo.py` (idempotente; helpers `_programa`, `_linhas`, `_projetos`, `_pessoa`): para CADA programa, dois editais (Regular e Suplementar) publicados e abertos, etapas (Regular: resumo expandido tb1 → prova oral tb2 → entrevista; Suplementar: memorial tb1 → prova oral tb2 → análise), vagas, ~4 bancas (uma com docente externo), inscrições em todos os status (com documentos dummy), notas, uma ata assinada com PDF gerado, uma convocação enviada (com `EMAIL_BACKEND` console no seed se preciso). Contas novas (docente presidente, membro da Comissão de Seleção) no `CONTAS-DEMO.txt` que o seed gera (arquivo gitignored — linha 214 do .gitignore). Dois programas porque é assim que vazamento de tenant aparece.",
+      "files": [
+        "backend/apps/core/management/commands/seed_demo.py"
+      ],
+      "acceptance": "`make seed` roda duas vezes sem erro; nos dois programas há editais, bancas, inscrições, ata assinada e convocação; contas novas listadas em `CONTAS-DEMO.txt`.",
+      "verify": "make ready; make seed && make seed",
+      "effort_label": "medium",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f5-convert-to-student",
+        "f4-convocacoes-api",
+        "f3-sign-token-public",
+        "f5-tela-resultado"
+      ],
+      "priority": 35,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "f6-docs",
+      "title": "documenta o fluxo de seleção e o Mailpit em `manual_dev.md` e registra ADR-008/009 e armadilhas no `CLAUDE.md`",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:418-419, scripts/helton/projects/plans/processo-seletivo.md:424 e scripts/helton/projects/plans/processo-seletivo.md:479. `manual_dev.md` (raiz): seção do fluxo de seleção ponta a ponta (scripts/helton/projects/plans/processo-seletivo.md:520-526) e do Mailpit (`docker compose exec backend curl -s http://mailpit:8025/api/v1/messages`). `CLAUDE.md` raiz: ADR-008 e ADR-009 na seção 11; na seção \"Além dos gates\" as armadilhas novas: rebuild da imagem após `uv add`; e-mail em canteiro vai ao Mailpit/console; links de e-mail usam `SITE_URL`, nunca `build_absolute_uri`. NÃO mover specs nem arquivar o plano — isso é do `arquivar-plano.sh`. Não alterar a seção `## Human gates` do CLAUDE.md.",
+      "files": [
+        "manual_dev.md",
+        "CLAUDE.md"
+      ],
+      "acceptance": "Manual descreve o fluxo e o Mailpit; CLAUDE.md lista ADR-008/009 e as três armadilhas; `make ready` verde.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": false,
+      "gate_reason": null,
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f6-seed-demo"
+      ],
+      "priority": 36,
+      "passes": true,
+      "notes": "manual_dev.md ganhou a Seção 5 (fluxo ponta a ponta + Mailpit); CLAUDE.md lista ADR-008/009 e as três armadilhas. Pendência sinalizada, não executada: a Seção 'Human gates' ainda diz que o projeto não tem efeito irreversível sobre terceiro — deixou de ser verdade com f4-convocacoes-api, mas a story proíbe alterar aquela seção."
+    },
+    {
+      "id": "f6-gate-env-example",
+      "title": "documenta as chaves de e-mail e `SITE_URL` no `.env.example`",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:406 e scripts/helton/projects/plans/processo-seletivo.md:480. Acrescentar ao `.env.example` (raiz) as chaves `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, `SITE_URL`, com comentário explicando o default (console) e o SMTP de produção. Regra do próprio arquivo: toda chave usada pelo backend precisa estar documentada aqui.",
+      "files": [
+        ".env.example"
+      ],
+      "acceptance": "`.env.example` documenta cada variável lida em `config/settings/base.py` para e-mail e `SITE_URL`.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": true,
+      "gate_reason": "Segredos e o que roda fora daqui: `.env*` (categoria 2 do CLAUDE.md) — o arquivo orienta o `.env` de produção.",
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-email-settings-mailpit"
+      ],
+      "priority": 37,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "f6-gate-mailpit-ui-port",
+      "title": "publica a UI do Mailpit por canteiro (`MAILPIT_UI_PORT` em `.env.worktree`, `obra.conf` e compose)",
+      "context": "Plano: scripts/helton/projects/plans/processo-seletivo.md:410-412 e scripts/helton/projects/plans/processo-seletivo.md:481. Hoje `scripts/helton/obra/obra.conf:84` reserva `PORT_MAIL=8025` com `LABEL_MAIL=\"e-mail capturado (NÃO existe neste projeto)\"` e o `.env.worktree` não tem chave de Mailpit. Fazer: `MAILPIT_UI_PORT={{PORT:8025}}` no `.env.worktree` (e documentar no `.env.example`, que já é gate); `LABEL_MAIL` passa a \"e-mail capturado (Mailpit)\" e o comentário do bloco de portas deixa de dizer que MAIL não existe; no `docker-compose.yml`, `ports: [\"${MAILPIT_UI_PORT:-8025}:8025\"]` no serviço `mailpit`. Sem dependentes.",
+      "files": [
+        ".env.worktree",
+        "scripts/helton/obra/obra.conf",
+        "docker-compose.yml",
+        ".env.example"
+      ],
+      "acceptance": "Canteiro novo sobe com a UI do Mailpit em `http://localhost:$MAILPIT_UI_PORT` e o relatório do `montar-canteiro.sh` mostra o endereço.",
+      "verify": "make ready",
+      "effort_label": "low",
+      "human_gate": true,
+      "gate_reason": "Segredos e esteira: `.env.worktree` (`.env*`) e `scripts/helton/obra/obra.conf` — arquivos da maquinaria da esteira (categorias 2 e 3 do CLAUDE.md).",
+      "review_required": false,
+      "blocked_by_gate": false,
+      "depends_on": [
+        "f1-email-settings-mailpit"
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

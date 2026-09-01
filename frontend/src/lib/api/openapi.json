@@ -2817,6 +2817,2702 @@
           "required": true
         }
       }
+    },
+    "/selection/processes/": {
+      "get": {
+        "operationId": "apps_selection_router_list_processes",
+        "summary": "List Processes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionKind"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionProcessStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedSelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os editais do programa, do ano mais recente para o mais antigo.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_process",
+        "summary": "Create Process",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria abre o edital do ano, em rascunho.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionProcessIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/": {
+      "get": {
+        "operationId": "apps_selection_router_get_process",
+        "summary": "Get Process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "apps_selection_router_update_process",
+        "summary": "Update Process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Correção do edital — só enquanto ele é rascunho.\n\n`ensure_editable` é do model e devolve 409 `process_not_editable`:\ndepois de publicado o candidato já se inscreveu contra este conteúdo,\ne vaga se corrige por realocação, com ofício da comissão.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionProcessPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/publish": {
+      "post": {
+        "operationId": "apps_selection_router_publish_process_endpoint",
+        "summary": "Publish Process Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Publica o edital: o trabalho (e a cobrança do que falta) está no\nservice, porque a conferência atravessa etapas, vagas e template.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/close": {
+      "post": {
+        "operationId": "apps_selection_router_close_process",
+        "summary": "Close Process",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Encerra o edital — ato explícito da secretaria, nada expira por data.\n\nToca um model só, então fica no router (Seção 3): a regra de quando dá\npara encerrar é do `close()` do model, que devolve 409\n`process_not_published`.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/notice-file": {
+      "post": {
+        "operationId": "apps_selection_router_upload_notice_file",
+        "summary": "Upload Notice File",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionProcessOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Anexa (ou substitui) o PDF do edital.\n\nSubstituir, e não empilhar: o edital tem um arquivo, e o reenvio é a\ncorreção de quem subiu a versão errada. A remoção do arquivo anterior é\nexplícita porque o storage não participa do rollback da transação — sem\nela cada reenvio deixaria um órfão no MEDIA_ROOT.\n\nVale depois de publicado: o PDF é o documento que o edital publicado\ndivulga, e trocá-lo por uma retificação não muda vaga nem etapa.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/stages/": {
+      "get": {
+        "operationId": "apps_selection_router_list_stages",
+        "summary": "List Stages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SelectionStageOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "As etapas do edital, na ordem em que acontecem.\n\nSem paginação de propósito: são três etapas por edital, e a tela monta\na grade inteira de uma vez.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_stage",
+        "summary": "Create Stage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionStageOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionStageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/stages/{stage_id}/": {
+      "patch": {
+        "operationId": "apps_selection_router_update_stage",
+        "summary": "Update Stage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionStageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "`exclude_unset` sem `exclude_none`: `session_at` e `tiebreak_rank`\nprecisam poder voltar a nulo (desmarcar a sessão, tirar a etapa do\ndesempate).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionStagePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_selection_router_delete_stage",
+        "summary": "Delete Stage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Único DELETE do app.\n\nEm rascunho a etapa ainda não tem nota, ata nem convocação pendurada,\nentão apagar a linha errada é a correção honesta. Depois de publicado\nnada é apagado — o histórico do edital é o que a seleção prova.\n\nA auditoria é gravada **antes** do `delete()`: depois dele a instância\nperde o pk e o alvo do registro sairia vazio.\n\nA permissão exigida é `change_selectionstage`, e não `delete_`: nenhum\npapel de domínio recebe `delete_*` (migration `0006_papeis_da_selecao`,\ncom teste guardando), porque apagar dado da seleção é quebra-vidro de\nsysadmin. Tirar uma linha da grade **em rascunho** não é isso — é a\nmesma edição da grade que o PATCH faz, e quem trava o resto é o\n`ensure_editable` logo abaixo.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/vacancies/": {
+      "get": {
+        "operationId": "apps_selection_router_list_vacancies",
+        "summary": "List Vacancies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "quota_category",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuotaCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VacancyOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "A grade de vagas do edital. Sem paginação: é a grade inteira que a\ntela soma para dizer quantas vagas o edital oferece.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_vacancy",
+        "summary": "Create Vacancy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacancyOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacancyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/vacancies/{vacancy_id}/": {
+      "patch": {
+        "operationId": "apps_selection_router_update_vacancy",
+        "summary": "Update Vacancy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "vacancy_id",
+            "schema": {
+              "title": "Vacancy Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacancyOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Correção da grade, só em rascunho.\n\nNão existe DELETE de vaga (ao contrário de etapa): a linha zerada é o\nhistórico de que ali havia vaga, e `quantity=0` é permitido justamente\npara isso.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacancyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/": {
+      "get": {
+        "operationId": "apps_selection_router_list_boards",
+        "summary": "List Boards",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "process_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Process Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "teacher_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Teacher Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedBoardOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "As bancas do programa, com os filtros da tela.\n\n`teacher_id` passa por `Board.objects.with_teacher`, o único lugar em\nque o OU dos quatro papéis é escrito.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_board",
+        "summary": "Create Board",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A secretaria designa a banca de um nível × alvo do edital.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/": {
+      "get": {
+        "operationId": "apps_selection_router_get_board",
+        "summary": "Get Board",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "apps_selection_router_update_board",
+        "summary": "Update Board",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Troca de examinador ou correção do alvo, só enquanto a banca não\ntem ata fora do rascunho (409 `board_in_use`).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/mine": {
+      "get": {
+        "operationId": "apps_selection_router_list_my_boards",
+        "summary": "List My Boards",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyBoardOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "As bancas do docente da sessão, com as etapas de cada edital.\n\nSem paginação: um docente compõe poucas bancas, e a tela dele é a\nlista inteira. Sem filtros pelo mesmo motivo.\n\nNão colide com `/boards/{id}/` porque aquela rota usa o conversor\n`int:` — \"mine\" nunca casa com ele.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/scores": {
+      "get": {
+        "operationId": "apps_selection_router_list_stage_scores",
+        "summary": "List Stage Scores",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StageScoreOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "A planilha da banca naquela etapa: um candidato vivo por linha.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "apps_selection_router_set_stage_scores",
+        "summary": "Set Stage Scores",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StageScoreOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Lança as notas da etapa em lote e devolve a planilha atualizada.\n\nLote e não uma nota por requisição porque é assim que a banca\ntrabalha: ela avalia a sessão inteira e salva uma vez. O lote é\nparcial de propósito — quem não vem no corpo fica como estava.\n\nAs duas permissões juntas (`add` e `change`): a mesma chamada cria a\nlinha de quem ainda não tinha nota e reescreve a de quem já tinha.\n\nInscrição fora do recorte da banca é 404, como qualquer id de fora do\nescopo. Nota repetida no mesmo lote volta 400 `duplicate_score`, do\n`clean()` — o corpo se contradiz e não há como escolher qual vale.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/StageScoreIn"
+                },
+                "title": "Payload",
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record": {
+      "get": {
+        "operationId": "apps_selection_router_get_stage_record",
+        "summary": "Get Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A ata vigente daquela etapa nesta banca.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_stage_record",
+        "summary": "Create Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Abre a ata em rascunho, com as notas já lançadas.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/refresh": {
+      "post": {
+        "operationId": "apps_selection_router_refresh_stage_record",
+        "summary": "Refresh Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Regera o rascunho com as notas de agora.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/freeze": {
+      "post": {
+        "operationId": "apps_selection_router_freeze_stage_record",
+        "summary": "Freeze Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Fecha a ata para assinatura e emite o token do examinador externo.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordFreezeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/reopen": {
+      "post": {
+        "operationId": "apps_selection_router_reopen_stage_record",
+        "summary": "Reopen Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Devolve a ata congelada ao rascunho, se ninguém assinou.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/boards/{board_id}/stages/{stage_id}/record/sign": {
+      "post": {
+        "operationId": "apps_selection_router_sign_stage_record",
+        "summary": "Sign Stage Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "board_id",
+            "schema": {
+              "title": "Board Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExaminationRecordOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Assina a ata congelada como examinador logado.\n\nNão exige titularidade: quem assina é quem está na lista de\nsignatários da ata (`expected_signers`), e o suplente entra nela\nquando substitui um titular impedido. Quem compõe a banca mas não\nassina esta ata leva `not_the_signer`, não 404 — a ata existe e ele\npode lê-la.\n\nA terceira assinatura fecha a etapa: desfechos aplicados e PDF\ngravado, tudo na mesma transação (`_close_stage`).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordSignIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/records/": {
+      "get": {
+        "operationId": "apps_selection_router_list_records",
+        "summary": "List Records",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "stage_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RecordStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedRecordSummaryOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "As atas de um edital, da primeira etapa à última.\n\n`process_id` é obrigatório: a tela é sempre \"as atas deste edital\", e\numa listagem de todas as atas do programa misturaria anos e não\nresponderia a pergunta de ninguém. O edital passa por\n`_edital_do_programa`, então id de outro tenant dá 404 antes de a\nconsulta rodar.\n\nDevolve **todas as versões**, inclusive as substituídas: a retificação\nguarda a anterior como histórico, e é justamente a secretaria quem\nprecisa enxergar que houve uma. A versão vigente de cada chave é a de\nmaior `version`, e vem primeiro.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/records/{record_id}/pdf": {
+      "get": {
+        "operationId": "apps_selection_router_download_record_pdf",
+        "summary": "Download Record Pdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "schema": {
+              "title": "Record Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "O PDF da ata assinada — pelo Django, nunca por URL direta do MEDIA.\n\nSó existe depois da terceira assinatura: é `_close_stage` que o grava.\nAntes disso a resposta é 404, e não um PDF de rascunho — ata que não\nfoi assinada não é documento, e entregá-la como arquivo convida a\nimprimi-la como se fosse.\n\nA leitura é auditada. Auditar leitura é exceção no projeto (Seção 3),\ne aqui vale pelo mesmo motivo do anexo da inscrição: o PDF é o\ndocumento que registra a decisão da banca sobre pessoas, com as notas\nde cada uma, e quem o baixou é parte do rastro.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/records/{record_id}/signatures/{signature_id}/resend-token": {
+      "post": {
+        "operationId": "apps_selection_router_resend_signature_token_endpoint",
+        "summary": "Resend Signature Token Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "schema": {
+              "title": "Record Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "signature_id",
+            "schema": {
+              "title": "Signature Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordSignatureOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Emite um token novo para o examinador externo e reenvia o e-mail.\n\nO link anterior morre na hora: `issue_token` sorteia outro segredo e\nsobrescreve o hash. É de propósito — dois links vivos para a mesma\nassinatura significam que um deles, o que se perdeu, continua\nassinando por alguém.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/public/processes": {
+      "get": {
+        "operationId": "apps_selection_router_list_public_processes",
+        "summary": "List Public Processes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicProcessOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os editais com inscrição aberta agora, de todos os programas.\n\n# público: é o cartaz do processo seletivo — edital publicado é\n# documento público, e quem o lê ainda não tem conta para autenticar.\n# Não escapa nada de pessoal: só edital, etapas e grade de vagas.\n#\n# Sem escopo de tenant, de propósito e ao contrário de toda rota\n# autenticada: não há sessão de onde tirar `current_program`, e\n# aceitar `program_id` do chamador só decidiria o que já é público.\n# `program_acronym` no schema é o que distingue os editais na tela.",
+        "tags": [
+          "selection"
+        ]
+      }
+    },
+    "/selection/public/applications": {
+      "post": {
+        "operationId": "apps_selection_router_submit_public_application",
+        "summary": "Submit Public Application",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A inscrição inteira num POST: dados e anexos juntos.\n\n# público: o candidato não tem conta (ver o bloco acima). Um POST só, e\n# não um rascunho com anexos incrementais, porque sem login não há a\n# quem devolver o rascunho depois.\n#\n# Os três anexos opcionais na assinatura são condicionais no domínio,\n# não dispensáveis: resumo expandido é do Regular, memorial é do\n# Suplementar e a comprovação é de quem concorre por cota. Quem cobra é\n# `required_document_kinds()` do model, pelo edital e pela cota\n# escolhidos — a assinatura só não pode exigir os três de todo mundo.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "process_id": {
+                    "title": "Process Id",
+                    "type": "integer"
+                  },
+                  "full_name": {
+                    "title": "Full Name",
+                    "type": "string"
+                  },
+                  "email": {
+                    "title": "Email",
+                    "type": "string"
+                  },
+                  "cpf": {
+                    "title": "Cpf",
+                    "type": "string"
+                  },
+                  "birth_date": {
+                    "format": "date",
+                    "title": "Birth Date",
+                    "type": "string"
+                  },
+                  "phone_number": {
+                    "default": "",
+                    "title": "Phone Number",
+                    "type": "string"
+                  },
+                  "level": {
+                    "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto.",
+                    "enum": [
+                      "masters",
+                      "doctorate"
+                    ],
+                    "title": "SelectionLevel",
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Project Id"
+                  },
+                  "research_line_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Research Line Id"
+                  },
+                  "quota_category": {
+                    "enum": [
+                      "open",
+                      "racial",
+                      "disability",
+                      "quilombola",
+                      "trans",
+                      "indigenous"
+                    ],
+                    "title": "QuotaCategory",
+                    "type": "string"
+                  },
+                  "identity": {
+                    "format": "binary",
+                    "title": "Identity",
+                    "type": "string"
+                  },
+                  "diploma": {
+                    "format": "binary",
+                    "title": "Diploma",
+                    "type": "string"
+                  },
+                  "lattes": {
+                    "format": "binary",
+                    "title": "Lattes",
+                    "type": "string"
+                  },
+                  "payment_receipt": {
+                    "format": "binary",
+                    "title": "Payment Receipt",
+                    "type": "string"
+                  },
+                  "expanded_abstract": {
+                    "anyOf": [
+                      {
+                        "format": "binary",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Expanded Abstract"
+                  },
+                  "memorial": {
+                    "anyOf": [
+                      {
+                        "format": "binary",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Memorial"
+                  },
+                  "quota_proof": {
+                    "anyOf": [
+                      {
+                        "format": "binary",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Quota Proof"
+                  }
+                },
+                "required": [
+                  "process_id",
+                  "full_name",
+                  "email",
+                  "cpf",
+                  "birth_date",
+                  "level",
+                  "quota_category",
+                  "identity",
+                  "diploma",
+                  "lattes",
+                  "payment_receipt"
+                ]
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/selection/public/applications/{protocol}": {
+      "get": {
+        "operationId": "apps_selection_router_get_public_application",
+        "summary": "Get Public Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "protocol",
+            "schema": {
+              "title": "Protocol",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Consulta pública pelo protocolo.\n\n# público: é como o candidato sem conta descobre se a inscrição dele\n# foi homologada. O protocolo é o segredo que substitui a senha —\n# `secrets` o gera (ver `gerar_protocolo`).\n#\n# A resposta não tem nome, CPF nem documento: quem digita o protocolo\n# pode não ser o candidato. Protocolo inexistente é 404 genérico, sem\n# dizer se o número nunca existiu ou se é de outro edital.",
+        "tags": [
+          "selection"
+        ]
+      }
+    },
+    "/selection/public/signatures/{token}": {
+      "get": {
+        "operationId": "apps_selection_router_get_public_signature",
+        "summary": "Get Public Signature",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSignatureOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A ata que o link do e-mail abre, para conferência antes de assinar.\n\n# público: o examinador externo não tem conta (é professor de outra\n# instituição, convidado para uma banca). O token do e-mail é o que\n# substitui a sessão: ele identifica o signatário, vale uma vez e\n# expira — ver `assinatura_por_token`.\n#\n# Sem escopo de tenant, e sem `program_id` no caminho: o programa sai\n# da ata que o token encontrou. Token inexistente, expirado, já usado\n# ou de ata reaberta dão o mesmo 404 genérico — distinguir os casos\n# diria a quem chuta link se ele existiu algum dia.",
+        "tags": [
+          "selection"
+        ]
+      }
+    },
+    "/selection/public/signatures/{token}/sign": {
+      "post": {
+        "operationId": "apps_selection_router_sign_public_signature",
+        "summary": "Sign Public Signature",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSignatureReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Assina a ata pelo link do e-mail; na terceira, fecha a etapa.\n\n# público: mesma justificativa da rota acima. O `csrf_protect`\n# explícito é obrigatório aqui — `auth=None` desliga junto a checagem\n# que o SessionAuth faria, e sem ele o link viraria alvo de CSRF.\n#\n# `content_hash` é o hash que a tela de conferência mostrou: se a ata\n# foi reaberta e recongelada nesse meio-tempo, a assinatura é recusada\n# com `record_changed` em vez de valer sobre um texto que o examinador\n# não leu.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordSignIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/selection/applications/": {
+      "get": {
+        "operationId": "apps_selection_router_list_applications",
+        "summary": "List Applications",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "process_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Process Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ApplicationStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelectionLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "quota_category",
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuotaCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedApplicationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "As inscrições do programa, com os filtros da tela de conferência.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/{application_id}/": {
+      "get": {
+        "operationId": "apps_selection_router_get_application",
+        "summary": "Get Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "O detalhe com os anexos — a lista deles, não o conteúdo: abrir o\narquivo é a rota de download, com permissão própria.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/{application_id}/homologate": {
+      "post": {
+        "operationId": "apps_selection_router_homologate_application",
+        "summary": "Homologate Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Homologa a inscrição: a partir daqui o candidato disputa as etapas.\n\nA nota é opcional — homologar é o caminho normal, e não precisa de\njustificativa.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/{application_id}/reject": {
+      "post": {
+        "operationId": "apps_selection_router_reject_application",
+        "summary": "Reject Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Indefere a inscrição — com justificativa obrigatória.\n\nQuem cobra a nota é `Application.reject` (400 `rejection_requires_note`)\ne não o schema: o candidato tem direito de saber por que ficou de fora,\ne essa é regra do domínio, não validação de formulário.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/documents/{document_id}/download": {
+      "get": {
+        "operationId": "apps_selection_router_download_application_document",
+        "summary": "Download Application Document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Entrega o anexo — pelo Django, nunca por URL direta do MEDIA.\n\nDuas permissões, e as duas juntas: `view_application` para chegar até\na inscrição e `download_applicationdocument` para abrir o arquivo.\nCoordenação e Docente enxergam a inscrição e mesmo assim levam 403\naqui — identidade, diploma e comprovante de pagamento não são insumo\nde classificação. Só a Secretaria tem a segunda (migration 0006).\n\nDiferente do download de `academic`, não há caminho por posse: o\ncandidato do processo seletivo não tem conta, e o que ele consulta\npelo protocolo é a situação, não o conteúdo que ele mesmo mandou.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/stages/{stage_id}/convocable": {
+      "get": {
+        "operationId": "apps_selection_router_list_convocable",
+        "summary": "List Convocable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConvocableApplicationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Quem esta etapa pode convocar — o que o botão de disparo vai mandar.\n\nA regra de quem é convocável mora no manager (`convocable_for`); esta\nrota só a expõe para a tela não ter de refazê-la. `already_convoked`\nmarca quem já recebeu e-mail nesta etapa em lote nenhum, que é\nexatamente o que `_abrir_lote` exclui — a soma dos não marcados é o\ntamanho do próximo lote.\n\nSem paginação, como a listagem de lotes: são os candidatos vivos de\numa etapa de um edital, e a tela mostra todos.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/stages/{stage_id}/convocations": {
+      "get": {
+        "operationId": "apps_selection_router_list_convocations",
+        "summary": "List Convocations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConvocationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Os lotes de convocação de uma etapa, com a contagem por situação.\n\nSem paginação: são poucos lotes por etapa (o primeiro disparo e os\nreforços de quem foi homologado depois), e a tela mostra todos.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_send_convocations_endpoint",
+        "summary": "Send Convocations Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "stage_id",
+            "schema": {
+              "title": "Stage Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvocationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Dispara a convocação da etapa para quem ainda não foi chamado.\n\nReexecutar é seguro e é o fluxo previsto: quem já recebeu e-mail\nnesta etapa fica de fora, então a secretaria clica de novo depois de\nhomologar mais uma inscrição e só ela é convocada. Se não sobrou\nninguém, a resposta é 4xx (`no_convocable_applications`) — e não um\nlote vazio.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/convocations/{convocation_id}": {
+      "get": {
+        "operationId": "apps_selection_router_get_convocation",
+        "summary": "Get Convocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "convocation_id",
+            "schema": {
+              "title": "Convocation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvocationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Um lote com os destinatários — quem recebeu, quem falhou e por quê.\n\nA listagem por etapa devolve só a contagem; é aqui que a secretaria\nabre o lote para achar o endereço errado antes de mandar reenviar.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/convocations/{convocation_id}/resend": {
+      "post": {
+        "operationId": "apps_selection_router_resend_convocation_endpoint",
+        "summary": "Resend Convocation Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "convocation_id",
+            "schema": {
+              "title": "Convocation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvocationDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reenvia os e-mails que falharam neste lote — só eles.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/ranking": {
+      "post": {
+        "operationId": "apps_selection_router_compute_ranking_endpoint",
+        "summary": "Compute Ranking Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankingOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Calcula (ou recalcula) a classificação de um nível × alvo.\n\nRodar de novo é o fluxo previsto — depois de retificação de ata ou de\nrealocação de vaga a lista muda. A trava é o primeiro matriculado da\nchave (`ranking_locked`), e antes dela a exigência é a ata da última\netapa assinada (`final_record_not_signed`).",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RankingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "apps_selection_router_get_ranking",
+        "summary": "Get Ranking",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto.",
+              "enum": [
+                "masters",
+                "doctorate"
+              ],
+              "title": "SelectionLevel",
+              "type": "string"
+            },
+            "required": true,
+            "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto."
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "research_line_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Line Id"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankingOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A classificação já calculada do nível × alvo.\n\nSem cálculo nenhum: chave ainda não classificada devolve a grade de\nvagas e a lista vazia, que é o que a tela mostra antes do primeiro\nclique em \"calcular\".",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/processes/{process_id}/reallocations/": {
+      "get": {
+        "operationId": "apps_selection_router_list_reallocations",
+        "summary": "List Reallocations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VacancyReallocationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "O histórico de realocações do edital, da mais recente para a mais antiga.",
+        "tags": [
+          "selection"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_selection_router_create_reallocation",
+        "summary": "Create Reallocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "process_id",
+            "schema": {
+              "title": "Process Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacancyReallocationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Registra a decisão da comissão e move a vaga.\n\nEfeito colateral previsto: a classificação já calculada dos alvos\nenvolvidos é zerada — as posições saíram de uma grade que acabou de\nmudar. A secretaria recalcula (`POST processes/{id}/ranking`) antes de\npublicar a lista de novo.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacancyReallocationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/selection/applications/{application_id}/enroll": {
+      "post": {
+        "operationId": "apps_selection_router_enroll_application",
+        "summary": "Enroll Application",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Transforma o classificado em aluno regular, sem recadastro.\n\nO projeto vem no payload mesmo quando a inscrição já tem um: no\nSuplementar ela só tem linha de pesquisa, e é agora que a secretaria\nescolhe o projeto dentro dela. Quem confere se ele casa com o alvo é\no service (`project_target_mismatch`).\n\nEfeito colateral previsto: a classificação daquele nível × alvo trava\n(`ranking_locked`) — a lista virou matrícula e não se recalcula mais.",
+        "tags": [
+          "selection"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationEnrollIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3625,7 +6321,8 @@
         "enum": [
           "permanent",
           "collaborator",
-          "visiting"
+          "visiting",
+          "external"
         ],
         "title": "Category",
         "type": "string"
@@ -5673,6 +8370,3503 @@
           "password"
         ],
         "title": "IsolatedSignupIn",
+        "type": "object"
+      },
+      "SelectionKind": {
+        "description": "Tipo do edital.\n\nO Regular chaveia por projeto coletivo; o Suplementar (ações\nafirmativas) chaveia por linha de pesquisa (decisão P4 do plano).",
+        "enum": [
+          "regular",
+          "supplementary"
+        ],
+        "title": "SelectionKind",
+        "type": "string"
+      },
+      "SelectionProcessStatus": {
+        "enum": [
+          "draft",
+          "published",
+          "closed"
+        ],
+        "title": "SelectionProcessStatus",
+        "type": "string"
+      },
+      "PagedSelectionProcessOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionProcessOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedSelectionProcessOut",
+        "type": "object"
+      },
+      "SelectionProcessOut": {
+        "description": "O edital como a tela da secretaria o vê.\n\n`submission_open` vem resolvido do servidor: comparar a janela no\nnavegador deixaria \"as inscrições estão abertas\" dependendo do relógio\nde quem acessa.\n\n`stage_count` e `vacancy_count` viajam porque a tela precisa dizer o\nque falta para publicar sem fazer uma chamada por edital — as rotas de\nlistagem e de detalhe anotam os dois; o fallback conta na hora, para o\nobjeto recém-escrito que volta do POST/PATCH.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SelectionKind"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SelectionProcessStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "submission_open": {
+            "title": "Submission Open",
+            "type": "boolean"
+          },
+          "notice_filename": {
+            "title": "Notice Filename",
+            "type": "string"
+          },
+          "notice_url": {
+            "title": "Notice Url",
+            "type": "string"
+          },
+          "convocation_subject": {
+            "title": "Convocation Subject",
+            "type": "string"
+          },
+          "convocation_body": {
+            "title": "Convocation Body",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "stage_count": {
+            "title": "Stage Count",
+            "type": "integer"
+          },
+          "vacancy_count": {
+            "title": "Vacancy Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "kind",
+          "kind_label",
+          "year",
+          "title",
+          "status",
+          "status_label",
+          "submission_opens_at",
+          "submission_closes_at",
+          "submission_open",
+          "notice_filename",
+          "notice_url",
+          "convocation_subject",
+          "convocation_body",
+          "published_at",
+          "closed_at",
+          "stage_count",
+          "vacancy_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SelectionProcessOut",
+        "type": "object"
+      },
+      "SelectionProcessIn": {
+        "description": "Abertura do edital, digitada pela secretaria.\n\nSem `program_id`: o programa é o da requisição (`current_program`),\nnunca o que o chamador escolher. Sem `status` também — o edital nasce\nem rascunho e muda de estado só por `publish`/`close`, que cobram o\nque a publicação exige e carimbam a data.\n\nO template de convocação é opcional aqui porque ele costuma ser\nescrito depois da grade de vagas; quem cobra é `publish_process`.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SelectionKind"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "convocation_subject": {
+            "default": "",
+            "title": "Convocation Subject",
+            "type": "string"
+          },
+          "convocation_body": {
+            "default": "",
+            "title": "Convocation Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "year",
+          "title",
+          "submission_opens_at",
+          "submission_closes_at"
+        ],
+        "title": "SelectionProcessIn",
+        "type": "object"
+      },
+      "SelectionProcessPatch": {
+        "description": "Correção do edital em rascunho: só os campos presentes são aplicados.\n\nDepois de publicado nada disto muda (`ensure_editable`): o candidato já\nse inscreveu contra este conteúdo, e vaga se corrige por\n`VacancyReallocation`, com ofício da comissão.",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "submission_opens_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Opens At"
+          },
+          "submission_closes_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Closes At"
+          },
+          "convocation_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convocation Subject"
+          },
+          "convocation_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convocation Body"
+          }
+        },
+        "title": "SelectionProcessPatch",
+        "type": "object"
+      },
+      "SelectionStageOut": {
+        "description": "A etapa como a tela do edital a vê.\n\n`program_id` viaja porque a etapa é filha de agregado e a tela não tem\no edital carregado em toda listagem; a propriedade do model resolve.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "tiebreak_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiebreak Rank"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "process_id",
+          "program_id",
+          "name",
+          "order",
+          "session_at",
+          "location",
+          "tiebreak_rank",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SelectionStageOut",
+        "type": "object"
+      },
+      "SelectionStageIn": {
+        "description": "Etapa nova do edital, digitada pela secretaria.\n\nSem `process_id`: o edital é o da URL, escopado por programa. Sem\n`program_id` pela mesma razão de sempre — quem escolhe o tenant é a\nsessão.\n\n`tiebreak_rank` nulo significa \"esta etapa não entra no desempate\"; é\no caso da última etapa dos dois tipos de edital.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "default": "",
+            "title": "Location",
+            "type": "string"
+          },
+          "tiebreak_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiebreak Rank"
+          }
+        },
+        "required": [
+          "name",
+          "order"
+        ],
+        "title": "SelectionStageIn",
+        "type": "object"
+      },
+      "SelectionStagePatch": {
+        "description": "Correção da etapa em rascunho: só os campos presentes são aplicados.\n\n`session_at` e `tiebreak_rank` aceitam `null` explícito (desmarcar a\nsessão, tirar a etapa do desempate), então aqui o corte é por\n`exclude_unset` e não por `exclude_none`.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "tiebreak_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiebreak Rank"
+          }
+        },
+        "title": "SelectionStagePatch",
+        "type": "object"
+      },
+      "QuotaCategory": {
+        "enum": [
+          "open",
+          "racial",
+          "disability",
+          "quilombola",
+          "trans",
+          "indigenous"
+        ],
+        "title": "QuotaCategory",
+        "type": "string"
+      },
+      "SelectionLevel": {
+        "description": "Mesmos valores de `Student.Level` — a conversão em aluno copia direto.",
+        "enum": [
+          "masters",
+          "doctorate"
+        ],
+        "title": "SelectionLevel",
+        "type": "string"
+      },
+      "VacancyOut": {
+        "description": "A vaga como a grade da secretaria a vê.\n\nOs rótulos e o nome do alvo viajam resolvidos: a tela lista dezenas de\nlinhas e não deve ter que cruzar id de projeto com nome de projeto.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "quantity",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VacancyOut",
+        "type": "object"
+      },
+      "VacancyIn": {
+        "description": "Linha da grade de vagas: nível × alvo × categoria de cota.\n\nO alvo é XOR e amarrado ao tipo do edital (`ensure_target`): Regular\npede `project_id`, Suplementar pede `research_line_id`. Mandar os dois\n(ou nenhum) volta `target_mismatch`, não um 500 da CheckConstraint.",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "level",
+          "quota_category",
+          "quantity"
+        ],
+        "title": "VacancyIn",
+        "type": "object"
+      },
+      "VacancyPatch": {
+        "description": "Correção da vaga em rascunho.\n\nO caso comum é `quantity`; os demais campos existem porque em rascunho\na grade inteira ainda é rascunho. Depois de publicado nada disto muda —\na correção vira `VacancyReallocation`, com ofício da comissão.",
+        "properties": {
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "quota_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuotaCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          }
+        },
+        "title": "VacancyPatch",
+        "type": "object"
+      },
+      "BoardMemberOut": {
+        "description": "Um examinador, como a tela da banca o mostra.\n\nNome, categoria e instituição viajam resolvidos porque a tela lista os\nquatro papéis de cada banca e precisa distinguir o docente do programa\ndo externo — e, no externo, de onde ele vem (`home_institution` é\nobrigatória nessa categoria).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "category_label": {
+            "title": "Category Label",
+            "type": "string"
+          },
+          "home_institution": {
+            "title": "Home Institution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "category",
+          "category_label",
+          "home_institution"
+        ],
+        "title": "BoardMemberOut",
+        "type": "object"
+      },
+      "BoardOut": {
+        "description": "A banca como a tela da secretaria a vê.\n\nOs quatro examinadores vêm expandidos (nome, categoria, instituição) —\na tela não deve cruzar id de professor com nome. `in_use` diz se a\nbanca ainda é editável: a listagem anota a contagem de atas fora do\nrascunho; o fallback consulta na hora, para o objeto recém-escrito que\nvolta do POST/PATCH.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "president": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_1": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_2": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "alternate": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "in_use": {
+            "title": "In Use",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "president",
+          "member_1",
+          "member_2",
+          "alternate",
+          "in_use",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BoardOut",
+        "type": "object"
+      },
+      "PagedBoardOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BoardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedBoardOut",
+        "type": "object"
+      },
+      "BoardIn": {
+        "description": "Banca nova: nível × alvo do edital e os quatro examinadores.\n\nSem `program_id` (é o da sessão). `process_id` vem no corpo porque a\nrota é `boards/` e não pende do edital — a tela de bancas lista as\nbancas de vários editais.\n\nO alvo é XOR e amarrado ao tipo do edital, como na vaga: Regular pede\n`project_id`, Suplementar pede `research_line_id`.",
+        "properties": {
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "president_id": {
+            "title": "President Id",
+            "type": "integer"
+          },
+          "member_1_id": {
+            "title": "Member 1 Id",
+            "type": "integer"
+          },
+          "member_2_id": {
+            "title": "Member 2 Id",
+            "type": "integer"
+          },
+          "alternate_id": {
+            "title": "Alternate Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "process_id",
+          "level",
+          "president_id",
+          "member_1_id",
+          "member_2_id",
+          "alternate_id"
+        ],
+        "title": "BoardIn",
+        "type": "object"
+      },
+      "BoardPatch": {
+        "description": "Correção da banca — enquanto nenhuma ata dela saiu do rascunho.\n\n`process_id` não está aqui: mudar a banca de edital seria criar outra\nbanca. O alvo e os quatro papéis mudam porque impedimento e\nsubstituição de examinador acontecem antes da primeira sessão.",
+        "properties": {
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "president_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "President Id"
+          },
+          "member_1_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member 1 Id"
+          },
+          "member_2_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member 2 Id"
+          },
+          "alternate_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alternate Id"
+          }
+        },
+        "title": "BoardPatch",
+        "type": "object"
+      },
+      "BoardStageOut": {
+        "description": "A etapa do edital, como a tela do docente a vê dentro da banca.\n\nExiste separada de `SelectionStageOut` porque o Docente **não** tem\n`view_selectionstage` (migration 0006): quem compõe banca lê a etapa\npela própria banca, e não pela grade do edital. Sem `tiebreak_rank` e\nsem carimbos — para lançar nota basta saber qual sessão é, quando e\nonde.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "order",
+          "session_at",
+          "location"
+        ],
+        "title": "BoardStageOut",
+        "type": "object"
+      },
+      "MyBoardOut": {
+        "description": "Uma banca do docente da sessão, com as etapas do edital embutidas.\n\nAs etapas viajam junto pelo motivo acima: a tela \"minhas bancas\"\nprecisa oferecer a lista de sessões para lançar nota, e o docente não\ntem rota para buscá-las.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "president": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_1": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "member_2": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "alternate": {
+            "$ref": "#/components/schemas/BoardMemberOut"
+          },
+          "in_use": {
+            "title": "In Use",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/BoardStageOut"
+            },
+            "title": "Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "president",
+          "member_1",
+          "member_2",
+          "alternate",
+          "in_use",
+          "created_at",
+          "updated_at",
+          "stages"
+        ],
+        "title": "MyBoardOut",
+        "type": "object"
+      },
+      "StageScoreOut": {
+        "description": "Uma linha da planilha da banca: o candidato vivo e a nota atual.\n\nA planilha nasce das **inscrições**, não das notas: enquanto a banca\nnão lançou, a linha existe com `scored: false` e `score: null`. É o\nque faz a tela mostrar quem falta avaliar em vez de uma lista vazia.\n\nA nota da etapa chega pré-carregada em `nota_da_etapa` (um\n`Prefetch` com `to_attr` no router), então nenhuma linha desta lista\nconsulta o banco por conta própria.",
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "boolean"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "absent": {
+            "title": "Absent",
+            "type": "boolean"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "entered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered At"
+          },
+          "entered_by": {
+            "title": "Entered By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "application_id",
+          "protocol",
+          "full_name",
+          "level",
+          "quota_category",
+          "quota_category_label",
+          "scored",
+          "score",
+          "absent",
+          "passed",
+          "entered_at",
+          "entered_by"
+        ],
+        "title": "StageScoreOut",
+        "type": "object"
+      },
+      "StageScoreIn": {
+        "description": "Uma linha do lote de notas: a inscrição e a nota — ou a ausência.\n\n`score` e `absent` são XOR, e quem cobra é `StageScore.clean()`\n(`absent_xor_score`), não o schema: é invariante do model, e vale\ntambém para quem escrever fora da rota.",
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "absent": {
+            "default": false,
+            "title": "Absent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "application_id"
+        ],
+        "title": "StageScoreIn",
+        "type": "object"
+      },
+      "ExaminationRecordOut": {
+        "description": "A ata de uma etapa, com o conteúdo congelado embutido.\n\nÉ o schema das rotas que tratam de **uma** ata — a da banca, a do\nexaminador, a retificação. O `content` é a fotografia das notas no\ninstante do congelamento, e é sobre ele que o `content_hash` (herdado\ndo resumo) é calculado.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "board_id": {
+            "title": "Board Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "replaced_member_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Member Id"
+          },
+          "replaced_member_name": {
+            "title": "Replaced Member Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_ok": {
+            "title": "Hash Ok",
+            "type": "boolean"
+          },
+          "has_pdf": {
+            "title": "Has Pdf",
+            "type": "boolean"
+          },
+          "frozen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frozen At"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signatures": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSignatureOut"
+            },
+            "title": "Signatures",
+            "type": "array"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRowOut"
+            },
+            "title": "Content",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "stage_id",
+          "stage_name",
+          "board_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "replaced_member_id",
+          "replaced_member_name",
+          "version",
+          "status",
+          "status_label",
+          "content_hash",
+          "hash_ok",
+          "has_pdf",
+          "frozen_at",
+          "signed_at",
+          "signatures",
+          "pending_signatures",
+          "created_at",
+          "updated_at",
+          "content"
+        ],
+        "title": "ExaminationRecordOut",
+        "type": "object"
+      },
+      "RecordRowOut": {
+        "description": "Uma linha do `content` da ata — a nota como ela foi congelada.\n\nNão é lida do `StageScore`: vem do JSON gravado na ata, que é o que o\n`content_hash` cobre. Depois do congelamento a fonte da verdade da\nata é ela mesma, e não a tabela de notas, que pode ter sido corrigida\nnuma versão seguinte.\n\n`score` é **string** de propósito (`\"85.50\"`): é assim que está no\nJSON, porque `float` mudaria o hash entre gravações.",
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "quota_category": {
+            "title": "Quota Category",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "absent": {
+            "title": "Absent",
+            "type": "boolean"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "application_id",
+          "protocol",
+          "full_name",
+          "quota_category",
+          "score",
+          "absent",
+          "passed"
+        ],
+        "title": "RecordRowOut",
+        "type": "object"
+      },
+      "RecordSignatureOut": {
+        "description": "Uma assinatura da ata, como as telas a mostram.\n\nO `token_hash` **não** sai daqui, e nem o token: o que a secretaria\nprecisa saber é se o e-mail saiu (`token_sent_at`) e até quando o\nlink vale. Do hash assinado viajam só os 12 primeiros dígitos — o\nsuficiente para conferir a olho contra o rodapé do PDF, e nada além.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "signer_id": {
+            "title": "Signer Id",
+            "type": "integer"
+          },
+          "signer_name": {
+            "title": "Signer Name",
+            "type": "string"
+          },
+          "signer_category": {
+            "title": "Signer Category",
+            "type": "string"
+          },
+          "signer_institution": {
+            "title": "Signer Institution",
+            "type": "string"
+          },
+          "method": {
+            "$ref": "#/components/schemas/SignatureMethod"
+          },
+          "method_label": {
+            "title": "Method Label",
+            "type": "string"
+          },
+          "signed": {
+            "title": "Signed",
+            "type": "boolean"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signed_hash_prefix": {
+            "title": "Signed Hash Prefix",
+            "type": "string"
+          },
+          "token_sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Sent At"
+          },
+          "token_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Expires At"
+          }
+        },
+        "required": [
+          "id",
+          "signer_id",
+          "signer_name",
+          "signer_category",
+          "signer_institution",
+          "method",
+          "method_label",
+          "signed",
+          "signed_at",
+          "signed_hash_prefix",
+          "token_sent_at",
+          "token_expires_at"
+        ],
+        "title": "RecordSignatureOut",
+        "type": "object"
+      },
+      "RecordStatus": {
+        "enum": [
+          "draft",
+          "awaiting_signatures",
+          "signed",
+          "superseded"
+        ],
+        "title": "RecordStatus",
+        "type": "string"
+      },
+      "SignatureMethod": {
+        "enum": [
+          "login",
+          "token"
+        ],
+        "title": "SignatureMethod",
+        "type": "string"
+      },
+      "RecordFreezeIn": {
+        "description": "Congelamento da ata, com o titular impedido quando houver.\n\nSó isso: o conteúdo da ata não vem do cliente em hipótese nenhuma —\nele é lido das notas no servidor, no instante do congelamento.",
+        "properties": {
+          "replaced_member_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Member Id"
+          }
+        },
+        "title": "RecordFreezeIn",
+        "type": "object"
+      },
+      "RecordSignIn": {
+        "description": "Assinatura da ata pelo examinador logado.\n\n`content_hash` é o hash que a tela mostrou ao signatário. Vazio\nsignifica \"assino o que está aí agora\"; preenchido, o servidor confere\ne recusa com `record_changed` se a ata mudou desde a leitura — a\nassinatura vale sobre um texto, não sobre um identificador de ata.",
+        "properties": {
+          "content_hash": {
+            "default": "",
+            "title": "Content Hash",
+            "type": "string"
+          }
+        },
+        "title": "RecordSignIn",
+        "type": "object"
+      },
+      "PagedRecordSummaryOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedRecordSummaryOut",
+        "type": "object"
+      },
+      "RecordSummaryOut": {
+        "description": "A ata sem o conteúdo: cabeçalho, situação e assinaturas.\n\nÉ o que a listagem da secretaria (`GET /records/`) devolve. O\n`content` fica de fora porque a lista traz **todas** as atas de um\nedital — etapa × nível × alvo, mais as versões antigas —, e cada\nconteúdo é a planilha inteira daquele alvo. Quem precisa das notas\nabre a ata (ou o PDF); quem acompanha o edital precisa de situação e\nde quem falta assinar.\n\nAs assinaturas viajam dentro da ata, e não numa rota própria, pelo\nmesmo motivo das etapas em `MyBoardOut`: o Docente **não** tem\n`view_recordsignature` (migration 0006), e a tela dele precisa\nmostrar quem já assinou. Uma ata tem três assinaturas — não há o que\npaginar.\n\n`content_hash` sai inteiro porque é ele que o examinador confere\nantes de assinar (a rota de assinatura o recebe de volta).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "board_id": {
+            "title": "Board Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "replaced_member_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Member Id"
+          },
+          "replaced_member_name": {
+            "title": "Replaced Member Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_ok": {
+            "title": "Hash Ok",
+            "type": "boolean"
+          },
+          "has_pdf": {
+            "title": "Has Pdf",
+            "type": "boolean"
+          },
+          "frozen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frozen At"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signatures": {
+            "items": {
+              "$ref": "#/components/schemas/RecordSignatureOut"
+            },
+            "title": "Signatures",
+            "type": "array"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "stage_id",
+          "stage_name",
+          "board_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "replaced_member_id",
+          "replaced_member_name",
+          "version",
+          "status",
+          "status_label",
+          "content_hash",
+          "hash_ok",
+          "has_pdf",
+          "frozen_at",
+          "signed_at",
+          "signatures",
+          "pending_signatures",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecordSummaryOut",
+        "type": "object"
+      },
+      "PublicOptionOut": {
+        "description": "Uma opção do formulário público — nível ou categoria de cota.\n\nRótulo junto do valor porque a tela pública não tem a tabela de\n`TextChoices` do backend e não pode inventar tradução.",
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "PublicOptionOut",
+        "type": "object"
+      },
+      "PublicProcessOut": {
+        "description": "Edital aberto, como a página pública o mostra.\n\n`program_acronym` viaja porque esta listagem NÃO é escopada por tenant\n(não há sessão de onde tirar o programa, e edital publicado é\ndocumento público): sem a sigla, dois editais de programas diferentes\napareceriam como dois títulos indistinguíveis.\n\n`levels`, `targets` e `quota_categories` são derivados das vagas com\n`quantity > 0` — é o que o formulário oferece. Oferecer combinação sem\nvaga só levaria o candidato a preencher tudo para receber\n`no_vacancy_for_choice` no fim.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SelectionKind"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "program_acronym": {
+            "title": "Program Acronym",
+            "type": "string"
+          },
+          "submission_opens_at": {
+            "format": "date-time",
+            "title": "Submission Opens At",
+            "type": "string"
+          },
+          "submission_closes_at": {
+            "format": "date-time",
+            "title": "Submission Closes At",
+            "type": "string"
+          },
+          "notice_url": {
+            "title": "Notice Url",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/PublicStageOut"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "vacancies": {
+            "items": {
+              "$ref": "#/components/schemas/PublicVacancyOut"
+            },
+            "title": "Vacancies",
+            "type": "array"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/PublicOptionOut"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/PublicTargetOut"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "quota_categories": {
+            "items": {
+              "$ref": "#/components/schemas/PublicOptionOut"
+            },
+            "title": "Quota Categories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "kind_label",
+          "year",
+          "title",
+          "program_acronym",
+          "submission_opens_at",
+          "submission_closes_at",
+          "notice_url",
+          "stages",
+          "vacancies",
+          "levels",
+          "targets",
+          "quota_categories"
+        ],
+        "title": "PublicProcessOut",
+        "type": "object"
+      },
+      "PublicStageOut": {
+        "description": "Etapa como o candidato a vê no edital aberto.\n\nSem `id` de nada além da própria etapa e sem carimbo técnico: esta é a\npágina que qualquer um na internet abre, e o que não serve para o\ncandidato decidir se se inscreve não sai daqui.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "session_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session At"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "order",
+          "session_at",
+          "location"
+        ],
+        "title": "PublicStageOut",
+        "type": "object"
+      },
+      "PublicTargetOut": {
+        "description": "Alvo com vaga aberta: projeto coletivo (Regular) ou linha\n(Suplementar). Um dos dois ids é sempre nulo — é o XOR do model.",
+        "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "research_line_id",
+          "label"
+        ],
+        "title": "PublicTargetOut",
+        "type": "object"
+      },
+      "PublicVacancyOut": {
+        "description": "Combinação nível × alvo × cota que ainda tem vaga.\n\nA quantidade viaja porque o edital é público: quantas vagas há em cada\nlinha da grade é informação do próprio documento, não dado interno.",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "quantity"
+        ],
+        "title": "PublicVacancyOut",
+        "type": "object"
+      },
+      "ApplicationReceiptOut": {
+        "description": "O comprovante que o candidato anota: protocolo e instante.\n\nNada mais sai daqui. O que ele digitou já está na tela dele, e o que o\nsistema decidiu depois (homologação) se consulta pelo protocolo.",
+        "properties": {
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "submitted_at"
+        ],
+        "title": "ApplicationReceiptOut",
+        "type": "object"
+      },
+      "ApplicationIn": {
+        "description": "O formulário público de inscrição, sem os anexos.\n\nVai por `Form(...)` porque a requisição é multipart: o candidato manda\nos dados e os cinco a sete documentos num POST só (não há sessão para\nguardar rascunho entre chamadas).\n\nSem `program_id`: o tenant é o programa do edital, resolvido por\n`edital_com_inscricao_aberta`. Sem `status` nem `protocol` — os dois\nsão do servidor.",
+        "properties": {
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "cpf": {
+            "title": "Cpf",
+            "type": "string"
+          },
+          "birth_date": {
+            "format": "date",
+            "title": "Birth Date",
+            "type": "string"
+          },
+          "phone_number": {
+            "default": "",
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          }
+        },
+        "required": [
+          "process_id",
+          "full_name",
+          "email",
+          "cpf",
+          "birth_date",
+          "level",
+          "quota_category"
+        ],
+        "title": "ApplicationIn",
+        "type": "object"
+      },
+      "ApplicationStatus": {
+        "enum": [
+          "submitted",
+          "homologated",
+          "rejected",
+          "eliminated",
+          "approved",
+          "enrolled"
+        ],
+        "title": "ApplicationStatus",
+        "type": "string"
+      },
+      "ApplicationStatusOut": {
+        "description": "A consulta pública de protocolo.\n\nSem nome, CPF, e-mail ou documento: quem tem o protocolo pode não ser o\ncandidato (ele passa o número adiante), então a resposta diz só em que\npé está a inscrição.",
+        "properties": {
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "status",
+          "status_label",
+          "submitted_at",
+          "process_title"
+        ],
+        "title": "ApplicationStatusOut",
+        "type": "object"
+      },
+      "PublicSignatureOut": {
+        "description": "A ata como o examinador externo a vê antes de assinar.\n\nCabeçalho, conteúdo e hash: é o mesmo documento que os examinadores\nlogados conferem, com o que o link precisa dizer a quem chegou por\ne-mail (para quem é, e até quando vale).\n\nO que **não** sai daqui, e sai em `ExaminationRecordOut`: os ids de\nbanca e programa, as outras assinaturas e o hash das demais. Quem tem\no link é examinador de uma ata, não usuário do sistema — ele confere\no texto que assina, e nada sobre o resto do processo.",
+        "properties": {
+          "signer_name": {
+            "title": "Signer Name",
+            "type": "string"
+          },
+          "signer_institution": {
+            "title": "Signer Institution",
+            "type": "string"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRowOut"
+            },
+            "title": "Content",
+            "type": "array"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_ok": {
+            "title": "Hash Ok",
+            "type": "boolean"
+          },
+          "frozen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frozen At"
+          },
+          "token_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Expires At"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "signer_name",
+          "signer_institution",
+          "process_title",
+          "stage_name",
+          "level_label",
+          "target_label",
+          "version",
+          "content",
+          "content_hash",
+          "hash_ok",
+          "frozen_at",
+          "token_expires_at",
+          "pending_signatures"
+        ],
+        "title": "PublicSignatureOut",
+        "type": "object"
+      },
+      "PublicSignatureReceiptOut": {
+        "description": "O comprovante da assinatura por token.\n\nO equivalente do `ApplicationReceiptOut` do candidato: quem assinou,\nquando, sobre qual hash e o que falta. Depois disto o link não abre\nmais (uso único), então a confirmação precisa vir na própria resposta\n— não há tela para onde voltar.",
+        "properties": {
+          "signer_name": {
+            "title": "Signer Name",
+            "type": "string"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "signed_hash": {
+            "title": "Signed Hash",
+            "type": "string"
+          },
+          "record_status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "record_status_label": {
+            "title": "Record Status Label",
+            "type": "string"
+          },
+          "pending_signatures": {
+            "title": "Pending Signatures",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "signer_name",
+          "signed_at",
+          "signed_hash",
+          "record_status",
+          "record_status_label",
+          "pending_signatures"
+        ],
+        "title": "PublicSignatureReceiptOut",
+        "type": "object"
+      },
+      "ApplicationOut": {
+        "description": "A inscrição como a lista da secretaria a vê.\n\nO CPF viaja inteiro: quem lê esta rota é a secretaria, que confere a\ninscrição contra o documento anexado, e a busca da tela é por nome,\nprotocolo ou CPF. A rota pública de protocolo (`ApplicationStatusOut`)\ncontinua sem nada disso.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "cpf": {
+            "title": "Cpf",
+            "type": "string"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "protocol",
+          "full_name",
+          "email",
+          "cpf",
+          "phone_number",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "decision_note",
+          "decided_at",
+          "submitted_at"
+        ],
+        "title": "ApplicationOut",
+        "type": "object"
+      },
+      "PagedApplicationOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedApplicationOut",
+        "type": "object"
+      },
+      "ApplicationDetailOut": {
+        "description": "O detalhe da inscrição: a lista mais os anexos.\n\n`missing_documents` sai resolvido porque quem homologa precisa saber,\nna mesma tela, se o candidato mandou tudo o que o edital e a cota dele\nexigem — a conta é do model (`required_document_kinds`), não da tela.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "process_title": {
+            "title": "Process Title",
+            "type": "string"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "cpf": {
+            "title": "Cpf",
+            "type": "string"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "birth_date": {
+            "format": "date",
+            "title": "Birth Date",
+            "type": "string"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationDocumentOut"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "missing_documents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Documents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "process_title",
+          "protocol",
+          "full_name",
+          "email",
+          "cpf",
+          "phone_number",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "decision_note",
+          "decided_at",
+          "submitted_at",
+          "birth_date",
+          "documents",
+          "missing_documents"
+        ],
+        "title": "ApplicationDetailOut",
+        "type": "object"
+      },
+      "ApplicationDocumentOut": {
+        "description": "Um anexo da inscrição, sem o caminho do arquivo.\n\nNem `file` nem `file.url` entram aqui, pelo mesmo motivo de\n`academic.RequestDocumentOut`: o MEDIA é servido pelo Nginx sem passar\npelo Django, então publicar a URL entregaria o documento de identidade\ndo candidato a quem descobrisse o endereço — e sem `AuditLog`. O único\ncaminho para o conteúdo é a rota de download, que exige\n`download_applicationdocument` e registra a leitura.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "title": "Uploaded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "kind_label",
+          "filename",
+          "size",
+          "uploaded_at"
+        ],
+        "title": "ApplicationDocumentOut",
+        "type": "object"
+      },
+      "ApplicationDecisionIn": {
+        "description": "A justificativa da decisão da secretaria.\n\nUma entrada para as duas rotas: na homologação a nota é opcional\n(registra a conferência, quando há algo a dizer) e no indeferimento é\nobrigatória — quem cobra é `Application.reject`, com\n`rejection_requires_note`, e não o schema: a regra é do domínio.",
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "ApplicationDecisionIn",
+        "type": "object"
+      },
+      "ConvocableApplicationOut": {
+        "description": "Um candidato que a etapa pode convocar, como a tela o mostra antes\nde disparar o lote.\n\nQuem decide o que é \"convocável\" é `Application.objects.convocable_for`\n— na etapa 1, quem está vivo; da 2 em diante, só as chaves cuja ata\nanterior está assinada. A tela nunca refaz essa conta: ela lê esta\nrota. `already_convoked` é o que o disparo vai pular (quem já recebeu\ne-mail nesta etapa, em lote nenhum), e existe para a secretaria saber\nde antemão quantos e-mails o botão manda.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "already_convoked": {
+            "title": "Already Convoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "protocol",
+          "full_name",
+          "email",
+          "level",
+          "level_label",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "already_convoked"
+        ],
+        "title": "ConvocableApplicationOut",
+        "type": "object"
+      },
+      "ConvocationOut": {
+        "description": "Um lote de convocação, com a contagem por situação.\n\nÉ o resumo que a listagem devolve (mesma separação de\n`RecordSummaryOut`): a tela do edital mostra \"10 enviados, 2\nfalharam\" por lote, e só quem abre o lote precisa da lista de\ndestinatários.\n\n`subject` é a cópia guardada no disparo, não o template atual do\nedital — se alguém editou o edital depois, o que vale para o\ncandidato é o que saiu.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "sent_by_name": {
+            "title": "Sent By Name",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "stage_id",
+          "stage_name",
+          "subject",
+          "sent_by_name",
+          "total",
+          "sent",
+          "failed",
+          "pending",
+          "created_at"
+        ],
+        "title": "ConvocationOut",
+        "type": "object"
+      },
+      "ConvocationDetailOut": {
+        "description": "O lote com os destinatários — resposta do disparo e do reenvio,\nonde a secretaria precisa ver na hora quem ficou de fora.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "stage_id": {
+            "title": "Stage Id",
+            "type": "integer"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "sent_by_name": {
+            "title": "Sent By Name",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "emails": {
+            "items": {
+              "$ref": "#/components/schemas/ConvocationEmailOut"
+            },
+            "title": "Emails",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "stage_id",
+          "stage_name",
+          "subject",
+          "sent_by_name",
+          "total",
+          "sent",
+          "failed",
+          "pending",
+          "created_at",
+          "emails"
+        ],
+        "title": "ConvocationDetailOut",
+        "type": "object"
+      },
+      "ConvocationEmailOut": {
+        "description": "Um e-mail do lote, com o resultado da entrega.\n\nO corpo renderizado **não** viaja: são dezenas por lote, e a tela\nmostra situação, destinatário e o erro de quem falhou — que é o que\na secretaria usa para decidir reenviar ou corrigir o endereço.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "to_email": {
+            "title": "To Email",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EmailDeliveryStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "protocol",
+          "full_name",
+          "to_email",
+          "status",
+          "status_label",
+          "attempts",
+          "error",
+          "sent_at"
+        ],
+        "title": "ConvocationEmailOut",
+        "type": "object"
+      },
+      "EmailDeliveryStatus": {
+        "enum": [
+          "pending",
+          "sent",
+          "failed"
+        ],
+        "title": "EmailDeliveryStatus",
+        "type": "string"
+      },
+      "RankedApplicationOut": {
+        "description": "Um candidato na lista de classificação.\n\n`tie_unresolved` não é campo do banco: é recalculado da nota e das\nnotas de desempate a cada leitura, e marca quem o edital não conseguiu\ndesempatar — a posição entre eles saiu do número da inscrição, que não\né critério nenhum. Quem vê isto na tela precisa decidir fora do\nsistema.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "final_score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Score"
+          },
+          "final_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Rank"
+          },
+          "final_outcome": {
+            "title": "Final Outcome",
+            "type": "string"
+          },
+          "final_outcome_label": {
+            "title": "Final Outcome Label",
+            "type": "string"
+          },
+          "ranked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ranked At"
+          },
+          "tie_unresolved": {
+            "title": "Tie Unresolved",
+            "type": "boolean"
+          },
+          "student_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          }
+        },
+        "required": [
+          "id",
+          "protocol",
+          "full_name",
+          "email",
+          "level",
+          "level_label",
+          "target_label",
+          "quota_category",
+          "quota_category_label",
+          "status",
+          "status_label",
+          "final_score",
+          "final_rank",
+          "final_outcome",
+          "final_outcome_label",
+          "ranked_at",
+          "tie_unresolved",
+          "student_id"
+        ],
+        "title": "RankedApplicationOut",
+        "type": "object"
+      },
+      "RankingOut": {
+        "description": "A classificação de um (nível × alvo): vagas, lista e a trava.\n\n`locked` é o que desabilita o botão de recalcular na tela: com alguém\njá matriculado na chave, a lista virou matrícula e não se reescreve\n(`ranking_locked`). `computed_at` é o carimbo do último cálculo — nulo\nquando a chave ainda não foi classificada.",
+        "properties": {
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "level_label": {
+            "title": "Level Label",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          },
+          "seats": {
+            "items": {
+              "$ref": "#/components/schemas/RankingSeatOut"
+            },
+            "title": "Seats",
+            "type": "array"
+          },
+          "total_seats": {
+            "title": "Total Seats",
+            "type": "integer"
+          },
+          "locked": {
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/RankedApplicationOut"
+            },
+            "title": "Applications",
+            "type": "array"
+          }
+        },
+        "required": [
+          "process_id",
+          "level",
+          "level_label",
+          "project_id",
+          "research_line_id",
+          "target_label",
+          "seats",
+          "total_seats",
+          "locked",
+          "computed_at",
+          "applications"
+        ],
+        "title": "RankingOut",
+        "type": "object"
+      },
+      "RankingSeatOut": {
+        "description": "Uma linha da grade de vagas do alvo, como a tela do resultado a mostra.",
+        "properties": {
+          "quota_category": {
+            "$ref": "#/components/schemas/QuotaCategory"
+          },
+          "quota_category_label": {
+            "title": "Quota Category Label",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quota_category",
+          "quota_category_label",
+          "quantity"
+        ],
+        "title": "RankingSeatOut",
+        "type": "object"
+      },
+      "RankingIn": {
+        "description": "O recorte a classificar: um nível e um alvo.\n\nA classificação nunca é do edital inteiro — quem disputa entre si é\nquem concorre ao mesmo nível e ao mesmo alvo, porque é dele a grade de\nvagas. O alvo é XOR e amarrado ao tipo do edital (`ensure_target`).",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/SelectionLevel"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "research_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Line Id"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "RankingIn",
+        "type": "object"
+      },
+      "ReallocationKind": {
+        "enum": [
+          "level_transfer",
+          "notice_rectification"
+        ],
+        "title": "ReallocationKind",
+        "type": "string"
+      },
+      "VacancyReallocationOut": {
+        "description": "A realocação como o histórico da tela de resultado a mostra.\n\nAs duas vagas viajam inteiras (`VacancyOut`), com rótulo e nome do\nalvo já resolvidos: a linha do histórico precisa dizer \"1 vaga de\nampla, mestrado → doutorado\" sem a tela cruzar ids.\n\n`quantity` da vaga é o saldo **de agora**, não o do dia da decisão:\nrealocação não guarda foto da grade, e uma segunda realocação sobre a\nmesma linha muda o número que aparece aqui.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ReallocationKind"
+          },
+          "kind_label": {
+            "title": "Kind Label",
+            "type": "string"
+          },
+          "from_vacancy": {
+            "$ref": "#/components/schemas/VacancyOut"
+          },
+          "to_vacancy": {
+            "$ref": "#/components/schemas/VacancyOut"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "decided_on": {
+            "format": "date",
+            "title": "Decided On",
+            "type": "string"
+          },
+          "decided_by_note": {
+            "title": "Decided By Note",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "process_id",
+          "kind",
+          "kind_label",
+          "from_vacancy",
+          "to_vacancy",
+          "quantity",
+          "reason",
+          "decided_on",
+          "decided_by_note",
+          "created_at"
+        ],
+        "title": "VacancyReallocationOut",
+        "type": "object"
+      },
+      "VacancyReallocationIn": {
+        "description": "A decisão da comissão que move vaga de uma linha da grade para outra.\n\nSem `program_id` e sem `process_id`: o programa é o da sessão e o\nedital vem da URL. `decided_by_note` é o número do ofício ou da ata —\nsem ele a realocação seria um número mudando no banco sem autoria.\n\nA espécie decide o que pode mudar: `level_transfer` é o mesmo alvo\nentre níveis diferentes, `notice_rectification` é o mesmo nível com\nalvo diferente. A categoria de cota é sempre preservada.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ReallocationKind"
+          },
+          "from_vacancy_id": {
+            "title": "From Vacancy Id",
+            "type": "integer"
+          },
+          "to_vacancy_id": {
+            "title": "To Vacancy Id",
+            "type": "integer"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "decided_on": {
+            "format": "date",
+            "title": "Decided On",
+            "type": "string"
+          },
+          "decided_by_note": {
+            "title": "Decided By Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "from_vacancy_id",
+          "to_vacancy_id",
+          "quantity",
+          "reason",
+          "decided_on",
+          "decided_by_note"
+        ],
+        "title": "VacancyReallocationIn",
+        "type": "object"
+      },
+      "EnrollmentOut": {
+        "description": "O vínculo recém-criado e a inscrição que virou ele.\n\nOs dois juntos porque a tela precisa dos dois: o aluno para o link de\n`/alunos` e a inscrição já em `enrolled` para trocar a linha da lista\nde classificação sem recarregar tudo.\n\n`deadline` sai preenchido sem ter entrado: o prazo regimental é\ncalculado no `Student.save()` a partir do ingresso e do nível.",
+        "properties": {
+          "student_id": {
+            "title": "Student Id",
+            "type": "integer"
+          },
+          "person_id": {
+            "title": "Person Id",
+            "type": "integer"
+          },
+          "registration_number": {
+            "title": "Registration Number",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "admission_date": {
+            "format": "date",
+            "title": "Admission Date",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "application": {
+            "$ref": "#/components/schemas/ApplicationDetailOut"
+          }
+        },
+        "required": [
+          "student_id",
+          "person_id",
+          "registration_number",
+          "level",
+          "project_id",
+          "admission_date",
+          "deadline",
+          "application"
+        ],
+        "title": "EnrollmentOut",
+        "type": "object"
+      },
+      "ApplicationEnrollIn": {
+        "description": "O que a secretaria digita para transformar o classificado em aluno.\n\n`registration_number` vem de fora: quem emite matrícula é o sistema da\nUFMG. `project_id` é obrigatório mesmo no Regular, em que a inscrição\njá traz o projeto — o vínculo do aluno não herda por acidente um campo\nque a CheckConstraint do `Student` exige (armadilha 16 do plano), e no\nSuplementar a inscrição só tem linha de pesquisa.",
+        "properties": {
+          "registration_number": {
+            "title": "Registration Number",
+            "type": "string"
+          },
+          "admission_date": {
+            "format": "date",
+            "title": "Admission Date",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "registration_number",
+          "admission_date",
+          "project_id"
+        ],
+        "title": "ApplicationEnrollIn",
         "type": "object"
       }
     },
