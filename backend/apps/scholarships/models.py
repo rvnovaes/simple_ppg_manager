@@ -28,9 +28,13 @@ informação, e toda mudança de estado é ato manual da secretaria — mesmo
 corte das isoladas.
 """
 
+from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from django.db import models
+
+from apps.core.exceptions import DomainError, InvalidStateTransition
 
 # ---------------------------------------------------------------------------
 # Enums de módulo
@@ -170,3 +174,326 @@ ORDENACAO_DA_FAIXA: dict[str, tuple[str, ...]] = {
     PriorityBand.B24_V: ("income", "score"),
     PriorityBand.B24_VI_VII_VIII: ("income", "hours", "score"),
 }
+
+
+# ---------------------------------------------------------------------------
+# Caminhos de upload
+# ---------------------------------------------------------------------------
+
+
+def caminho_do_edital_de_bolsas(instance: "ScholarshipEdition", filename: str) -> str:
+    """Onde o PDF do edital de bolsas é gravado dentro do MEDIA_ROOT.
+
+    Particionado por edição, no prefixo `bolsas/edicao-{id}/` que os
+    comprovantes do barema e os anexos da inscrição também vão usar —
+    arquivar uma edição inteira é copiar um diretório. Função de módulo, e
+    não lambda, porque a migração precisa serializar a referência.
+    """
+    return f"bolsas/edicao-{instance.pk}/{filename}"
+
+
+# ---------------------------------------------------------------------------
+# ScholarshipEdition (a edição anual do edital)
+# ---------------------------------------------------------------------------
+
+
+class ScholarshipEditionQuerySet(models.QuerySet["ScholarshipEdition"]):
+    def for_program(self, program: Any) -> "ScholarshipEditionQuerySet":
+        return self.filter(program=program)
+
+
+class ScholarshipEdition(models.Model):
+    """Edição anual do edital de concessão de bolsas de um programa.
+
+    `year` é o ano da concessão, não o ano em que o edital foi assinado.
+    Uma edição por (programa, ano).
+
+    As cinco datas do cronograma são **informação publicada**, não gatilho:
+    nada abre, fecha ou publica por relógio. Quem move a edição de um
+    estado para o outro é sempre a secretaria, pela tela — mesmo corte das
+    disciplinas isoladas. Por isso as transições não recebem "agora" para
+    comparar com prazo; só para carimbar o instante da publicação.
+
+    O caminho é de mão única: `draft` → `submissions_open` → `under_review`
+    → `preliminary_result` → `appeals_under_review` → `final_result`.
+    Corrigir rumo (voltar um passo) é quebra-vidro no Admin, e auditado —
+    não existe transição de volta.
+    """
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="scholarship_editions",
+        verbose_name="programa",
+    )
+    year = models.PositiveIntegerField("ano da concessão")
+    title = models.CharField("título", max_length=200)
+    status = models.CharField(
+        "situação",
+        max_length=30,
+        choices=ScholarshipEditionStatus,
+        default=ScholarshipEditionStatus.DRAFT,
+    )
+    notice_file = models.FileField(
+        "arquivo do edital", upload_to=caminho_do_edital_de_bolsas, blank=True
+    )
+    # -- cronograma publicado (informação, nunca gatilho) ------------------
+    submission_starts_on = models.DateField(
+        "inscrições começam em", null=True, blank=True
+    )
+    submission_ends_on = models.DateField(
+        "inscrições encerram em", null=True, blank=True
+    )
+    preliminary_result_on = models.DateField(
+        "resultado preliminar em", null=True, blank=True
+    )
+    appeal_ends_on = models.DateField("recursos encerram em", null=True, blank=True)
+    final_result_on = models.DateField("resultado final em", null=True, blank=True)
+    # -- publicação --------------------------------------------------------
+    draw_seed = models.BigIntegerField(
+        "semente do sorteio",
+        null=True,
+        blank=True,
+        help_text=(
+            "Gerada na publicação do preliminar e reusada no final: o "
+            "sorteio de desempate precisa ser reprodutível."
+        ),
+    )
+    published_preliminary_at = models.DateTimeField(
+        "preliminar publicado em", null=True, blank=True
+    )
+    published_final_at = models.DateTimeField(
+        "final publicado em", null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ScholarshipEditionQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "edição do edital de bolsas"
+        verbose_name_plural = "edições do edital de bolsas"
+        ordering = ["-year"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["program", "year"],
+                name="unique_edicao_de_bolsas_por_programa_e_ano",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.title or f"Bolsas {self.year}"
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """Uma edição por (programa, ano).
+
+        Espelho da `UniqueConstraint`: `.save()` não roda `clean()`, e sem
+        este espelho a violação chegaria ao router como `IntegrityError`
+        → 500 em vez de 400 com código.
+        """
+        super().clean()
+        if self.program_id is None or self.year is None:
+            # Obrigatoriedade é cobrança do schema Ninja e do NOT NULL.
+            return
+        duplicatas = ScholarshipEdition.objects.filter(
+            program_id=self.program_id, year=self.year
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Já existe uma edição do edital de bolsas para este ano "
+                "neste programa.",
+                code="duplicate_edition",
+            )
+
+    # -- guardas de leitura -------------------------------------------------
+
+    def bareme_editable(self) -> bool:
+        """O barema só muda em rascunho.
+
+        `open_submissions()` congela: a partir dali o candidato lança
+        contra os itens que leu, e mexer no ponto por unidade mudaria nota
+        já dada.
+        """
+        return self.status == ScholarshipEditionStatus.DRAFT
+
+    def submission_open(self) -> bool:
+        """Estado, não relógio: a data do cronograma é informação."""
+        return self.status == ScholarshipEditionStatus.SUBMISSIONS_OPEN
+
+    def committee_can_review(self) -> bool:
+        """A comissão lança nota em `under_review` **e** em
+        `appeals_under_review`.
+
+        O segundo estado não é sobra: o recurso deferido reabre o
+        lançamento do item atacado, e é a comissão que o refaz antes do
+        resultado final.
+        """
+        return self.status in {
+            ScholarshipEditionStatus.UNDER_REVIEW,
+            ScholarshipEditionStatus.APPEALS_UNDER_REVIEW,
+        }
+
+    def appeal_open(self) -> bool:
+        """Fase de recurso: o discente interpõe e a comissão julga.
+
+        É `appeals_under_review`, o estado que `open_appeals()` abre — o
+        mesmo que `ScholarshipAppeal.judge()` vai exigir. Publicado o
+        preliminar, a secretaria ainda precisa abrir a fase; enquanto não
+        abrir, ninguém recorre.
+        """
+        return self.status == ScholarshipEditionStatus.APPEALS_UNDER_REVIEW
+
+    def results_visible_to_student(self) -> bool:
+        """A partir do preliminar publicado o candidato vê o resultado."""
+        return self.status in {
+            ScholarshipEditionStatus.PRELIMINARY_RESULT,
+            ScholarshipEditionStatus.APPEALS_UNDER_REVIEW,
+            ScholarshipEditionStatus.FINAL_RESULT,
+        }
+
+    # -- transições --------------------------------------------------------
+    #
+    # Nenhuma salva: quem persiste é o router/service, no mesmo
+    # `transaction.atomic()` do `AuditLog`.
+
+    def _ensure_status(self, esperado: str, mensagem: str, code: str) -> None:
+        if self.status != esperado:
+            raise InvalidStateTransition(mensagem, code=code)
+
+    def open_submissions(self) -> None:
+        """Abre as inscrições e **congela o barema**."""
+        self._ensure_status(
+            ScholarshipEditionStatus.DRAFT,
+            "Só uma edição em rascunho pode abrir inscrições.",
+            "edition_not_draft",
+        )
+        self.status = ScholarshipEditionStatus.SUBMISSIONS_OPEN
+
+    def start_review(self) -> None:
+        """Encerra as inscrições e entrega a fila para a comissão."""
+        self._ensure_status(
+            ScholarshipEditionStatus.SUBMISSIONS_OPEN,
+            "Só uma edição com inscrições abertas pode entrar em análise.",
+            "edition_not_submissions_open",
+        )
+        self.status = ScholarshipEditionStatus.UNDER_REVIEW
+
+    def publish_preliminary(self, at: datetime) -> None:
+        self._ensure_status(
+            ScholarshipEditionStatus.UNDER_REVIEW,
+            "Só uma edição em análise pode publicar o resultado preliminar.",
+            "edition_not_under_review",
+        )
+        self.status = ScholarshipEditionStatus.PRELIMINARY_RESULT
+        self.published_preliminary_at = at
+
+    def open_appeals(self) -> None:
+        self._ensure_status(
+            ScholarshipEditionStatus.PRELIMINARY_RESULT,
+            "Só uma edição com resultado preliminar publicado pode abrir "
+            "a fase de recursos.",
+            "edition_not_preliminary_result",
+        )
+        self.status = ScholarshipEditionStatus.APPEALS_UNDER_REVIEW
+
+    def publish_final(self, at: datetime) -> None:
+        self._ensure_status(
+            ScholarshipEditionStatus.APPEALS_UNDER_REVIEW,
+            "Só uma edição com os recursos em análise pode publicar o resultado final.",
+            "edition_not_appeals_under_review",
+        )
+        self.status = ScholarshipEditionStatus.FINAL_RESULT
+        self.published_final_at = at
+
+
+# ---------------------------------------------------------------------------
+# CommitteeMember (a comissão daquele ano)
+# ---------------------------------------------------------------------------
+
+
+class CommitteeMemberQuerySet(models.QuerySet["CommitteeMember"]):
+    def for_program(self, program: Any) -> "CommitteeMemberQuerySet":
+        """Chega ao programa pelo pai — este model não tem FK `program`."""
+        return self.filter(edition__program=program)
+
+    def for_edition(self, edition: Any) -> "CommitteeMemberQuerySet":
+        return self.filter(edition=edition)
+
+
+class CommitteeMember(models.Model):
+    """Composição da Comissão de Bolsas de uma edição.
+
+    ESTE MODEL É REGISTRO HISTÓRICO, NÃO AUTORIZAÇÃO. QUEM PODE AVALIAR É
+    QUEM ESTÁ NO GROUP "COMISSÃO DE BOLSAS", VERIFICADO POR `require_perm`
+    COMO EM TODO O RESTO DO PROJETO. NENHUMA ROTA PODE CONSULTAR
+    `CommitteeMember` PARA DECIDIR ACESSO — FAZER ISSO CRIA UM RBAC
+    PARALELO AO DO DJANGO, QUE A SEÇÃO 2 DO `CLAUDE.md` PROÍBE.
+
+    O que este registro serve é dizer quem compôs a comissão daquele ano,
+    sob qual portaria e desde quando — é o que a ata e o PDF do resultado
+    citam.
+
+    `teacher` é PROTECT: descredenciar professor é preencher
+    `accredited_until`, e quem compôs a comissão é histórico. Sem FK
+    `program`: chega ao programa pela edição, mesmo recorte de
+    `RequestDocument` (`apps/academic/models.py`).
+    """
+
+    edition = models.ForeignKey(
+        ScholarshipEdition,
+        on_delete=models.CASCADE,
+        related_name="committee_members",
+        verbose_name="edição",
+    )
+    teacher = models.ForeignKey(
+        "academic.Teacher",
+        on_delete=models.PROTECT,
+        related_name="scholarship_committee_memberships",
+        verbose_name="professor",
+    )
+    appointed_on = models.DateField("designado em", null=True, blank=True)
+    ordinance = models.CharField("portaria", max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = CommitteeMemberQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "membro da comissão de bolsas"
+        verbose_name_plural = "membros da comissão de bolsas"
+        ordering = ["edition", "teacher"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["edition", "teacher"],
+                name="unique_membro_da_comissao_por_edicao",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.teacher} — {self.edition}"
+
+    def clean(self) -> None:
+        """Professor do mesmo programa da edição, uma vez só na comissão."""
+        super().clean()
+        if self.edition_id is None or self.teacher_id is None:
+            return
+        if self.teacher.program_id != self.edition.program_id:
+            raise DomainError(
+                "O membro da comissão precisa ser professor do mesmo "
+                "programa da edição.",
+                code="program_mismatch",
+            )
+        duplicatas = CommitteeMember.objects.filter(
+            edition_id=self.edition_id, teacher_id=self.teacher_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Este professor já compõe a comissão desta edição.",
+                code="duplicate_committee_member",
+            )

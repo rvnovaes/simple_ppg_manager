@@ -19,6 +19,12 @@ Started: ter. 01 set 2026 11:06:15 -03
   registrado sobrescreve o outro sem erro no backend.
 - Ordem dos imports segue `ruff`/isort: `apps.scholarships` vem antes de
   `apps.selection`.
+- `clean()` de model deste projeto **espelha toda `UniqueConstraint`** com um
+  `DomainError(code=...)`: `.save()` não roda `clean()`, e sem o espelho a
+  violação vira `IntegrityError` → 500 em vez de 400 com código.
+- Filho de agregado (sem FK `program`) leva `for_program()` no QuerySet
+  filtrando pelo pai (`edition__program`) — a regra do CLAUDE.md é
+  `for_program()` como primeiro filtro de toda busca, inclusive aí.
 
 ## 2026-09-01 - f1-app-scholarships-esqueleto
 - Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
@@ -43,3 +49,39 @@ Started: ter. 01 set 2026 11:06:15 -03
     (`apps/academic/models.py`) de propósito — a inscrição copia e congela o
     nível; não trocar por reuso do enum aninhado.
 ---
+
+## 2026-09-01 - f2-edicao-e-comissao
+- `ScholarshipEdition`: FK `program` PROTECT, `year`, `title`, `status`,
+  `notice_file`, as cinco datas do cronograma como `DateField(null=True)`
+  (informação, nunca gatilho), `draw_seed`, `published_preliminary_at`,
+  `published_final_at`; unique `(program, year)` espelhado em `clean()` como
+  `duplicate_edition`. Cinco transições sempre para frente
+  (`open_submissions`/`start_review`/`publish_preliminary`/`open_appeals`/
+  `publish_final`), cada uma exigindo o estado anterior e levantando
+  `InvalidStateTransition` (409); nenhuma salva. Guardas de leitura
+  `bareme_editable()`, `submission_open()`, `committee_can_review()` (verdadeiro
+  em `under_review` **e** em `appeals_under_review`), `appeal_open()` e
+  `results_visible_to_student()` (a partir do preliminar).
+- `CommitteeMember`: `edition` CASCADE, `teacher` PROTECT, `appointed_on`,
+  `ordinance`, unique `(edition, teacher)`; sem FK `program` — chega pelo pai,
+  e o `for_program()` do QuerySet filtra por `edition__program`. Docstring em
+  CAIXA ALTA avisando que é registro histórico, não autorização.
+- Migration `0001_initial` gerada, lida e aplicada no canteiro (`make migrate`).
+- Admin quebra-vidro com `AuditedModelAdmin`, inline da comissão na edição e
+  `draw_seed`/carimbos de publicação em `readonly_fields`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0001_initial.py`, `.../tests/test_bolsas_edital.py`.
+- `make ready` verde (1303 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - `appeal_open()` é `appeals_under_review`, não `preliminary_result`: quem
+    abre a fase é `open_appeals()`, e é nela que o discente interpõe e a
+    comissão julga (`ScholarshipAppeal.judge()` vai exigir o mesmo estado).
+  - Transição que carimba instante recebe `at` explícito
+    (`publish_preliminary`, `publish_final`); as outras três não recebem nada —
+    nada neste app olha o relógio para decidir.
+  - `docker compose exec backend python manage.py ...` **não funciona** neste
+    canteiro (a imagem não tem o venv no PATH do exec): use `make migrate`, que
+    roda `uv run` no host contra o banco do Compose.
+  - Teste de transição vale mais parametrizado pela matriz
+    (transição × todos os estados) do que um caso por vez: pega de graça o
+    "não repete o próprio destino".
