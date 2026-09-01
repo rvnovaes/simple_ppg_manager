@@ -101,6 +101,15 @@ Started: ter. 01 set 2026 11:06:15 -03
 - **Rota de escrita nova exige conferir o `view_` do mesmo model** no papel que
   a usa: `change_X` sem `view_X` dá 403 na tela de quem escreve, e a migration
   de papéis distribuiu `view_` item a item (só a Coordenação recebeu tudo).
+- **Rota nomeada como o service que ela chama exige importar o módulo**
+  (`from . import services`), e não `from .services import publish_final`: o
+  `def` da rota, mais abaixo no arquivo, sombreia o nome importado e a rota
+  passa a chamar a si mesma. Não há erro de importação — o estouro é em
+  runtime, na primeira chamada.
+- **Snapshot de publicação é `bulk_update`, e `auto_now` não dispara nele**:
+  `updated_at` entra na lista de campos com o instante da publicação
+  atribuído à mão, senão a coluna fica mentindo a data da última alteração.
+
 
 ## 2026-09-01 - f1-app-scholarships-esqueleto
 - Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
@@ -923,4 +932,57 @@ Started: ter. 01 set 2026 11:06:15 -03
     chama `judge()` direto. Teste de borda espera 422.
   - f18 herda daqui um schema publicado a mais em `ScholarshipApplicationOut`;
     quem regenera `openapi.json`/`schema.d.ts` continua sendo a f20.
+---
+
+## 2026-09-01 - f18-publicacao-e-snapshot
+- **`publish_preliminary`/`publish_final` viraram service** (`services.py`):
+  o ato escreve em dois agregados — a edição (situação, carimbo, semente) e
+  **toda** inscrição dela (os cinco campos `published_*` da decisão B10) —, e
+  por isso saiu do `_transicionar` das outras três transições. As duas rotas
+  não mudaram de nome nem de contrato, como a story anterior prometeu.
+- **A semente nasce uma vez e nunca é regerada** (`random.randrange(1, 2**63)`
+  só quando `draw_seed is None`): republicar o final depois do preliminar tem
+  de dar a mesma ordem de sorteio. Regerá-la embaralharia de novo quem
+  empatou, e o candidato veria a lista trocar sem nada ter sido julgado.
+- **Um `at` só para tudo**: o carimbo da edição e o `published_at` de cada
+  inscrição são o mesmo instante — é ele que permite ler depois "o que foi
+  publicado naquela hora". E **um `AuditLog`** por publicação, com
+  `published`, `by_level` e a semente no payload (desenho de
+  `close_isolated_cycle`).
+- **A transição vem antes de qualquer escrita**: é ela que recusa (409) o
+  estado errado, e recusar antes de gerar semente ou classificar tem teste
+  próprio (`test_publicar_fora_do_estado_recusa_e_nao_escreve_nada`).
+- **`ScholarshipEdition.result(level)`**: publicado o preliminar, lê o
+  **snapshot** (`published_result`); antes disso, a prévia (`classify`). É o
+  ponto do módulo: durante a fase de recursos a comissão refaz lançamento, e
+  sem o snapshot o preliminar publicado mudaria a cada deferimento. Dois
+  testes guardam os dois lados (a lista publicada não muda; a prévia já
+  mostra a nota nova).
+- **`GET /editions/{id}/result?level=`** devolve as dez faixas
+  (`BandOut`/`ResultRowOut` sobre os dataclass, não sobre model). O candidato
+  só a partir de `results_visible_to_student()` (403 `result_not_published`);
+  a prévia é de quem trabalha o edital — `PAPEIS_COM_VISAO_DA_FILA`, o mesmo
+  recorte de `visible_to`, e não uma lista nova.
+- Arquivos: `backend/apps/scholarships/{models,services,router,schemas}.py`,
+  `.../tests/test_bolsas_classificacao.py` (+12 casos de publicação),
+  `.../tests/test_bolsas_api_resultado.py` (novo, 16 casos). Sem migration —
+  os campos do snapshot e a permissão `publish_scholarshipedition` já vinham
+  de f4/f2.
+- `make ready` verde (1861 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`from .services import publish_final` no `router.py` é armadilha**: a
+    rota tem o nome do ato que chama, e o `def` de baixo sombreia o import —
+    a rota chamaria a si mesma, sem erro de importação. O módulo inteiro
+    (`from . import services`) resolve, e o `clone_bareme` passou junto.
+  - `bulk_update` **não dispara `auto_now`**: `updated_at` entra na lista de
+    campos com o `at` da publicação atribuído à mão.
+  - `published_band` é `str | None` no model, e o mypy cobra o `None` ao
+    indexar o dicionário das faixas. O `continue` que ele exige é honesto —
+    os cinco campos são gravados juntos, mas o Admin pode ter mexido.
+  - Nome de teste **duplicado no mesmo arquivo** não é erro de coleta: o
+    segundo simplesmente substitui o primeiro, que deixa de rodar. Quem pegou
+    foi o `ruff` (F811) no `make ready` — o `pytest` sozinho passaria verde
+    com um caso a menos.
+  - f19 (PDF) e f20 (schema) consomem `edition.result(level)`, e não
+    `classify()`: o documento imprime o que foi publicado.
 ---

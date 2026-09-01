@@ -797,6 +797,76 @@ class ScholarshipEdition(models.Model):
             inicio = fim
         return final, sorteadas
 
+    # -- o resultado publicado ---------------------------------------------
+
+    def result(self, level: str) -> list[BandResult]:
+        """O resultado desta edição num nível — o que a tela e o PDF leem.
+
+        Publicado o preliminar, é **sempre** o snapshot: recalcular na
+        leitura faria a lista mudar debaixo de quem já a leu, e é isso que
+        os campos `published_*` da inscrição existem para impedir. Na fase
+        de recursos a comissão refaz lançamento, e sem o snapshot o
+        preliminar publicado mudaria a cada deferimento.
+
+        Antes da publicação é a prévia (`classify()`), que a secretaria usa
+        para conferir a lista antes de congelá-la.
+        """
+        if self.published_preliminary_at is None:
+            return self.classify(level)
+        return self.published_result(level)
+
+    def published_result(self, level: str) -> list[BandResult]:
+        """As dez faixas **como foram publicadas**, lidas do snapshot.
+
+        Nada é recalculado: faixa, nota, posição e ordem de sorteio saem
+        dos campos gravados pela publicação. Inscrição sem `published_at`
+        (criada depois, ou de um nível que ainda não publicou) fica de
+        fora — ela não está na lista publicada.
+        """
+        inscricoes = list(
+            self.applications.filter(level=level, published_at__isnull=False)
+            .select_related("student__person")
+            .order_by("published_position", "pk")
+        )
+        por_faixa: dict[str, list[ScholarshipApplication]] = {
+            faixa: [] for faixa in ORDEM_DAS_FAIXAS
+        }
+        for inscricao in inscricoes:
+            faixa_publicada = inscricao.published_band
+            # Os cinco campos do snapshot são gravados juntos, num
+            # `bulk_update` só: `published_at` sem faixa não existe. O
+            # `continue` é para o mypy, e para a linha que alguém
+            # corrigir à mão no Admin um dia.
+            if faixa_publicada is None:
+                continue
+            por_faixa[faixa_publicada].append(inscricao)
+        return [
+            BandResult(
+                band=faixa,
+                title=TITULO_DA_FAIXA[faixa],
+                priority_label=(
+                    f"Ordem de prioridade: {ORDINAIS_DA_PRIORIDADE[posicao - 1]}"
+                ),
+                ordering_rule=REGRA_DE_ORDENACAO_DA_FAIXA.get(
+                    faixa, REGRA_DE_ORDENACAO_PADRAO
+                ),
+                shows_income=faixa in ORDENACAO_DA_FAIXA,
+                rows=[
+                    ClassifiedRow(
+                        application=inscricao,
+                        name=str(inscricao.student.person.full_name),
+                        score=inscricao.published_score or Decimal("0.00"),
+                        position=inscricao.published_position or 0,
+                        income=inscricao.monthly_income,
+                        weekly_hours=inscricao.weekly_hours,
+                        draw_order=inscricao.draw_order,
+                    )
+                    for inscricao in por_faixa[faixa]
+                ],
+            )
+            for posicao, faixa in enumerate(ORDEM_DAS_FAIXAS, start=1)
+        ]
+
 
 # ---------------------------------------------------------------------------
 # CommitteeMember (a comissão daquele ano)

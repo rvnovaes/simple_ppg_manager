@@ -25,7 +25,12 @@ from apps.core.tenancy import current_program
 from apps.people.models import Person
 from apps.programs.models import Program
 
+# Módulo inteiro, e não `from .services import publish_preliminary`: as
+# rotas têm o nome do ato que chamam, e o `def` de baixo sombrearia o
+# import — a rota chamaria a si mesma, sem erro de importação.
+from . import services
 from .models import (
+    PAPEIS_COM_VISAO_DA_FILA,
     AppealState,
     ApplicationDocument,
     ApplicationDocumentKind,
@@ -41,6 +46,7 @@ from .models import (
 )
 from .schemas import (
     ApplicationDocumentOut,
+    BandOut,
     BandOverrideIn,
     BaremeCloneIn,
     BaremeCloneOut,
@@ -67,7 +73,6 @@ from .schemas import (
     ScholarshipEditionOut,
     ScholarshipEditionPatch,
 )
-from .services import clone_bareme
 
 router = Router(tags=["scholarships"])
 
@@ -225,27 +230,19 @@ def start_review(request: HttpRequest, edition_id: int):
     "/editions/{int:edition_id}/publish-preliminary", response=ScholarshipEditionOut
 )
 def publish_preliminary(request: HttpRequest, edition_id: int):
-    """Publica o resultado preliminar.
+    """Publica o resultado preliminar e **congela a lista**.
 
     Permissão própria `publish_scholarshipedition`, e não `change_`:
     publicar congela o ano e é o que o candidato lê como resultado — quem
     monta o edital não é necessariamente quem assina a lista.
 
-    O corpo desta rota **vai migrar para o service de publicação** (story
-    do snapshot): lá a mesma transição passa a gravar a faixa, a nota, a
-    posição e a ordem de sorteio em cada inscrição, num `AuditLog` único.
-    Enquanto o service não existe, a transição sozinha já é o ato — e a
-    rota não muda de nome nem de contrato quando ele chegar.
+    Fora do padrão `_transicionar` porque o ato cruza dois agregados: o
+    service classifica os dois níveis, grava o snapshot em toda inscrição
+    e escreve um `AuditLog` só, com as contagens.
     """
-    return _transicionar(
-        request,
-        edition_id,
-        perm="scholarships.publish_scholarshipedition",
-        metodo="publish_preliminary",
-        evento="scholarships.edition.publish_preliminary",
-        campos=["status", "published_preliminary_at"],
-        at=True,
-    )
+    require_perm(request, "scholarships.publish_scholarshipedition")
+    edicao = _edicao_do_programa(request, edition_id)
+    return services.publish_preliminary(edition=edicao, request=request)
 
 
 @router.post("/editions/{int:edition_id}/open-appeals", response=ScholarshipEditionOut)
@@ -263,16 +260,51 @@ def open_appeals(request: HttpRequest, edition_id: int):
 
 @router.post("/editions/{int:edition_id}/publish-final", response=ScholarshipEditionOut)
 def publish_final(request: HttpRequest, edition_id: int):
-    """Publica o resultado final. Mesma nota do preliminar sobre o
-    service de publicação e sobre a permissão própria."""
-    return _transicionar(
-        request,
-        edition_id,
-        perm="scholarships.publish_scholarshipedition",
-        metodo="publish_final",
-        evento="scholarships.edition.publish_final",
-        campos=["status", "published_final_at"],
-        at=True,
+    """Publica o resultado final, depois dos recursos julgados.
+
+    Mesmo service do preliminar, com a **mesma** semente de sorteio: o
+    que muda entre as duas listas é o que os recursos mudaram, e nada
+    mais.
+    """
+    require_perm(request, "scholarships.publish_scholarshipedition")
+    edicao = _edicao_do_programa(request, edition_id)
+    return services.publish_final(edition=edicao, request=request)
+
+
+@router.get("/editions/{int:edition_id}/result", response=list[BandOut])
+def edition_result(request: HttpRequest, edition_id: int, level: ScholarshipLevel):
+    """As dez faixas de um nível — a lista publicada, ou a prévia.
+
+    Um nível por chamada: mestrado e doutorado correm independentes e saem
+    em documentos separados, e é este mesmo objeto que alimenta a tela e o
+    PDF do resultado.
+
+    Antes da publicação a rota devolve a **prévia** (`classify()`), e ela é
+    só de quem trabalha o edital — Secretaria, Coordenação e Comissão de
+    Bolsas, o mesmo recorte de `ScholarshipApplicationQuerySet.visible_to`.
+    Para o candidato o resultado começa a existir com o preliminar
+    publicado (`results_visible_to_student()`); antes disso, 403.
+    """
+    require_perm(request, "scholarships.view_scholarshipedition")
+    edicao = _edicao_do_programa(request, edition_id)
+    if not _ve_a_previa(request) and not edicao.results_visible_to_student():
+        raise NotAllowed(
+            "O resultado desta edição ainda não foi publicado.",
+            code="result_not_published",
+        )
+    return edicao.result(level)
+
+
+def _ve_a_previa(request: HttpRequest) -> bool:
+    """Quem enxerga a lista antes de ela ser publicada.
+
+    Mesmo recorte de `visible_to` (e a mesma constante), porque é a mesma
+    pergunta: quem acompanha a edição inteira vê a prévia; quem só tem a
+    própria inscrição espera o resultado sair.
+    """
+    return (
+        request.user.is_superuser
+        or request.user.groups.filter(name__in=PAPEIS_COM_VISAO_DA_FILA).exists()
     )
 
 
@@ -406,7 +438,7 @@ def clone_bareme_from_edition(
     require_perm(request, "scholarships.add_baremeitem")
     destino = _edicao_do_programa(request, edition_id)
     origem = _edicao_do_programa(request, payload.source_edition_id)
-    novos = clone_bareme(source=origem, target=destino, request=request)
+    novos = services.clone_bareme(source=origem, target=destino, request=request)
     return {
         "source_edition_id": origem.pk,
         "created": len(novos),

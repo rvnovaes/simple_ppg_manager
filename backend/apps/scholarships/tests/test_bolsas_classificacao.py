@@ -28,6 +28,8 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.academic.models import Student
+from apps.audit.models import AuditLog
+from apps.core.exceptions import InvalidStateTransition
 from apps.people.models import Person
 from apps.programs.models import CollectiveProject, Program, ResearchLine
 from apps.scholarships.models import (
@@ -41,8 +43,10 @@ from apps.scholarships.models import (
     PriorityBand,
     ScholarshipApplication,
     ScholarshipEdition,
+    ScholarshipEditionStatus,
     ScholarshipLevel,
 )
+from apps.scholarships.services import publish_final, publish_preliminary
 
 
 def _inscricao(**kwargs) -> ScholarshipApplication:
@@ -1110,3 +1114,270 @@ def test_classify_nao_grava_nada(edicao):
         assert inscricao.draw_order is None
         assert inscricao.published_band is None
         assert inscricao.published_position is None
+
+
+# ===========================================================================
+# A publicação: o snapshot, a semente e o `AuditLog` único
+# ===========================================================================
+#
+# Terceira parte (Seção 3 do plano). O service escreve em dois agregados —
+# a edição e toda inscrição dela —, e o que estes casos guardam é o que
+# separa "publicar" de "classificar": a lista publicada **para de mudar**.
+#
+# Nível (b) por natureza (é persistência), mas sem HTTP: a borda das duas
+# rotas e a leitura do resultado estão em `test_bolsas_api_resultado.py`.
+
+
+@pytest.fixture
+def edicao_em_analise(program: Program) -> ScholarshipEdition:
+    """Uma edição no estado de onde se publica o preliminar."""
+    return ScholarshipEdition.objects.create(
+        program=program,
+        year=2027,
+        title="Edital de Bolsas 2027",
+        status=ScholarshipEditionStatus.UNDER_REVIEW,
+    )
+
+
+@pytest.mark.django_db
+def test_publicar_o_preliminar_grava_o_snapshot_em_toda_inscricao(edicao_em_analise):
+    """B10: depois de publicado, é o snapshot que a tela e o PDF leem."""
+    edicao = edicao_em_analise
+    ana = _candidato(edicao, "Ana Souza", PriorityBand.B21_I)
+    _com_nota(ana, edicao, "10")
+    bruno = _candidato(edicao, "Bruno Dias", PriorityBand.B21_I)
+    _com_nota(bruno, edicao, "4")
+
+    publish_preliminary(edition=edicao)
+
+    ana.refresh_from_db()
+    bruno.refresh_from_db()
+    assert ana.published_band == PriorityBand.B21_I
+    assert ana.published_score == Decimal("10.00")
+    assert ana.published_position == 1
+    assert bruno.published_position == 2
+    assert ana.published_at is not None
+    assert ana.published_at == bruno.published_at == edicao.published_preliminary_at
+
+
+@pytest.mark.django_db
+def test_a_publicacao_alcanca_os_dois_niveis(edicao_em_analise):
+    """Uma publicação, duas listas: mestrado e doutorado saem juntos, e
+    quem escolhe o nível é o documento, não o ato."""
+    edicao = edicao_em_analise
+    mestranda = _candidato(edicao, "Ana Souza", nivel=Student.Level.MASTERS)
+    doutorando = _candidato(edicao, "Bruno Dias", nivel=Student.Level.DOCTORATE)
+
+    publish_preliminary(edition=edicao)
+
+    mestranda.refresh_from_db()
+    doutorando.refresh_from_db()
+    assert mestranda.published_position == 1
+    assert doutorando.published_position == 1
+
+
+@pytest.mark.django_db
+def test_a_semente_nasce_na_publicacao_e_nunca_e_regerada(edicao_em_analise):
+    """Republicar tem de dar a mesma lista: a semente do preliminar é a
+    do final, e o sorteio não se refaz porque alguém recorreu."""
+    edicao = edicao_em_analise
+    assert edicao.draw_seed is None
+
+    publish_preliminary(edition=edicao)
+    semente = edicao.draw_seed
+    edicao.open_appeals()
+    edicao.save(update_fields=["status", "updated_at"])
+    publish_final(edition=edicao)
+
+    assert semente is not None
+    assert edicao.draw_seed == semente
+    edicao.refresh_from_db()
+    assert edicao.draw_seed == semente
+
+
+@pytest.mark.django_db
+def test_republicar_mantem_a_mesma_ordem_de_sorteio(edicao_em_analise):
+    """Três empatadas em tudo: a ordem entre elas é a do sorteio, e ela
+    não pode mudar entre o preliminar e o final."""
+    edicao = edicao_em_analise
+    empatadas = [
+        _candidato(edicao, nome, PriorityBand.B21_I)
+        for nome in ["Ana Souza", "Bruno Dias", "Carla Melo"]
+    ]
+    for inscricao in empatadas:
+        _com_nota(inscricao, edicao, "5")
+
+    publish_preliminary(edition=edicao)
+    preliminar = {
+        inscricao.pk: (inscricao.published_position, inscricao.draw_order)
+        for inscricao in ScholarshipApplication.objects.filter(edition=edicao)
+    }
+    edicao.open_appeals()
+    edicao.save(update_fields=["status", "updated_at"])
+    publish_final(edition=edicao)
+
+    final = {
+        inscricao.pk: (inscricao.published_position, inscricao.draw_order)
+        for inscricao in ScholarshipApplication.objects.filter(edition=edicao)
+    }
+    assert final == preliminar
+    assert sorted(ordem for _, ordem in final.values()) == [1, 2, 3]
+
+
+@pytest.mark.django_db
+def test_o_snapshot_nao_grava_sorteio_em_quem_nao_empatou(edicao_em_analise):
+    edicao = edicao_em_analise
+    ana = _candidato(edicao, "Ana Souza", PriorityBand.B21_I)
+    _com_nota(ana, edicao, "10")
+
+    publish_preliminary(edition=edicao)
+
+    ana.refresh_from_db()
+    assert ana.draw_order is None
+
+
+@pytest.mark.django_db
+def test_ha_um_auditlog_por_publicacao_com_as_contagens(edicao_em_analise):
+    """O ato é "publiquei o preliminar de 2027", e não N eventos soltos —
+    mesmo desenho de `close_isolated_cycle`."""
+    edicao = edicao_em_analise
+    _candidato(edicao, "Ana Souza", nivel=Student.Level.MASTERS)
+    _candidato(edicao, "Bruno Dias", nivel=Student.Level.MASTERS)
+    _candidato(edicao, "Carla Melo", nivel=Student.Level.DOCTORATE)
+
+    publish_preliminary(edition=edicao)
+
+    registro = AuditLog.objects.get(event="scholarships.edition.publish_preliminary")
+    assert registro.program_id == edicao.program_id
+    assert registro.target_id == str(edicao.pk)
+    assert registro.payload["published"] == 3
+    assert registro.payload["by_level"] == {"masters": 2, "doctorate": 1}
+    assert registro.payload["draw_seed"] == edicao.draw_seed
+    assert registro.payload["status"] == ScholarshipEditionStatus.PRELIMINARY_RESULT
+
+
+@pytest.mark.django_db
+def test_publicar_fora_do_estado_recusa_e_nao_escreve_nada(edicao):
+    """A transição recusa antes de gerar semente ou classificar: a edição
+    em rascunho sai da chamada exatamente como entrou."""
+    ana = _candidato(edicao, "Ana Souza")
+
+    with pytest.raises(InvalidStateTransition) as erro:
+        publish_preliminary(edition=edicao)
+
+    assert erro.value.code == "edition_not_under_review"
+    edicao.refresh_from_db()
+    ana.refresh_from_db()
+    assert edicao.draw_seed is None
+    assert ana.published_at is None
+    assert not AuditLog.objects.filter(
+        event="scholarships.edition.publish_preliminary"
+    ).exists()
+
+
+# --- `result()`: o snapshot depois de publicado, a prévia antes ------------
+
+
+@pytest.mark.django_db
+def test_antes_de_publicar_o_resultado_e_a_previa(edicao):
+    """A secretaria confere a lista antes de congelá-la."""
+    _candidato(edicao, "Ana Souza", PriorityBand.B21_I)
+
+    resultado = edicao.result(ScholarshipLevel.MASTERS)
+
+    assert [secao.band for secao in resultado] == ORDEM_DAS_FAIXAS
+    assert _nomes(resultado, PriorityBand.B21_I) == ["Ana Souza"]
+
+
+@pytest.mark.django_db
+def test_o_resultado_publicado_nao_muda_quando_a_comissao_refaz_lancamento(
+    edicao_em_analise,
+):
+    """É para isto que o snapshot existe: durante a fase de recursos a
+    comissão corrige nota, e o preliminar publicado continua o que foi
+    lido."""
+    edicao = edicao_em_analise
+    ana = _candidato(edicao, "Ana Souza", PriorityBand.B21_I)
+    _com_nota(ana, edicao, "4")
+    bruno = _candidato(edicao, "Bruno Dias", PriorityBand.B21_I)
+    _com_nota(bruno, edicao, "10")
+    publish_preliminary(edition=edicao)
+    assert _nomes(edicao.result(ScholarshipLevel.MASTERS), PriorityBand.B21_I) == [
+        "Bruno Dias",
+        "Ana Souza",
+    ]
+
+    # O recurso da Ana é deferido: a comissão refaz o lançamento dela.
+    lancamento = ana.bareme_entries.get()
+    lancamento.committee_score = Decimal("30.00")
+    lancamento.save(update_fields=["committee_score", "updated_at"])
+
+    publicado = edicao.result(ScholarshipLevel.MASTERS)
+    assert _nomes(publicado, PriorityBand.B21_I) == ["Bruno Dias", "Ana Souza"]
+    assert _secao(publicado, PriorityBand.B21_I).rows[1].score == Decimal("4.00")
+    # A prévia, essa sim, já mostra a nota nova.
+    assert _nomes(edicao.classify(ScholarshipLevel.MASTERS), PriorityBand.B21_I) == [
+        "Ana Souza",
+        "Bruno Dias",
+    ]
+
+
+@pytest.mark.django_db
+def test_a_publicacao_final_incorpora_o_que_o_recurso_mudou(edicao_em_analise):
+    """O final é a lista recalculada: publicar de novo é o que faz o
+    deferimento chegar ao documento."""
+    edicao = edicao_em_analise
+    ana = _candidato(edicao, "Ana Souza", PriorityBand.B21_I)
+    _com_nota(ana, edicao, "4")
+    bruno = _candidato(edicao, "Bruno Dias", PriorityBand.B21_I)
+    _com_nota(bruno, edicao, "10")
+    publish_preliminary(edition=edicao)
+    lancamento = ana.bareme_entries.get()
+    lancamento.committee_score = Decimal("30.00")
+    lancamento.save(update_fields=["committee_score", "updated_at"])
+
+    edicao.open_appeals()
+    edicao.save(update_fields=["status", "updated_at"])
+    publish_final(edition=edicao)
+
+    assert _nomes(edicao.result(ScholarshipLevel.MASTERS), PriorityBand.B21_I) == [
+        "Ana Souza",
+        "Bruno Dias",
+    ]
+    ana.refresh_from_db()
+    assert ana.published_position == 1
+    assert ana.published_score == Decimal("30.00")
+    assert ana.published_at == edicao.published_final_at
+
+
+@pytest.mark.django_db
+def test_o_resultado_publicado_tem_as_dez_faixas_e_os_cabecalhos(edicao_em_analise):
+    """Q8 vale igual no snapshot: faixa vazia é publicada com cabeçalho."""
+    edicao = edicao_em_analise
+    _candidato(edicao, "Ana Souza", PriorityBand.B21_I)
+    publish_preliminary(edition=edicao)
+
+    resultado = edicao.result(ScholarshipLevel.MASTERS)
+
+    assert [secao.band for secao in resultado] == ORDEM_DAS_FAIXAS
+    assert [len(secao.rows) for secao in resultado] == [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert _secao(resultado, PriorityBand.B21_I).priority_label == (
+        "Ordem de prioridade: primeira"
+    )
+    assert _secao(resultado, PriorityBand.B24_V).shows_income is True
+
+
+@pytest.mark.django_db
+def test_inscricao_criada_depois_da_publicacao_fica_fora_da_lista(edicao_em_analise):
+    """Sem `published_at` não se está na lista publicada — e é assim que
+    uma inscrição gravada pelo Admin depois do resultado não entra nele
+    sem que alguém publique de novo."""
+    edicao = edicao_em_analise
+    _candidato(edicao, "Ana Souza", PriorityBand.B21_I)
+    publish_preliminary(edition=edicao)
+
+    _candidato(edicao, "Bruno Dias", PriorityBand.B21_I)
+
+    assert _nomes(edicao.result(ScholarshipLevel.MASTERS), PriorityBand.B21_I) == [
+        "Ana Souza"
+    ]

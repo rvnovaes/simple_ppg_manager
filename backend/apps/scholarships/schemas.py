@@ -19,6 +19,7 @@ from .models import (
     BaremeItem,
     BaremeSection,
     BaremeUnit,
+    ClassifiedRow,
     CommitteeMember,
     ItemReview,
     PriorityBand,
@@ -848,3 +849,60 @@ class BandOverrideIn(Schema):
 
     band_override: PriorityBand | None = None
     band_override_reason: str = ""
+
+
+# ---------------------------------------------------------------------------
+# O resultado publicado
+# ---------------------------------------------------------------------------
+#
+# Estes dois são a saída de `ScholarshipEdition.result()`, e não de um model:
+# a fonte são os `dataclass` `BandResult`/`ClassifiedRow`. O MESMO objeto
+# alimenta a tela e o PDF — quem quiser mudar a lista muda a classificação,
+# não o schema.
+
+
+class ResultRowOut(Schema):
+    """Uma linha da lista, já na posição publicada.
+
+    `income` e `weekly_hours` viajam sempre, mas só a faixa com
+    `shows_income` os imprime: é a coluna "Remuneração" das duas faixas
+    ordenadas por rendimento.
+
+    `draw_order` nula é o caso normal — "não precisou de sorteio". Quando
+    vem preenchida, é a ordem que o sorteio de desempate deu, e ela é
+    publicada junto porque é o que torna o desempate conferível.
+    """
+
+    application_id: int
+    student_id: int
+    name: str
+    score: decimal.Decimal
+    position: int
+    income: decimal.Decimal | None
+    weekly_hours: int | None
+    draw_order: int | None
+
+    @staticmethod
+    def resolve_application_id(obj: ClassifiedRow) -> int:
+        return obj.application.pk
+
+    @staticmethod
+    def resolve_student_id(obj: ClassifiedRow) -> int:
+        return obj.application.student_id
+
+
+class BandOut(Schema):
+    """Uma das dez faixas do documento publicado, **mesmo vazia**.
+
+    Faixa sem candidato sai só com o cabeçalho (Q8), e por isso a lista
+    tem sempre dez elementos, na ordem canônica do edital: a tela e o PDF
+    imprimem a ordem de prioridade completa, e uma faixa que sumisse da
+    resposta viraria uma prioridade a menos no documento.
+    """
+
+    band: PriorityBand
+    title: str
+    priority_label: str
+    ordering_rule: str
+    shows_income: bool
+    rows: list[ResultRowOut]
