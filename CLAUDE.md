@@ -580,3 +580,14 @@ As que já custaram iteração aqui:
   `USE_THOUSAND_SEPARATOR` é falso por padrão no Django, e
   `formats.number_format(v, decimal_pos=2, use_l10n=True)` publica `3200,00` em
   vez de `3.200,00` — sem erro nenhum, só um documento oficial mal escrito.
+- **Rota nova no front quebra o `make typecheck` do host com `EACCES` em
+  `.svelte-kit/`.** O serviço `frontend` do Compose roda como root sobre o
+  mesmo bind mount, e o Vite dele regenera `.svelte-kit/generated/` e
+  `.svelte-kit/types/` assim que o arquivo de rota aparece — os artefatos da
+  rota nova nascem `root:root`, e o `svelte-kit sync` do host não consegue
+  reescrevê-los. A mensagem aponta um `$types.d.ts` ou um `nodes/NN.js` e não
+  diz nada sobre Docker. Conserto: apagar os artefatos de dentro do container,
+  que é quem tem o dono
+  (`docker compose exec -T frontend sh -c 'rm -rf "/app/.svelte-kit/types/src/routes/<rota>"'`),
+  e rodar o `make typecheck` de novo. `find frontend/.svelte-kit -user root`
+  lista o que ficou.

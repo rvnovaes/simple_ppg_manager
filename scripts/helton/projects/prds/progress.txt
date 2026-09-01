@@ -118,6 +118,22 @@ Started: ter. 01 set 2026 11:06:15 -03
 - **Dinheiro no papel: `formats.number_format(..., force_grouping=True)`.**
   Sem ele sai `3200,00` em vez de `3.200,00` — `USE_THOUSAND_SEPARATOR` é
   falso por padrão. Registrado no `CLAUDE.md`.
+- **Rota nova no front quebra o `make typecheck` com `EACCES` em
+  `.svelte-kit/`**: o Vite do container `frontend` roda como root sobre o
+  mesmo bind mount e gera os artefatos da rota nova com dono errado.
+  `find frontend/.svelte-kit -user root` acha; `docker compose exec -T
+  frontend rm -rf ...` apaga. Registrado no `CLAUDE.md`.
+- **Tela desenha pelo bool que o schema já traz resolvido**
+  (`bareme_editable`, `submission_open`, `appeal_open`), nunca por uma cópia
+  da máquina de estados no front. O servidor continua recusando com 409; a
+  tela só evita o clique perdido.
+- **Item de menu do módulo é escolhido pela permissão que separa o público
+  daquela tela**, e não pela mais óbvia: os quatro papéis têm
+  `view_scholarshipedition`; quem separa a Secretaria/Coordenação do Discente
+  e da Comissão é `view_committeemember`. Confira pela `/auth/me` das contas
+  do `make seed` antes de fechar a story.
+- **Decimal do Ninja viaja como string no `schema.d.ts`** — estado de
+  formulário é `string`, senão `2.50` volta `2.5` na tela.
 - **Teste de escopo de tenant precisa do estado que PERMITE a operação.** Num
   estado restritivo o vazamento se esconde atrás do 409 da guarda de fase, e a
   asserção passa sem nunca ter tocado o objeto do outro programa. E a asserção
@@ -1103,4 +1119,66 @@ Started: ter. 01 set 2026 11:06:15 -03
     diff neste módulo): não misture com edição manual e não estranhe o
     tamanho do diff — o `normalizar-openapi.mjs` tira o `/api/v1` dos
     caminhos antes do `openapi-typescript`.
+---
+
+## 2026-09-01 - f21-tela-edital
+- **`frontend/src/routes/(app)/bolsas/edital/+page.svelte`** (novo): a tela da
+  Secretaria numa página só, com cinco blocos — seletor de edição, painel com
+  o cronograma, o ato de transição, o barema por nível e a comissão do ano.
+  Svelte 5 com runas; nenhuma chamada fora de `lib/api/client.ts`.
+- **A tela não remonta a máquina de estados.** O botão de escrita do barema
+  sai do `bareme_editable` que o `ScholarshipEditionOut` já traz resolvido, e
+  não de uma cópia de `status === 'draft'` no front — o servidor continua
+  recusando com 409 `edition_not_draft`, e a tela só evita o clique perdido.
+  Mesmo corte para a próxima transição: o mapa `TRANSICOES` é indexado pelo
+  `status` e cada entrada carrega **a permissão que aquele ato exige**
+  (`publish_scholarshipedition` nas duas publicações, `change_` nas outras
+  três), com o texto da consequência que o `alertdialog` mostra antes.
+- **O `switch` das cinco rotas é o preço do cliente tipado**: `openapi-fetch`
+  exige o caminho literal, então não dá para montar
+  `/editions/{id}/${acao}` — e ainda bem, porque é o literal que o
+  `schema.d.ts` confere.
+- **O nível do item do barema é a aba, não um campo do formulário.** Mestrado
+  e doutorado são listas independentes; um `<select>` a mais ali só criaria a
+  chance de gravar item de doutorado no mestrado.
+- **Item de menu por permissão: `scholarships.view_committeemember`.**
+  Conferido nas quatro contas do `make seed` pela `/auth/me`: Secretaria e
+  Coordenação `True`, Discente e Comissão de Bolsas `False` — que é
+  exatamente o público desta tela. `view_scholarshipedition` não serviria:
+  os quatro papéis a têm.
+- **`frontend/src/lib/bolsas.ts`** (novo, molde de `lib/selecao.ts`): só as
+  listas de opção que o formulário precisa desenhar **antes** de o objeto
+  existir (níveis, as seis seções, as unidades, os cinco campos do
+  cronograma) e o `formatarData` de data pura. Rótulo de coisa já existente
+  não entra: `status_label`, `level_label`, `section_label` e `unit_label`
+  vêm resolvidos do servidor.
+- Arquivos: `frontend/src/routes/(app)/bolsas/edital/+page.svelte` (novo),
+  `frontend/src/lib/bolsas.ts` (novo),
+  `frontend/src/routes/(app)/+layout.svelte`, `CLAUDE.md`.
+- `make ready` verde (1925 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`make typecheck` quebra com `EACCES` em `.svelte-kit/` depois de criar
+    rota nova.** O Vite do container `frontend` roda como root sobre o mesmo
+    bind mount e gera `nodes/NN.js` e `types/.../$types.d.ts` da rota nova
+    como `root:root`; o `svelte-kit sync` do host não os reescreve. A
+    mensagem não cita Docker. `find frontend/.svelte-kit -user root` acha, e
+    `docker compose exec -T frontend rm -rf ...` apaga (quem tem o dono é o
+    container). Registrado no `CLAUDE.md`.
+  - **Verificação de UI ficou pendente**: o plugin browser-use pede que
+    alguém clique "Allow remote debugging?" no Chrome, e o consentimento não
+    chegou. No lugar dele, as quatro chamadas que a tela faz foram batidas
+    por `curl` na sessão da secretaria (`editions/`, `bareme/`, `committee/`,
+    `academic/teachers/`) e o critério do menu foi conferido pela `/auth/me`
+    dos quatro papéis. **Falta a conferência visual.**
+  - A edição semeada pelo `make seed` nasce em `submissions_open`, com o
+    barema **já congelado**: para exercitar "criar item / clonar / percorrer
+    as transições" é preciso abrir uma edição nova (outro ano — `year` é
+    unique por programa, `duplicate_edition`).
+  - Decimal do Ninja viaja como **string** no `schema.d.ts`
+    (`points_per_unit: string` na saída, `number | string` na entrada): o
+    estado do formulário é `string`, e não `number`, senão o `2.50` volta
+    `2.5` na tela.
+  - `formatarData` monta `new Date(`${iso}T00:00:00`)`: sem a hora o `Date`
+    lê `YYYY-MM-DD` como UTC e Brasília devolve o dia anterior — o cronograma
+    inteiro sairia adiantado.
 ---

@@ -272,6 +272,18 @@
 								</div>
 							</details>
 						{/if}
+						<!-- Bolsas: por permissão, e não por papel. `view_committeemember`
+						é de quem opera o edital — Secretaria (monta) e Coordenação
+						(acompanha), por `scholarships.0008_papeis_da_bolsa`. O Discente e a
+						Comissão de Bolsas não a têm: os dois leem a edição e o barema, mas
+						a composição da portaria não é assunto deles, e as telas de cada um
+						são outras. -->
+						{#if sessao.pode('scholarships.view_committeemember')}
+							<a class="item-menu" href={resolve('/bolsas/edital')}>
+								<Icone nome="edital" tamanho={14} />
+								Bolsas
+							</a>
+						{/if}
 						{#if sessao.pode('programs.view_discipline')}
 							<a class="item-menu" href={resolve('/disciplinas')}>
 								<Icone nome="disciplinas" tamanho={14} />

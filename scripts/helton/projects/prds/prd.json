@@ -498,7 +498,7 @@
         "f20-tenant-e-tipos-da-api"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "effort high pela quantidade de blocos na mesma tela; se o loop travar, quebre em 'edicao + cronograma + transicoes' e 'barema + comissao'."
     },
     {
