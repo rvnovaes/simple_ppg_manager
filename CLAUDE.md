@@ -536,3 +536,9 @@ As que já custaram iteração aqui:
   interno do container (`backend:8000`) ou o de quem disparou, e o link chegaria
   quebrado. `SITE_URL` já vem sem barra final (`rstrip("/")` no settings) —
   monte como `f"{settings.SITE_URL}/selecao/assinatura/{token}"`.
+- **Duas fixtures que fazem `force_login` na fixture `client` do pytest-django
+  disputam a MESMA sessão**, e a última a ser resolvida vence — em silêncio. O
+  teste de "papel X não pode" então roda como o papel Y e passa por 200 onde
+  devia dar 403 (ou o contrário). Fixture que só precisa do dado grava pelo ORM;
+  quando dois papéis precisam mesmo agir no mesmo teste, cada um recebe um
+  `Client()` próprio.

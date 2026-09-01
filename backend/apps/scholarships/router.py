@@ -8,27 +8,35 @@ regra de negócio aqui. As rotas entram nas stories de API.
 seletivo, aqui até o candidato é aluno matriculado, e portanto logado.
 """
 
+from pathlib import Path
+
 from django.db import transaction
-from django.http import HttpRequest
+from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import Router, Status
+from ninja import File, Form, Router, Status, UploadedFile
 from ninja.pagination import paginate
 
-from apps.academic.models import Teacher
+from apps.academic.models import Student, Teacher
 from apps.core import audit
+from apps.core.exceptions import NotAllowed
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
+from apps.people.models import Person
 from apps.programs.models import Program
 
 from .models import (
+    ApplicationDocument,
+    ApplicationDocumentKind,
     BaremeItem,
     CommitteeMember,
+    ScholarshipApplication,
     ScholarshipEdition,
     ScholarshipEditionStatus,
     ScholarshipLevel,
 )
 from .schemas import (
+    ApplicationDocumentOut,
     BaremeCloneIn,
     BaremeCloneOut,
     BaremeItemIn,
@@ -36,6 +44,9 @@ from .schemas import (
     BaremeItemPatch,
     CommitteeMemberIn,
     CommitteeMemberOut,
+    ScholarshipApplicationIn,
+    ScholarshipApplicationOut,
+    ScholarshipApplicationPatch,
     ScholarshipEditionIn,
     ScholarshipEditionOut,
     ScholarshipEditionPatch,
@@ -484,3 +495,266 @@ def remove_committee_member(request: HttpRequest, edition_id: int, member_id: in
         )
         membro.delete()
     return Status(204, None)
+
+
+# ---------------------------------------------------------------------------
+# Inscrição do discente
+# ---------------------------------------------------------------------------
+#
+# A janela e a guarda são do model: `ScholarshipApplication.ensure_editable`
+# cobra o estado (409 `submissions_closed`) e a posse (403
+# `not_application_owner`) nas quatro escritas do candidato — criar, alterar,
+# excluir e anexar. Aqui só permissão, escopo, contrato e auditoria.
+#
+# A Secretaria não passa por estas rotas: o que ela escreve na inscrição
+# alheia são dois campos, com permissão e rota próprias (`set_fump_level`,
+# `override_band`, f14). "Editar como se fosse o aluno" não existe.
+
+
+def _meus_alunos(request: HttpRequest, program: Program):
+    """Os vínculos de aluno de quem está pedindo, já escopados.
+
+    Mesmo caminho de `_aluno_da_sessao` (`apps/academic/router.py`): a
+    Person ativa é o elo entre o usuário da sessão e o discente, e é ela
+    que `current_program` já usou para achar o tenant.
+    """
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    return Student.objects.for_program(program).filter(person__in=pessoas)
+
+
+def _aluno_da_sessao(request: HttpRequest, program: Program) -> Student:
+    """O discente desta sessão — nunca um `student_id` do corpo.
+
+    O vínculo regular ganha do não regular porque é o que tem nível
+    (isolada e eletiva têm `level` nulo). Quem só tem isolada chega em
+    `for_student` e recebe o 400 `student_without_level`, que explica o
+    problema, em vez de um 403 dizendo "você não é aluno".
+    """
+    meus = _meus_alunos(request, program)
+    aluno = meus.regular().first() or meus.first()
+    if aluno is None:
+        raise NotAllowed(
+            "Sua conta não tem vínculo de aluno neste programa.",
+            code="not_a_student",
+        )
+    return aluno
+
+
+def _inscricoes(program: Program):
+    return ScholarshipApplication.objects.for_program(program).select_related(
+        "edition", "student__person"
+    )
+
+
+@router.get(
+    "/editions/{int:edition_id}/my-application", response=ScholarshipApplicationOut
+)
+def get_my_application(request: HttpRequest, edition_id: int):
+    """A inscrição do próprio discente naquela edição, se existir.
+
+    404 quando ele ainda não se inscreveu — é assim que a tela sabe que
+    deve oferecer o formulário em branco em vez do questionário
+    preenchido. Rota separada de um `GET /applications/{id}` de propósito:
+    o candidato não guarda o id da própria inscrição, ele guarda o edital.
+    """
+    require_perm(request, "scholarships.view_scholarshipapplication")
+    program: Program = current_program(request)
+    edicao = _edicao_do_programa(request, edition_id)
+    inscricao = (
+        _inscricoes(program)
+        .for_edition(edicao)
+        .filter(student__in=_meus_alunos(request, program))
+        .first()
+    )
+    if inscricao is None:
+        raise Http404("Você ainda não se inscreveu nesta edição do edital.")
+    return inscricao
+
+
+@router.post("/applications/", response={201: ScholarshipApplicationOut})
+def create_application(request: HttpRequest, payload: ScholarshipApplicationIn):
+    """O discente se inscreve na edição, com o questionário respondido.
+
+    `for_student` copia programa e nível do vínculo e congela o nível; a
+    duplicata por (edição, discente) é o `clean()` (400
+    `duplicate_application`). A guarda roda sobre a instância ainda não
+    salva — ela só lê a edição e o dono, e é justamente antes de gravar
+    que a janela precisa ser conferida.
+    """
+    require_perm(request, "scholarships.add_scholarshipapplication")
+    program: Program = current_program(request)
+    dados = payload.model_dump()
+    edicao = _edicao_do_programa(request, dados.pop("edition_id"))
+    inscricao = ScholarshipApplication.for_student(
+        edition=edicao, student=_aluno_da_sessao(request, program), **dados
+    )
+    inscricao.ensure_editable(request.user)
+    with transaction.atomic():
+        inscricao.clean()
+        inscricao.submitted_at = timezone.now()
+        inscricao.save()
+        audit.record(
+            "scholarships.application.create",
+            request=request,
+            target=inscricao,
+            edition_id=edicao.pk,
+            student_id=inscricao.student_id,
+            level=inscricao.level,
+        )
+    return Status(201, inscricao)
+
+
+@router.patch("/applications/{int:application_id}/", response=ScholarshipApplicationOut)
+def update_application(
+    request: HttpRequest, application_id: int, payload: ScholarshipApplicationPatch
+):
+    """Retificação do questionário, só na janela aberta e só pelo dono."""
+    require_perm(request, "scholarships.change_scholarshipapplication")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    inscricao.ensure_editable(request.user)
+    campos = payload.model_dump(exclude_unset=True)
+    for campo, valor in campos.items():
+        setattr(inscricao, campo, valor)
+    with transaction.atomic():
+        inscricao.clean()
+        inscricao.save(update_fields=[*campos, "updated_at"] if campos else None)
+        audit.record(
+            "scholarships.application.update",
+            request=request,
+            target=inscricao,
+            edition_id=inscricao.edition_id,
+            fields=sorted(campos),
+        )
+    return inscricao
+
+
+@router.delete("/applications/{int:application_id}/", response={204: None})
+def remove_application(request: HttpRequest, application_id: int):
+    """O candidato desiste e apaga a própria inscrição, na janela aberta.
+
+    Fechada a janela, a inscrição é a peça que a comissão pontua e some
+    da mão dele — quem cobra isso é o mesmo `ensure_editable` das outras
+    escritas (409 `submissions_closed`).
+
+    A permissão exigida é `change_scholarshipapplication`, e não
+    `delete_`: nenhum papel de domínio recebe `delete_*` (migration
+    `0008_papeis_da_bolsa`, com teste guardando), mesmo precedente do
+    DELETE do barema e do da comissão. O `CASCADE` leva junto os
+    comprovantes do questionário e os lançamentos do barema; os arquivos
+    saem do storage com eles, porque o `delete()` do model não o faz.
+
+    A auditoria é gravada **antes** do `delete()`: depois dele a
+    instância perde o pk e o alvo do registro sairia vazio.
+    """
+    require_perm(request, "scholarships.change_scholarshipapplication")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    inscricao.ensure_editable(request.user)
+    with transaction.atomic():
+        audit.record(
+            "scholarships.application.remove",
+            request=request,
+            target=inscricao,
+            edition_id=inscricao.edition_id,
+            student_id=inscricao.student_id,
+        )
+        for documento in inscricao.documents.all():
+            documento.file.delete(save=False)
+        inscricao.delete()
+    return Status(204, None)
+
+
+# ---------------------------------------------------------------------------
+# Comprovantes do questionário
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/applications/{int:application_id}/documents",
+    response={200: ApplicationDocumentOut, 201: ApplicationDocumentOut},
+)
+def upload_application_document(
+    request: HttpRequest,
+    application_id: int,
+    kind: ApplicationDocumentKind = Form(...),
+    file: UploadedFile = File(...),
+):
+    """Anexa (ou substitui) o comprovante de um "Sim" do questionário.
+
+    A permissão é a de montar a própria inscrição — anexar é parte de
+    montar —, e não há permissão de `add_applicationdocument` para papel
+    nenhum: o comprovante não é entidade que alguém administre à parte.
+    Mesmo desenho do anexo do requerimento de isolada.
+
+    Substituir, e não empilhar: um tipo tem uma versão
+    (`unique_documento_por_inscricao_de_bolsa_e_tipo`), e o reenvio é a
+    correção de quem mandou a página errada. 201 quando é o primeiro
+    envio daquele tipo, 200 quando substituiu.
+    """
+    require_perm(request, "scholarships.change_scholarshipapplication")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    inscricao.ensure_editable(request.user)
+    # As duas cobranças são do model e voltam como 4xx do handler central:
+    # estado errado é 409, arquivo recusado é 400 com code invalid_document.
+    ApplicationDocument.validate_upload(filename=file.name or "", size=file.size or 0)
+
+    with transaction.atomic():
+        documento, substituiu = ApplicationDocument.replace_for(
+            application=inscricao, kind=kind, file=file
+        )
+        audit.record(
+            "scholarships.application.document_upload",
+            request=request,
+            target=inscricao,
+            document_id=documento.pk,
+            kind=str(kind),
+            filename=file.name,
+            replaced=substituiu,
+        )
+    return Status(200 if substituiu else 201, documento)
+
+
+@router.get("/documents/{int:document_id}/download")
+def download_application_document(request: HttpRequest, document_id: int):
+    """Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.
+
+    Duas portas, e só duas: `download_applicationdocument` (Secretaria e
+    Comissão de Bolsas) e o próprio candidato por posse. Quem apenas
+    enxerga a inscrição — a Coordenação, que só acompanha — leva 403
+    aqui: laudo de vulnerabilidade e contracheque não são insumo de
+    acompanhamento. Mesmo desenho do download de `RequestDocument`
+    (`apps/academic/router.py`).
+
+    A permissão ampla é checada só depois da posse porque ela é a
+    exceção, e não a regra: o dono do documento não precisa de permissão
+    de secretaria para ler o que ele mesmo enviou.
+    """
+    require_perm(request, "scholarships.view_scholarshipapplication")
+    program: Program = current_program(request)
+    documento = get_object_or_404(
+        ApplicationDocument.objects.for_program(program).select_related(
+            "application__student"
+        ),
+        pk=document_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if not pessoas.filter(pk=documento.application.student.person_id).exists():
+        require_perm(request, "scholarships.download_applicationdocument")
+
+    with transaction.atomic():
+        # Auditar leitura é exceção no projeto e aqui é obrigatório: é o
+        # acesso ao documento pessoal de outro candidato.
+        audit.record(
+            "scholarships.application.document_download",
+            request=request,
+            target=documento.application,
+            document_id=documento.pk,
+            kind=documento.kind,
+        )
+    return FileResponse(
+        documento.file.open("rb"),
+        as_attachment=True,
+        filename=Path(documento.file.name or "").name,
+    )

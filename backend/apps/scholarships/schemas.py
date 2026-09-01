@@ -11,10 +11,14 @@ from pathlib import Path
 from ninja import Schema
 
 from .models import (
+    ApplicationDocument,
+    ApplicationDocumentKind,
     BaremeItem,
     BaremeSection,
     BaremeUnit,
     CommitteeMember,
+    PriorityBand,
+    ScholarshipApplication,
     ScholarshipEdition,
     ScholarshipEditionStatus,
     ScholarshipLevel,
@@ -275,3 +279,185 @@ class BaremeCloneOut(Schema):
     source_edition_id: int
     created: int
     items: list[BaremeItemOut]
+
+
+# ---------------------------------------------------------------------------
+# Inscrição do discente
+# ---------------------------------------------------------------------------
+
+
+class ScholarshipApplicationIn(Schema):
+    """A inscrição que o discente monta, com o questionário do edital.
+
+    Sem `student_id` e sem `level`: o vínculo é o da sessão e o nível é
+    copiado dele no ato (`ScholarshipApplication.for_student`) — aceitar
+    qualquer um dos dois do corpo deixaria um candidato se inscrever em
+    nome de outro ou escolher a lista em que compete.
+
+    Sem `fump_level`, `band_override` e `band_override_reason` também:
+    esses três são da Secretaria, têm permissão própria e rota própria
+    (f14). Aqui só o que o candidato declara.
+
+    Os booleanos têm default `False` para que a tela possa mandar apenas
+    os "Sim" — o questionário do edital é uma lista de afirmações, e não
+    responder é responder "não".
+    """
+
+    edition_id: int
+    has_paid_activity: bool = False
+    affirmative_action: bool = False
+    socioeconomic_vulnerability: bool = False
+    cadastro_unico: bool = False
+    substitute_teacher: bool = False
+    basic_education_or_collective_health: bool = False
+    public_service: bool = False
+    private_service: bool = False
+    other_non_public_scholarship: bool = False
+    monthly_income: decimal.Decimal | None = None
+    weekly_hours: int | None = None
+
+
+class ScholarshipApplicationPatch(Schema):
+    """Retificação do questionário: só os campos presentes são aplicados.
+
+    Vale enquanto a janela está aberta e só para o próprio candidato
+    (`ensure_editable`). A coerência entre atividade remunerada,
+    rendimento e carga horária continua sendo do `clean()`
+    (`income_required`) — e ela é conferida sobre a inscrição **já
+    alterada**, não sobre o payload, porque quem desliga
+    `has_paid_activity` sem apagar a renda não está errado.
+    """
+
+    has_paid_activity: bool | None = None
+    affirmative_action: bool | None = None
+    socioeconomic_vulnerability: bool | None = None
+    cadastro_unico: bool | None = None
+    substitute_teacher: bool | None = None
+    basic_education_or_collective_health: bool | None = None
+    public_service: bool | None = None
+    private_service: bool | None = None
+    other_non_public_scholarship: bool | None = None
+    monthly_income: decimal.Decimal | None = None
+    weekly_hours: int | None = None
+
+
+class ApplicationDocumentOut(Schema):
+    """Um comprovante do questionário, sem o caminho do arquivo.
+
+    Nem `file` nem `file.url` entram aqui, pelo mesmo motivo de
+    `RequestDocumentOut` (`apps/academic/schemas.py`): o MEDIA é servido
+    pelo Nginx sem passar pelo Django, então publicar a URL entregaria o
+    laudo e o contracheque do candidato a quem descobrisse o endereço — e
+    sem AuditLog. O único caminho para o conteúdo é a rota de download,
+    que exige `download_applicationdocument` de quem não é o dono e
+    registra o acesso.
+    """
+
+    id: int
+    kind: ApplicationDocumentKind
+    kind_label: str
+    filename: str
+    size: int
+    uploaded_at: datetime.datetime
+
+    @staticmethod
+    def resolve_kind_label(obj: ApplicationDocument) -> str:
+        return obj.get_kind_display()
+
+    @staticmethod
+    def resolve_filename(obj: ApplicationDocument) -> str:
+        """Só o nome, sem o caminho: o diretório expõe o id da edição e o
+        da inscrição sem necessidade."""
+        return Path(obj.file.name or "").name
+
+    @staticmethod
+    def resolve_size(obj: ApplicationDocument) -> int:
+        """Arquivo sumido do storage vale 0, e não erro 500: a listagem
+        precisa continuar mostrando que o anexo existe para a secretaria
+        poder pedir o reenvio."""
+        try:
+            return obj.file.size
+        except (FileNotFoundError, ValueError):
+            return 0
+
+
+class PendingDocumentOut(Schema):
+    """Um "Sim" do questionário ainda sem comprovante.
+
+    Viaja com o rótulo resolvido porque é isto que a tela desenha na
+    lista de pendências, e o nome do inciso é do edital, não do front.
+    """
+
+    kind: ApplicationDocumentKind
+    kind_label: str
+
+
+class ScholarshipApplicationOut(Schema):
+    """A inscrição como a tela do discente e a da comissão a veem.
+
+    Três derivações viajam resolvidas, e nenhuma delas é recalculável no
+    front: `submission_open` (a janela, que decide se a tela desenha os
+    botões de edição), `pending_docs` (o "Sim - Não enviado" do legado) e
+    `band` (a faixa, hoje só a sobrescrita da secretaria).
+
+    Os campos de snapshot da publicação não estão aqui: eles entram com a
+    tela do resultado (f18/f24), e expô-los antes daria à tela de
+    inscrição um resultado que ainda não existe.
+    """
+
+    id: int
+    edition_id: int
+    student_id: int
+    student_name: str
+    level: ScholarshipLevel
+    level_label: str
+    submitted_at: datetime.datetime | None
+    has_paid_activity: bool
+    affirmative_action: bool
+    socioeconomic_vulnerability: bool
+    cadastro_unico: bool
+    substitute_teacher: bool
+    basic_education_or_collective_health: bool
+    public_service: bool
+    private_service: bool
+    other_non_public_scholarship: bool
+    monthly_income: decimal.Decimal | None
+    weekly_hours: int | None
+    fump_level: int
+    band_override: PriorityBand | None
+    band_override_reason: str
+    band: PriorityBand | None
+    submission_open: bool
+    documents: list[ApplicationDocumentOut]
+    pending_docs: list[PendingDocumentOut]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_student_name(obj: ScholarshipApplication) -> str:
+        return obj.student.person.full_name
+
+    @staticmethod
+    def resolve_level_label(obj: ScholarshipApplication) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_band(obj: ScholarshipApplication) -> str | None:
+        """`band` é método do model e campo do schema: sem este resolve o
+        Ninja serializaria o método ligado."""
+        return obj.band()
+
+    @staticmethod
+    def resolve_submission_open(obj: ScholarshipApplication) -> bool:
+        return obj.edition.submission_open()
+
+    @staticmethod
+    def resolve_documents(obj: ScholarshipApplication) -> list[ApplicationDocument]:
+        return list(obj.documents.all())
+
+    @staticmethod
+    def resolve_pending_docs(obj: ScholarshipApplication) -> list[dict]:
+        rotulos = dict(ApplicationDocumentKind.choices)
+        return [
+            {"kind": kind, "kind_label": rotulos[kind]} for kind in obj.pending_docs()
+        ]

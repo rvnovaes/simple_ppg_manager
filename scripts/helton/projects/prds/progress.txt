@@ -508,3 +508,69 @@ Started: ter. 01 set 2026 11:06:15 -03
     f11–f20 devem manter o par.
   - `ESTADOS_CONGELADOS = todos menos DRAFT` parametriza as três escritas e
     a clonagem de graça: 5 estados × 4 rotas, sem escrever caso a caso.
+
+## 2026-09-01 - f11-api-inscricao-e-documentos
+- Borda HTTP da inscrição do discente: `GET /editions/{id}/my-application`,
+  `POST /applications/`, `PATCH /applications/{id}/`,
+  `DELETE /applications/{id}/`, `POST /applications/{id}/documents`
+  (multipart) e `GET /documents/{id}/download`.
+- **A janela e a posse são do model, não da borda**: as quatro escritas do
+  candidato (criar, alterar, excluir, anexar) chamam
+  `ScholarshipApplication.ensure_editable(request.user)`, que devolve 409
+  `submissions_closed` fora de `submission_open()` e 403
+  `not_application_owner` para quem não é o dono. No POST a guarda roda
+  sobre a instância **ainda não salva** — ela só lê a edição e o dono, e é
+  antes de gravar que a janela precisa ser conferida.
+- O vínculo de aluno sai da sessão (`_aluno_da_sessao`, mesmo caminho de
+  `apps/academic/router.py`): nem `student_id` nem `level` existem no
+  schema de entrada, então não há como se inscrever em nome de outro nem
+  escolher a lista em que se compete. Quem só tem isolada cai em
+  `for_student` e recebe 400 `student_without_level`.
+- O `DELETE` exige `change_scholarshipapplication` (nenhum papel tem
+  `delete_*` — mesmo precedente do DELETE do barema e da comissão) e apaga
+  os arquivos dos comprovantes do storage antes do `delete()`, porque o
+  `CASCADE` leva as linhas mas não os arquivos.
+- Upload devolve **201 no primeiro envio e 200 quando substitui** — é o
+  `substituiu` que `ApplicationDocument.replace_for` já devolvia. Validação
+  de extensão/tamanho é `validate_upload` (400 `invalid_document`).
+- Download com **permissão própria**: dono por posse (Person ativa ×
+  `application.student.person_id`), qualquer outro precisa de
+  `scholarships.download_applicationdocument`. A Coordenação, que tem
+  `view_` de tudo, leva 403 — laudo e contracheque não são insumo de
+  acompanhamento. Leitura auditada, como no `RequestDocument`.
+- Schemas: `ScholarshipApplicationIn/Patch/Out`, `ApplicationDocumentOut`,
+  `PendingDocumentOut`. O `Out` da inscrição resolve `band` (método
+  homônimo), `submission_open` (da edição) e `pending_docs` (o
+  "Sim - Não enviado" do legado, já com rótulo). Nem `file` nem `file.url`
+  saem em lugar nenhum.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_inscricao.py` (novo),
+  `backend/apps/scholarships/tests/test_bolsas_api_documentos.py` (novo),
+  `CLAUDE.md` (armadilha do `force_login` duplicado).
+- `make ready` verde. Sem migration (nenhum model mudou).
+- **Learnings for future iterations:**
+  - **Duas fixtures que fazem `force_login` na fixture `client` do
+    pytest-django disputam a mesma sessão, e a última resolvida vence.** O
+    teste "Coordenação não baixa" passou por 200 porque a fixture do
+    documento logava a candidata depois. Fixture que só precisa do dado
+    grava pelo ORM; dois papéis atuando no mesmo teste pedem `Client()`
+    próprios. Está registrado no `CLAUDE.md` — custou uma rodada.
+  - `Student` tem dois `CheckConstraint` que derrubam fixture ingênua:
+    regular exige `project` e `admission_date`
+    (`student_regular_requires_degree_fields`), isolada/eletiva exigem
+    `term` e **proíbem** nível, projeto, orientador e data de ingresso
+    (`student_non_regular_requires_term`).
+  - `Path(x.file.name)` não passa no mypy (`str | None`): o padrão do
+    projeto é `Path(x.file.name or "")`. Idem `default_storage.exists()`.
+  - `streaming_content` não está no tipo do cliente de teste — o projeto
+    embrulha em `def conteudo(resposta: Any)` (precedente em
+    `selection/tests/test_api_atas_secretaria.py`).
+  - O `GET my-application` devolve **404 quando ainda não há inscrição**, e
+    é assim que a tela f22 decide entre formulário em branco e
+    questionário preenchido. Não trocar por 200 com corpo nulo.
+  - `ScholarshipApplicationOut` não expõe os campos de snapshot da
+    publicação (`published_*`, `draw_order`): eles entram com f18/f24. A
+    tela do resultado provavelmente quer um `Out` próprio, e não este.
+  - Nenhuma rota **lista** inscrições ainda — a fila da comissão, com os
+    filtros do legado, é f13. `ScholarshipApplicationOut` já serve a ela.
+---
