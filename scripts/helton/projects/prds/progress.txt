@@ -1182,3 +1182,87 @@ Started: ter. 01 set 2026 11:06:15 -03
     lê `YYYY-MM-DD` como UTC e Brasília devolve o dia anterior — o cronograma
     inteiro sairia adiantado.
 ---
+
+## 2026-09-01 - f22-tela-inscricao
+- **`frontend/src/routes/(app)/bolsas/inscricao/+page.svelte`** (novo): a tela
+  do Discente numa página só — seletor de edição com o cronograma publicado,
+  o questionário do edital, os comprovantes de cada "Sim" e os lançamentos do
+  barema agrupados por seção. Svelte 5 com runas; nenhuma chamada fora de
+  `lib/api/client.ts`.
+- **A janela vem do servidor, sempre**: `janelaAberta` é
+  `inscricao.submission_open ?? edicao.submission_open`, os dois resolvidos
+  pelo mesmo método do model. A tela não compara `status === '...'` nem olha
+  data de cronograma — o cronograma é informação publicada, não gatilho.
+  Fechada a janela, o `fieldset` inteiro fica `disabled`, os botões de anexo
+  e de lançamento somem, e o texto explica por quê (é o material que a
+  Comissão analisa).
+- **404 em `my-application` não é erro de tela, é o formulário em branco.** É
+  a resposta de quem ainda não se inscreveu, e é ela que faz a tela oferecer o
+  questionário vazio com o botão "Inscrever-se" em vez de "Salvar".
+- **Rendimento e carga horária aparecem por `$derived` sobre
+  `has_paid_activity`**, logo abaixo da pergunta que os exige — e a validação
+  que vale continua sendo o `clean()` (`income_required`): o front só evita
+  que o candidato procure um campo que não é dele. Campo em branco vai `null`,
+  e não `0`.
+- **A faixa de prioridade é lida, nunca recalculada**: `band` vem resolvido no
+  `ScholarshipApplicationOut`. Copiar `derived_band()` para o front seria a
+  segunda porta que o CLAUDE.md proíbe.
+- **O barema é o índice da tela de lançamento**: seção (I..VI) → item →
+  lançamentos daquele item. O item **sem lançamento nenhum continua na
+  lista**, porque é sob o texto normativo dele que o candidato lança —
+  esconder o item vazio esconderia justamente o que ainda dá para pontuar. O
+  cabeçalho é `rotuloDoItem`, no formato do edital
+  (`1.1 - Curso de especialização concluído - 5,00 pts/unidade - Limite: 10,00`).
+- **Criar lançamento é multipart com o comprovante junto; corrigir é JSON e
+  trocar o PDF é a rota `POST .../proof`** — as três portas do backend
+  aparecem como três controles distintos ("Lançar", "Corrigir", "Trocar
+  comprovante"), e o formulário de correção diz em voz alta que o arquivo não
+  muda por ali.
+- **Nenhuma soma no front.** A tela mostra `candidate_score` de cada
+  lançamento (calculado pelo servidor) e o limite do item como texto
+  publicado; o teto sobre a soma é do model, e totalizar aqui seria
+  reimplementá-lo.
+- **`frontend/src/lib/bolsas.ts`**: entram `QUESTIONARIO` (as 8 afirmações +
+  o CadÚnico, cada uma com o `ApplicationDocumentKind` que o "Sim" passa a
+  exigir), `formatarNota`, `rotuloDoItem` e as duas listas de extensão
+  aceita. O valor de `documento` é o mesmo texto do campo **de propósito** —
+  é assim no backend (`RESPOSTA_QUE_EXIGE_DOCUMENTO`); quem diz que o anexo
+  falta continua sendo o `pending_docs` do servidor.
+- **Item de menu por permissão: `scholarships.add_scholarshipapplication`**,
+  exclusiva do Discente (`0008_papeis_da_bolsa`). Rotulado "Minha bolsa" para
+  não colidir com o "Bolsas" da Secretaria — os dois só aparecem juntos para
+  o superusuário.
+- Arquivos: `frontend/src/routes/(app)/bolsas/inscricao/+page.svelte` (novo),
+  `frontend/src/lib/bolsas.ts`, `frontend/src/routes/(app)/+layout.svelte`,
+  `CLAUDE.md`.
+- `make ready` verde (1925 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **Desestruturar a resposta do `openapi-fetch` estreita o objeto inteiro
+    para `never` dentro do `if (error)`**, e `response.status` some com a
+    mensagem `Property 'status' does not exist on type 'never'`. Quem precisa
+    do código HTTP guarda a resposta numa const e lê
+    `resposta.response.status` **antes** do `if`. Registrado no `CLAUDE.md`.
+  - O `EACCES` em `.svelte-kit/` reapareceu com a rota nova, exatamente como
+    a f21 registrou: `docker compose exec -T frontend rm -rf` nos artefatos
+    `root:root` (`types/src/routes/(app)/bolsas/inscricao` e o
+    `generated/client/nodes/NN.js`) e o `make typecheck` volta a passar.
+  - **Verificação visual continua pendente**: o binário `browser-use` não
+    existe nesta máquina (`No such file or directory`), então o plugin não
+    tem como subir. No lugar dela, o fluxo inteiro da tela foi exercitado por
+    `curl` na sessão do `daniel.prado@ppgd.test` com **as mesmas formas de
+    requisição que a tela monta**: `POST /applications/` (inscrição criada,
+    `band` = `b24_v` derivada pelo servidor), `POST .../documents` multipart
+    (comprovante do "Sim" de serviço público) e `POST .../entries/` multipart
+    (lançamento com PDF, `candidate_score` = 5,00 calculado pelo servidor). A
+    rota também compila no Vite do canteiro (o módulo `+page.svelte` responde
+    200 já transformado). **Falta a conferência visual.**
+  - Esse exercício **deixou dados no banco do canteiro**: a inscrição 1 de
+    Daniel Prado na edição 2026, com um comprovante e um lançamento. É útil
+    para a f23 (fila da comissão) ter o que analisar; quem quiser o cenário
+    limpo refaz o `make seed`.
+  - A edição semeada nasce em `submissions_open` com **4 itens de barema** (2
+    por nível): dá para ver o agrupamento por seção, mas com uma seção só
+    (I - Formação Acadêmica e II - Produção Bibliográfica).
+  - `quantity` volta do backend como `"1"`, e não `"1.00"`: quem exibe passa
+    por `formatarNota`, senão a coluna mistura `1` e `2,50` na mesma tabela.
+---

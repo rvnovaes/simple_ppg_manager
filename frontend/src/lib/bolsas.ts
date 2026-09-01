@@ -76,3 +76,125 @@ export function formatarData(iso: string | null): string {
 	if (iso === null || iso === '') return '—';
 	return new Date(`${iso}T00:00:00`).toLocaleDateString('pt-BR');
 }
+
+/**
+ * Decimal do jeito que o edital o publica.
+ *
+ * O Ninja manda `Decimal` como **string** (`"0.50"`), e é assim que ele
+ * chega ao `schema.d.ts`. Converter para `Number` só para exibir é seguro
+ * aqui — são pontuações de duas casas, não dinheiro que soma —, e o
+ * `toLocaleString` é quem põe a vírgula. Nada de conta: soma e teto do
+ * barema são do servidor.
+ */
+export function formatarNota(valor: string | number | null | undefined): string {
+	if (valor === null || valor === undefined || valor === '') return '—';
+	return Number(valor).toLocaleString('pt-BR', {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2
+	});
+}
+
+/**
+ * A linha do barema como o edital a escreve.
+ *
+ * `1.3 - Docência no ensino superior - 0,50 pts/semestre - Limite: 3,00`.
+ * É o cabeçalho sob o qual o candidato lança, e o mesmo texto que a
+ * comissão lê na análise — por isso mora aqui, e não dentro de uma tela.
+ */
+export function rotuloDoItem(item: {
+	code: string;
+	text: string;
+	points_per_unit: string;
+	unit_label: string;
+	cap: string;
+}): string {
+	const unidade = item.unit_label.toLocaleLowerCase('pt-BR');
+	return `${item.code} - ${item.text} - ${formatarNota(item.points_per_unit)} pts/${unidade} - Limite: ${formatarNota(item.cap)}`;
+}
+
+/**
+ * O questionário do edital, na ordem em que ele é respondido.
+ *
+ * São oito afirmações. A primeira é a **chave** (`has_paid_activity`): dela
+ * dependem o rendimento e a carga horária, e é ela que joga o candidato do
+ * bloco 2.1 para o 2.4. As demais escolhem o inciso — mas quem deriva a
+ * faixa é o servidor (`ScholarshipApplication.band()`), e a tela nunca
+ * repete essa conta: ela lê `band` já resolvido na resposta.
+ *
+ * `documento` é o `ApplicationDocumentKind` que aquele "Sim" passa a exigir.
+ * O valor é o mesmo texto do campo de propósito — é assim no backend
+ * (`RESPOSTA_QUE_EXIGE_DOCUMENTO`) —, e o que diz se o anexo ainda falta
+ * continua sendo o `pending_docs` que vem do servidor.
+ */
+export type CampoDoQuestionario =
+	| 'has_paid_activity'
+	| 'affirmative_action'
+	| 'socioeconomic_vulnerability'
+	| 'cadastro_unico'
+	| 'substitute_teacher'
+	| 'basic_education_or_collective_health'
+	| 'public_service'
+	| 'private_service'
+	| 'other_non_public_scholarship';
+
+export type TipoDeComprovante = components['schemas']['ApplicationDocumentKind'];
+
+export type Pergunta = {
+	campo: CampoDoQuestionario;
+	rotulo: string;
+	ajuda?: string;
+	documento?: TipoDeComprovante;
+};
+
+export const QUESTIONARIO: Pergunta[] = [
+	{
+		campo: 'has_paid_activity',
+		rotulo: 'Exerço atividade remunerada',
+		ajuda:
+			'É a chave do questionário: marcando aqui, o rendimento mensal e a carga horária semanal passam a ser obrigatórios.'
+	},
+	{
+		campo: 'affirmative_action',
+		rotulo: 'Ingressei no programa por ação afirmativa',
+		documento: 'affirmative_action'
+	},
+	{
+		campo: 'socioeconomic_vulnerability',
+		rotulo: 'Declaro vulnerabilidade socioeconômica',
+		documento: 'socioeconomic_vulnerability'
+	},
+	{
+		campo: 'cadastro_unico',
+		rotulo: 'Sou inscrito no CadÚnico',
+		ajuda: 'Critério de desempate (item 3.3 do edital). Não pede comprovante.'
+	},
+	{
+		campo: 'substitute_teacher',
+		rotulo: 'Sou professor substituto',
+		documento: 'substitute_teacher'
+	},
+	{
+		campo: 'basic_education_or_collective_health',
+		rotulo: 'Atuo na educação básica ou em saúde coletiva',
+		documento: 'basic_education_or_collective_health'
+	},
+	{
+		campo: 'public_service',
+		rotulo: 'Tenho vínculo com o serviço público',
+		documento: 'public_service'
+	},
+	{
+		campo: 'private_service',
+		rotulo: 'Tenho vínculo com o serviço privado',
+		documento: 'private_service'
+	},
+	{
+		campo: 'other_non_public_scholarship',
+		rotulo: 'Recebo outra bolsa não pública',
+		documento: 'other_non_public_scholarship'
+	}
+];
+
+/** Extensões que o comprovante do questionário aceita (o barema só aceita PDF). */
+export const ACEITA_DOCUMENTO = '.pdf,.jpg,.jpeg,.png';
+export const ACEITA_COMPROVANTE = '.pdf';

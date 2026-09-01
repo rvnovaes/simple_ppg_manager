@@ -284,6 +284,18 @@
 								Bolsas
 							</a>
 						{/if}
+						<!-- A outra ponta do mesmo edital: a tela do próprio candidato.
+						`add_scholarshipapplication` é exclusiva do Discente
+						(`scholarships.0008_papeis_da_bolsa`) — Secretaria, Coordenação e
+						Comissão de Bolsas leem a inscrição alheia, mas nenhuma delas se
+						inscreve. Os dois itens nunca aparecem juntos, exceto para o
+						superusuário, que enxerga tudo. -->
+						{#if sessao.pode('scholarships.add_scholarshipapplication')}
+							<a class="item-menu" href={resolve('/bolsas/inscricao')}>
+								<Icone nome="inscricao" tamanho={14} />
+								Minha bolsa
+							</a>
+						{/if}
 						{#if sessao.pode('programs.view_discipline')}
 							<a class="item-menu" href={resolve('/disciplinas')}>
 								<Icone nome="disciplinas" tamanho={14} />

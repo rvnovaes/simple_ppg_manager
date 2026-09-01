@@ -520,7 +520,7 @@
         "f21-tela-edital"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "Se travar, quebre em 'questionario + documentos' e 'lancamentos por secao'."
     },
     {

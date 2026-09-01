@@ -591,3 +591,13 @@ As que já custaram iteração aqui:
   (`docker compose exec -T frontend sh -c 'rm -rf "/app/.svelte-kit/types/src/routes/<rota>"'`),
   e rodar o `make typecheck` de novo. `find frontend/.svelte-kit -user root`
   lista o que ficou.
+- **Desestruturar a resposta do `openapi-fetch` no `const` estreita o objeto
+  inteiro para `never` dentro do `if (error)`.** `const { data, error,
+  response } = await api.GET(...)`, e dentro do ramo de falha o
+  `response.status` deixa de existir — a mensagem é
+  `Property 'status' does not exist on type 'never'`, e não diz nada sobre
+  união discriminada. Quem precisa do código HTTP (o 404 de "ainda não se
+  inscreveu", que **não** é erro de tela) guarda a resposta inteira numa
+  const e lê `resposta.response.status` **antes** do `if`. Mesmo motivo pelo
+  qual `const falha = resposta.error` sai antes do `if` nas telas já
+  escritas.
