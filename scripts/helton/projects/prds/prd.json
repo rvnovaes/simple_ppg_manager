@@ -125,7 +125,7 @@
         "f4-inscricao-e-questionario"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

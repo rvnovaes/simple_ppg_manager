@@ -35,6 +35,11 @@ Started: ter. 01 set 2026 11:06:15 -03
 - `SimpleNamespace` **não** substitui FK (`ValueError` do descriptor). Para
   montar uma cadeia de relações em memória, atribua instâncias reais não
   salvas: `Student(person=Person(pk=5, user_id=7))`.
+- Upload de teste cai em `tmp_path` pela fixture autouse `media_temporaria`
+  (`backend/conftest.py`) — não montar `MEDIA_ROOT` local. E teste de "o
+  arquivo antigo sumiu do storage" precisa de **nomes diferentes** nos dois
+  envios: com o mesmo nome o caminho é liberado no delete e reocupado pelo
+  novo upload, e o `exists()` volta True sem nada estar errado.
 
 ## 2026-09-01 - f1-app-scholarships-esqueleto
 - Criado o app `apps.scholarships` como fatia vazia que compila: esqueleto de
@@ -166,3 +171,50 @@ Started: ter. 01 set 2026 11:06:15 -03
   - Campo `null=True` em `CharField` com choices pede `# noqa: DJ001` — o
     `ruff` cobra, e aqui nulo é semântico ("sem sobrescrita" ≠ "").
 ---
+
+## 2026-09-01 - f5-documentos-da-inscricao
+- `ApplicationDocument`: `application` CASCADE, `kind` (os 7
+  `ApplicationDocumentKind`), `file`, `uploaded_at`; unique
+  `(application, kind)` espelhado em `clean()` como
+  `duplicate_application_document`. Sem FK `program` — `for_program()`
+  filtra por `application__program`; `for_application()` completa o QuerySet.
+  `Meta.permissions` com `download_applicationdocument`: baixar o anexo é mais
+  do que ver a inscrição (dados pessoais do candidato).
+- `validate_upload(filename, size)` como classmethod, mesmo contrato de
+  `RequestDocument.validate_upload` (PDF + imagem, 10 MB, `code`
+  `invalid_document` único para os dois casos).
+- `replace_for(application=, kind=, file=)` no model, devolvendo
+  `(documento, substituiu)`: apaga o arquivo do storage **antes** de escrever e
+  recria a linha em vez de editar o `file` (o `uploaded_at` é `auto_now_add` e
+  ficaria com a data do envio errado). A lógica ficou no model, e não no router
+  como nas isoladas, porque a story de router (f11) só vem depois e a
+  substituição é comportamento de um model só.
+- `caminho_do_documento_da_inscricao`: função de módulo particionando
+  `bolsas/edicao-{id}/inscricao-{id}/questionario/{filename}` — o subdiretório
+  separa do comprovante do barema, que vem na mesma inscrição.
+- `ScholarshipApplication.pending_docs()`: os "Sim" sem comprovante, na ordem
+  de declaração do enum, guiados pelo mapa de módulo
+  `RESPOSTA_QUE_EXIGE_DOCUMENTO` (kind → nome do booleano).
+- Migration `0004_applicationdocument` gerada, lida (tabela nova,
+  retrocompatível) e aplicada no canteiro. Admin quebra-vidro com
+  `ApplicationDocumentAdmin` + inline na inscrição.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0004_applicationdocument.py`,
+  `.../tests/test_bolsas_documentos.py`.
+- `make ready` verde (1384 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - `RESPOSTA_QUE_EXIGE_DOCUMENTO` existe para que a igualdade entre o nome do
+    `kind` e o do booleano seja decisão escrita, não coincidência. Model novo
+    que dependa do questionário deve ler dele, nunca reconstruir a lista.
+  - Dos 9 booleanos do questionário, 7 cobram comprovante: `has_paid_activity`
+    (chave de bloco) e `cadastro_unico` (critério de desempate) **não**. Não
+    completar o mapa "por simetria".
+  - `pending_docs()` em inscrição **sem pk** devolve tudo o que foi afirmado:
+    o manager reverso não existe antes do `save()`, e a guarda `self.pk is
+    None` é o que deixa o teste rodar sem banco.
+  - Teste de "o arquivo antigo sumiu do storage" precisa de **nomes de arquivo
+    diferentes** nos dois envios: com o mesmo nome, o storage libera o caminho
+    no delete e o segundo upload o reocupa — o `exists()` volta True e o teste
+    falha sem que nada esteja errado.
+  - `SimpleUploadedFile` cai em `tmp_path` por causa da fixture autouse
+    `media_temporaria` de `backend/conftest.py`; não montar MEDIA_ROOT local.

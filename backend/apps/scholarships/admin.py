@@ -10,6 +10,7 @@ from django.contrib import admin
 from apps.core.admin import AuditedModelAdmin
 
 from .models import (
+    ApplicationDocument,
     BaremeItem,
     CommitteeMember,
     ScholarshipApplication,
@@ -81,6 +82,14 @@ class BaremeItemAdmin(AuditedModelAdmin):
     readonly_fields = CARIMBOS
 
 
+class ApplicationDocumentInline(admin.TabularInline):
+    model = ApplicationDocument
+    extra = 0
+    fields = ("kind", "file", "uploaded_at")
+    readonly_fields = ("uploaded_at",)
+    show_change_link = True
+
+
 @admin.register(ScholarshipApplication)
 class ScholarshipApplicationAdmin(AuditedModelAdmin):
     __doc__ = QUEBRA_VIDRO
@@ -116,3 +125,18 @@ class ScholarshipApplicationAdmin(AuditedModelAdmin):
         "published_at",
         *CARIMBOS,
     )
+    inlines = [ApplicationDocumentInline]
+
+
+@admin.register(ApplicationDocument)
+class ApplicationDocumentAdmin(AuditedModelAdmin):
+    __doc__ = QUEBRA_VIDRO
+
+    list_display = ("kind", "application", "uploaded_at")
+    list_filter = ("application__edition__program", "application__edition", "kind")
+    search_fields = ("application__student__person__full_name",)
+    list_select_related = ("application",)
+    raw_id_fields = ("application",)
+    # `uploaded_at` é `auto_now_add`: reescrevê-lo à mão faria o anexo
+    # parecer entregue dentro do prazo quando não foi.
+    readonly_fields = ("uploaded_at",)

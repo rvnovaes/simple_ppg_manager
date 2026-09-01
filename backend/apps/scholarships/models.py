@@ -659,9 +659,8 @@ class ScholarshipApplication(models.Model):
     `classify()` da edição).
 
     A leitura dos campos de nota (`committee_score`, `final_score`,
-    `subtotal`, `fully_reviewed`) depende de `BaremeEntry`, e a de
-    `pending_docs` depende de `ApplicationDocument`: entram com esses
-    models, nas stories seguintes.
+    `subtotal`, `fully_reviewed`) depende de `BaremeEntry` e entra com
+    ele, na story seguinte.
     """
 
     program = models.ForeignKey(
@@ -953,3 +952,231 @@ class ScholarshipApplication(models.Model):
         fila sem que ninguém percebesse.
         """
         return self.band_override or None
+
+    # -- documentos --------------------------------------------------------
+
+    def pending_docs(self) -> list[str]:
+        """Os "Sim" do questionário que ainda estão sem comprovante.
+
+        É o `Sim - Não enviado` do export do legado: a comissão precisa
+        ver, item a item, o que o candidato afirmou e não provou — sem
+        isso a análise vira conferência manual de anexo contra
+        questionário.
+
+        Devolve os `ApplicationDocumentKind` na ordem de declaração do
+        enum, que é a ordem do questionário na tela. Inscrição ainda não
+        salva não tem anexo nenhum, e por isso deve tudo o que afirmou.
+        """
+        exigidos = [
+            kind
+            for kind, campo in RESPOSTA_QUE_EXIGE_DOCUMENTO.items()
+            if getattr(self, campo)
+        ]
+        if self.pk is None:
+            return exigidos
+        enviados = set(self.documents.values_list("kind", flat=True))
+        return [kind for kind in exigidos if kind not in enviados]
+
+
+# ---------------------------------------------------------------------------
+# ApplicationDocument (o comprovante de cada "Sim" do questionário)
+# ---------------------------------------------------------------------------
+
+# Qual booleano do questionário cobra qual comprovante. A chave é o valor
+# do `ApplicationDocumentKind`, o valor é o nome do campo na inscrição —
+# são iguais de propósito, e este mapa existe para que a igualdade seja
+# uma **decisão escrita** e não uma coincidência de nomes que a próxima
+# renomeação quebra em silêncio.
+#
+# `has_paid_activity` não está aqui: ele é a chave que joga o candidato do
+# bloco 2.1 para o 2.4, e quem comprova são os incisos abaixo dele.
+# `cadastro_unico` também não: é critério de desempate, não de faixa, e o
+# edital não pede anexo para ele.
+RESPOSTA_QUE_EXIGE_DOCUMENTO: dict[str, str] = {
+    ApplicationDocumentKind.AFFIRMATIVE_ACTION: "affirmative_action",
+    ApplicationDocumentKind.SOCIOECONOMIC_VULNERABILITY: (
+        "socioeconomic_vulnerability"
+    ),
+    ApplicationDocumentKind.SUBSTITUTE_TEACHER: "substitute_teacher",
+    ApplicationDocumentKind.BASIC_EDUCATION_OR_COLLECTIVE_HEALTH: (
+        "basic_education_or_collective_health"
+    ),
+    ApplicationDocumentKind.PUBLIC_SERVICE: "public_service",
+    ApplicationDocumentKind.PRIVATE_SERVICE: "private_service",
+    ApplicationDocumentKind.OTHER_NON_PUBLIC_SCHOLARSHIP: (
+        "other_non_public_scholarship"
+    ),
+}
+
+
+def caminho_do_documento_da_inscricao(
+    instance: "ApplicationDocument", filename: str
+) -> str:
+    """Onde o comprovante do questionário é gravado dentro do MEDIA_ROOT.
+
+    Particionado por edição e por inscrição pelo mesmo motivo do anexo das
+    isoladas (`caminho_do_documento`, `apps/academic/models.py`): a
+    operação do edital é por lote, e um diretório plano com milhares de
+    arquivos torna manual o que deveria ser um `cp` de diretório.
+
+    O subdiretório `questionario/` separa estes comprovantes dos do
+    barema, que virão na mesma inscrição — dois conjuntos com regras de
+    acesso diferentes não devem se misturar no disco.
+
+    Função de módulo, e não lambda, porque a migração precisa conseguir
+    serializar a referência.
+    """
+    return (
+        f"bolsas/edicao-{instance.application.edition_id}/"
+        f"inscricao-{instance.application_id}/questionario/{filename}"
+    )
+
+
+# O que o edital aceita como comprovante do questionário. Mesmo conjunto
+# do anexo das isoladas: PDF é o formato da certidão e da declaração;
+# imagem entra porque comprovante de endereço e identidade quase sempre
+# chegam como foto de celular. Nada além disso — documento de candidato é
+# lido pela secretaria, não executado.
+#
+# O comprovante do **barema** é mais estrito (só PDF, plano Seção 2): lá o
+# anexo é certificado, não foto. São duas constantes de propósito.
+EXTENSOES_DO_DOCUMENTO_DA_INSCRICAO = (".pdf", ".jpg", ".jpeg", ".png")
+# 10 MB por arquivo — foto de celular cabe com folga e PDF digitalizado
+# também; acima disso é digitalização mal configurada, não documento.
+TAMANHO_MAXIMO_DO_DOCUMENTO_DA_INSCRICAO = 10 * 1024 * 1024
+
+
+class ApplicationDocumentQuerySet(models.QuerySet["ApplicationDocument"]):
+    def for_program(self, program: Any) -> "ApplicationDocumentQuerySet":
+        """Filho de agregado: o escopo de tenant atravessa a FK do pai, mas
+        continua obrigatório e continua sendo o primeiro filtro de toda
+        busca."""
+        return self.filter(application__program=program)
+
+    def for_application(self, application: Any) -> "ApplicationDocumentQuerySet":
+        return self.filter(application=application)
+
+
+class ApplicationDocument(models.Model):
+    """O comprovante de uma resposta "Sim" do questionário da inscrição.
+
+    Um por tipo (`UniqueConstraint`): reenviar o comprovante de ação
+    afirmativa é **substituir** o anterior, não empilhar duas versões e
+    deixar a comissão adivinhar qual vale. Quem substitui é
+    `replace_for()`.
+
+    Sem FK `program` direta, como `RequestDocument` e pelo mesmo motivo
+    (ADR-007 dec. 5): o anexo não é alvo de `AuditLog` próprio — quem é
+    auditado é a inscrição, que carrega o tenant — e o `CASCADE` diz que
+    ele não existe fora dela.
+    """
+
+    Kind = ApplicationDocumentKind
+
+    application = models.ForeignKey(
+        ScholarshipApplication,
+        on_delete=models.CASCADE,
+        related_name="documents",
+        verbose_name="inscrição",
+    )
+    kind = models.CharField("tipo", max_length=40, choices=Kind)
+    file = models.FileField("arquivo", upload_to=caminho_do_documento_da_inscricao)
+    uploaded_at = models.DateTimeField("anexado em", auto_now_add=True)
+
+    objects = ApplicationDocumentQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "documento da inscrição de bolsa"
+        verbose_name_plural = "documentos da inscrição de bolsa"
+        ordering = ["kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "kind"],
+                name="unique_documento_por_inscricao_de_bolsa_e_tipo",
+            ),
+        ]
+        permissions = [
+            # Baixar o anexo é mais do que ver a inscrição: são dados
+            # pessoais do candidato (laudo, contracheque, declaração de
+            # vulnerabilidade). Quem lista a fila não precisa disso.
+            ("download_applicationdocument", "Pode baixar documento da inscrição"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} de {self.application}"
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        super().clean()
+        self._validar_duplicata()
+
+    def _validar_duplicata(self) -> None:
+        """Espelho da `UniqueConstraint`, como nos demais models do app."""
+        if self.application_id is None or not self.kind:
+            return
+        duplicatas = ApplicationDocument.objects.filter(
+            application_id=self.application_id, kind=self.kind
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Esta inscrição já tem um documento deste tipo; "
+                "reenviar substitui o anterior.",
+                code="duplicate_application_document",
+            )
+
+    @classmethod
+    def validate_upload(cls, *, filename: str, size: int) -> None:
+        """Formato e tamanho do que chega — invariante, não detalhe da borda.
+
+        Mesmo contrato de `RequestDocument.validate_upload`
+        (`apps/academic/models.py`), inclusive no `code` único: fica no
+        model, e não num validador de campo, porque o arquivo que
+        interessa validar é o que a requisição traz — `FileField.validators`
+        só roda em `full_clean()` e não vê o tamanho do upload. Método de
+        classe porque a checagem antecede a instância: recusar antes de
+        gravar é o ponto.
+        """
+        if not filename or not filename.lower().endswith(
+            EXTENSOES_DO_DOCUMENTO_DA_INSCRICAO
+        ):
+            aceitas = ", ".join(EXTENSOES_DO_DOCUMENTO_DA_INSCRICAO)
+            raise DomainError(
+                f"O documento precisa ser um arquivo {aceitas}.",
+                code="invalid_document",
+            )
+        if size > TAMANHO_MAXIMO_DO_DOCUMENTO_DA_INSCRICAO:
+            limite = TAMANHO_MAXIMO_DO_DOCUMENTO_DA_INSCRICAO // (1024 * 1024)
+            raise DomainError(
+                f"O documento tem no máximo {limite} MB.",
+                code="invalid_document",
+            )
+
+    # -- substituição ------------------------------------------------------
+
+    @classmethod
+    def replace_for(
+        cls, *, application: "ScholarshipApplication", kind: str, file: Any
+    ) -> tuple["ApplicationDocument", bool]:
+        """Grava o anexo daquele tipo, apagando a versão anterior se houver.
+
+        Substitui apagando a linha, e não editando o `file`: `uploaded_at`
+        é `auto_now_add` e ficaria com a data do envio errado se o
+        registro fosse reaproveitado.
+
+        A remoção do arquivo do storage é explícita porque o `delete()` do
+        model não a faz — sem ela cada reenvio deixaria um órfão no
+        MEDIA_ROOT. E vem antes de qualquer escrita que possa falhar, já
+        que o storage não participa do rollback da transação.
+
+        Devolve `(documento, substituiu)`: o segundo item é o que o router
+        usa para escolher entre 201 e 200 e para descrever o `AuditLog`.
+        """
+        anterior = cls.objects.filter(application=application, kind=kind).first()
+        if anterior is not None:
+            anterior.file.delete(save=False)
+            anterior.delete()
+        documento = cls.objects.create(application=application, kind=kind, file=file)
+        return documento, anterior is not None
