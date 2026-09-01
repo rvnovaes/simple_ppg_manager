@@ -118,6 +118,14 @@ Started: ter. 01 set 2026 11:06:15 -03
 - **Dinheiro no papel: `formats.number_format(..., force_grouping=True)`.**
   Sem ele sai `3200,00` em vez de `3.200,00` — `USE_THOUSAND_SEPARATOR` é
   falso por padrão. Registrado no `CLAUDE.md`.
+- **Teste de escopo de tenant precisa do estado que PERMITE a operação.** Num
+  estado restritivo o vazamento se esconde atrás do 409 da guarda de fase, e a
+  asserção passa sem nunca ter tocado o objeto do outro programa. E a asserção
+  é **404 estrito**: 403 ou 409 significam que a rota chegou ao objeto.
+- **Lista de rotas de um app se audita por `router.path_operations`**
+  (`{caminho: PathView}`, cada `operation` com `.methods`) — é assim que o
+  teste cobra que rota nova entre também no teste de tenant, em vez de manter
+  a lista à mão.
 - **Regra de visibilidade compartilhada entre a rota JSON e a rota do PDF é
   uma função só** (`_garantir_resultado_visivel`): duas cópias divergem, e a
   que vaza é sempre a versão imprimível, que é a que circula.
@@ -1042,4 +1050,57 @@ Started: ter. 01 set 2026 11:06:15 -03
     de milhar; `use_l10n=True` sozinho não basta.
   - A f20 é quem regenera `openapi.json`/`schema.d.ts` — a rota nova do PDF
     entra no contrato publicado lá, não aqui.
+---
+
+## 2026-09-01 - f20-tenant-e-tipos-da-api
+- **`test_bolsas_tenant.py`** (novo, 51 casos): um cenário de bolsas
+  **completo nos dois programas** (edição, barema, comissão, inscrição,
+  comprovante, lançamento, observação e recurso) e um usuário do programa A
+  atacando cada objeto do programa B por cada rota do módulo.
+- **A asserção é 404 estrito**, não "não é 200": 403 ou 409 também reprovam,
+  porque os dois significam que a rota *chegou* ao objeto do outro programa e
+  só então recusou por outro motivo. O escopo tem de entrar na busca
+  (`for_program`), como em `_edicao_do_programa`.
+- **O usuário de teste acumula os quatro papéis** (Discente, Secretaria,
+  Comissão de Bolsas, Coordenação) para que nenhum 404 possa ser confundido
+  com o 403 de quem não tinha permissão nenhuma — e para expor a rota que
+  porventura dependesse da permissão para recortar o tenant.
+- **`test_a_lista_de_casos_cobre_todas_as_rotas_com_id`**: lê
+  `router.path_operations` e cobra que toda rota com `{id}` esteja na lista de
+  casos. Sem ela, rota nova nasce fora do teste de tenant e o arquivo segue
+  verde com uma rota a menos. Conferido com remoção deliberada de um caso: a
+  asserção falha nomeando a rota.
+- Sete testes do outro lado da moeda (o 404 não os pega, porque a resposta é
+  200 e o vazamento estaria **dentro** do corpo): edições, fila de análise,
+  barema, comissão, lançamentos, observações e o resultado só trazem linha do
+  próprio programa.
+- **Nenhum vazamento encontrado**: as 40 rotas já escopavam. O arquivo é a
+  prova, não o conserto.
+- `make gen-api` rodado: `frontend/src/lib/api/openapi.json` e `schema.d.ts`
+  regenerados (115 caminhos), agora com os tipos de
+  `/api/v1/scholarships/` — os dois são **gerados**, não editados à mão.
+- Arquivos: `backend/apps/scholarships/tests/test_bolsas_tenant.py` (novo),
+  `frontend/src/lib/api/openapi.json`, `frontend/src/lib/api/schema.d.ts`.
+- `make ready` verde (1925 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **Teste de tenant precisa escolher o estado da edição.** Num estado
+    restritivo o vazamento se esconde atrás do 409 da guarda de fase: o
+    cenário roda em `appeals_under_review` (quase tudo permitido), e o único
+    caso cruzado que exige janela aberta (`POST /applications/{minha}/entries/`
+    com `item_id` alheio) tem a edição levada a `submissions_open` antes da
+    chamada. Sem isso o teste passava sem nunca ter tocado o objeto de B.
+  - **Casos cruzados valem tanto quanto os diretos**: id do próprio programa na
+    URL e id alheio no corpo (`clone` com `source_edition_id` de B, `item_id`
+    de B no lançamento e na observação, `teacher_id` de B na comissão). É a
+    forma de vazamento que o `_edicao_do_programa` da URL não cobre sozinho.
+  - **Lista de casos parametrizada por `dict[str, lambda]`** dá ids legíveis no
+    pytest (`GET /editions/{id}/result.pdf`) e permite a asserção de cobertura
+    comparar a chave com `router.path_operations` — dois usos do mesmo texto.
+  - `router.path_operations` é `{caminho: PathView}`, e cada `operation` tem
+    `.methods`: é a forma de auditar o contrato publicado de dentro do teste,
+    sem reescrever a lista de rotas à mão.
+  - **`make gen-api` reescreve os dois arquivos inteiros** (14 mil linhas de
+    diff neste módulo): não misture com edição manual e não estranhe o
+    tamanho do diff — o `normalizar-openapi.mjs` tira o `/api/v1` dos
+    caminhos antes do `openapi-typescript`.
 ---

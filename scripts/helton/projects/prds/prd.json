@@ -476,7 +476,7 @@
         "f19-pdf-do-resultado"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

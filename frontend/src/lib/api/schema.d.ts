@@ -2011,6 +2011,891 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scholarships/editions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Editions
+         * @description As edições do programa, do ano mais recente para o mais antigo.
+         */
+        get: operations["apps_scholarships_router_list_editions"];
+        put?: never;
+        /**
+         * Create Edition
+         * @description A secretaria abre a edição do ano, em rascunho.
+         */
+        post: operations["apps_scholarships_router_create_edition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Edition */
+        get: operations["apps_scholarships_router_get_edition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Edition
+         * @description Retificação da edição, em qualquer estado.
+         *
+         *     Sem `ensure_editable` de propósito: o que se corrige aqui é título e
+         *     cronograma, e cronograma é informação divulgada, não gatilho —
+         *     retificar data publicada é rotina do edital. O que não pode mudar
+         *     depois de aberta a inscrição é o **barema**, e quem guarda isso é
+         *     `bareme_editable()`, na story do barema.
+         */
+        patch: operations["apps_scholarships_router_update_edition"];
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/open-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Submissions
+         * @description Abre as inscrições e congela o barema (409 `edition_not_draft`).
+         */
+        post: operations["apps_scholarships_router_open_submissions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/start-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Review
+         * @description Encerra as inscrições e entrega a fila para a comissão.
+         */
+        post: operations["apps_scholarships_router_start_review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/publish-preliminary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Preliminary
+         * @description Publica o resultado preliminar e **congela a lista**.
+         *
+         *     Permissão própria `publish_scholarshipedition`, e não `change_`:
+         *     publicar congela o ano e é o que o candidato lê como resultado — quem
+         *     monta o edital não é necessariamente quem assina a lista.
+         *
+         *     Fora do padrão `_transicionar` porque o ato cruza dois agregados: o
+         *     service classifica os dois níveis, grava o snapshot em toda inscrição
+         *     e escreve um `AuditLog` só, com as contagens.
+         */
+        post: operations["apps_scholarships_router_publish_preliminary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/open-appeals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Appeals
+         * @description Abre a fase de recursos: o discente interpõe e a comissão julga.
+         */
+        post: operations["apps_scholarships_router_open_appeals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/publish-final": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Final
+         * @description Publica o resultado final, depois dos recursos julgados.
+         *
+         *     Mesmo service do preliminar, com a **mesma** semente de sorteio: o
+         *     que muda entre as duas listas é o que os recursos mudaram, e nada
+         *     mais.
+         */
+        post: operations["apps_scholarships_router_publish_final"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Edition Result
+         * @description As dez faixas de um nível — a lista publicada, ou a prévia.
+         *
+         *     Um nível por chamada: mestrado e doutorado correm independentes e saem
+         *     em documentos separados, e é este mesmo objeto que alimenta a tela e o
+         *     PDF do resultado.
+         *
+         *     Antes da publicação a rota devolve a **prévia** (`classify()`), e ela é
+         *     só de quem trabalha o edital — Secretaria, Coordenação e Comissão de
+         *     Bolsas, o mesmo recorte de `ScholarshipApplicationQuerySet.visible_to`.
+         *     Para o candidato o resultado começa a existir com o preliminar
+         *     publicado (`results_visible_to_student()`); antes disso, 403.
+         */
+        get: operations["apps_scholarships_router_edition_result"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/result.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Edition Result Pdf
+         * @description O mesmo resultado, em papel — um documento por nível.
+         *
+         *     A rota não monta nada: a permissão e a regra de visibilidade são as
+         *     **mesmas** do JSON (`_garantir_resultado_visivel`, e é de propósito
+         *     que sejam uma função só — duas cópias divergiriam, e a que vazasse
+         *     seria justamente a imprimível), e o documento sai inteiro de
+         *     `pdf.montar_resultado`.
+         */
+        get: operations["apps_scholarships_router_edition_result_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/bareme/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Bareme
+         * @description O barema da edição, na ordem do edital (nível, depois código).
+         *
+         *     Sem paginação de propósito: o barema é a tabela do edital e a tela de
+         *     lançamento monta as seis seções de uma vez — paginar aqui obrigaria o
+         *     front a remontar a tabela em pedaços.
+         */
+        get: operations["apps_scholarships_router_list_bareme"];
+        put?: never;
+        /**
+         * Add Bareme Item
+         * @description A secretaria acrescenta uma linha ao barema, em rascunho.
+         */
+        post: operations["apps_scholarships_router_add_bareme_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/bareme/{item_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Bareme Item
+         * @description Tira uma linha do barema, só em rascunho.
+         *
+         *     A permissão exigida é `change_baremeitem`, e não `delete_`: nenhum
+         *     papel de domínio recebe `delete_*` (migration `0008_papeis_da_bolsa`,
+         *     com teste guardando) — mesmo precedente do `DELETE` da comissão. Em
+         *     rascunho ainda não existe lançamento contra o item, então remover não
+         *     apaga nota de ninguém.
+         *
+         *     A auditoria é gravada **antes** do `delete()`: depois dele a instância
+         *     perde o pk e o alvo do registro sairia vazio.
+         */
+        delete: operations["apps_scholarships_router_remove_bareme_item"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Bareme Item
+         * @description Retificação da linha do barema, só em rascunho.
+         */
+        patch: operations["apps_scholarships_router_update_bareme_item"];
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/bareme/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clone Bareme From Edition
+         * @description Copia o barema de outra edição do programa para esta.
+         *
+         *     A edição da URL é o **destino** — é ela que precisa estar em rascunho.
+         *     A origem é buscada com o mesmo escopo: edição de outro programa é 404.
+         *
+         *     Cruza dois agregados, então o corpo é do service (ADR-002); aqui só
+         *     permissão, escopo e contrato.
+         */
+        post: operations["apps_scholarships_router_clone_bareme_from_edition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/committee/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Committee
+         * @description A composição da comissão daquele ano.
+         *
+         *     Sem paginação de propósito: são poucos membros por edição, e a tela
+         *     monta a portaria inteira de uma vez.
+         */
+        get: operations["apps_scholarships_router_list_committee"];
+        put?: never;
+        /**
+         * Add Committee Member
+         * @description A secretaria designa um professor do programa na comissão.
+         */
+        post: operations["apps_scholarships_router_add_committee_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/committee/{member_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Committee Member
+         * @description Tira um professor da comissão — retificação de portaria.
+         *
+         *     Vale em qualquer estado da edição: a comissão é registro de quem
+         *     compôs, e não autorização, então remover uma linha não invalida nota
+         *     já lançada nem reabre nada. O que se corrige aqui é o erro de digitação
+         *     e a substituição que a portaria retificadora fez.
+         *
+         *     A permissão exigida é `change_committeemember`, e não `delete_`:
+         *     nenhum papel de domínio recebe `delete_*` (migration
+         *     `0008_papeis_da_bolsa`, com teste guardando), porque apagar dado da
+         *     bolsa é quebra-vidro de sysadmin — e recompor a comissão do ano é a
+         *     mesma edição da composição que o POST faz.
+         *
+         *     A auditoria é gravada **antes** do `delete()`: depois dele a instância
+         *     perde o pk e o alvo do registro sairia vazio.
+         */
+        delete: operations["apps_scholarships_router_remove_committee_member"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/my-application": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Application
+         * @description A inscrição do próprio discente naquela edição, se existir.
+         *
+         *     404 quando ele ainda não se inscreveu — é assim que a tela sabe que
+         *     deve oferecer o formulário em branco em vez do questionário
+         *     preenchido. Rota separada de um `GET /applications/{id}` de propósito:
+         *     o candidato não guarda o id da própria inscrição, ele guarda o edital.
+         */
+        get: operations["apps_scholarships_router_get_my_application"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/applications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Application
+         * @description O discente se inscreve na edição, com o questionário respondido.
+         *
+         *     `for_student` copia programa e nível do vínculo e congela o nível; a
+         *     duplicata por (edição, discente) é o `clean()` (400
+         *     `duplicate_application`). A guarda roda sobre a instância ainda não
+         *     salva — ela só lê a edição e o dono, e é justamente antes de gravar
+         *     que a janela precisa ser conferida.
+         */
+        post: operations["apps_scholarships_router_create_application"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Application
+         * @description O candidato desiste e apaga a própria inscrição, na janela aberta.
+         *
+         *     Fechada a janela, a inscrição é a peça que a comissão pontua e some
+         *     da mão dele — quem cobra isso é o mesmo `ensure_editable` das outras
+         *     escritas (409 `submissions_closed`).
+         *
+         *     A permissão exigida é `change_scholarshipapplication`, e não
+         *     `delete_`: nenhum papel de domínio recebe `delete_*` (migration
+         *     `0008_papeis_da_bolsa`, com teste guardando), mesmo precedente do
+         *     DELETE do barema e do da comissão. O `CASCADE` leva junto os
+         *     comprovantes do questionário e os lançamentos do barema; os arquivos
+         *     saem do storage com eles, porque o `delete()` do model não o faz.
+         *
+         *     A auditoria é gravada **antes** do `delete()`: depois dele a
+         *     instância perde o pk e o alvo do registro sairia vazio.
+         */
+        delete: operations["apps_scholarships_router_remove_application"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Application
+         * @description Retificação do questionário, só na janela aberta e só pelo dono.
+         */
+        patch: operations["apps_scholarships_router_update_application"];
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Application Document
+         * @description Anexa (ou substitui) o comprovante de um "Sim" do questionário.
+         *
+         *     A permissão é a de montar a própria inscrição — anexar é parte de
+         *     montar —, e não há permissão de `add_applicationdocument` para papel
+         *     nenhum: o comprovante não é entidade que alguém administre à parte.
+         *     Mesmo desenho do anexo do requerimento de isolada.
+         *
+         *     Substituir, e não empilhar: um tipo tem uma versão
+         *     (`unique_documento_por_inscricao_de_bolsa_e_tipo`), e o reenvio é a
+         *     correção de quem mandou a página errada. 201 quando é o primeiro
+         *     envio daquele tipo, 200 quando substituiu.
+         */
+        post: operations["apps_scholarships_router_upload_application_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/documents/{document_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Application Document
+         * @description Entrega o arquivo — pelo Django, nunca por URL direta do MEDIA.
+         *
+         *     Duas portas, e só duas: `download_applicationdocument` (Secretaria e
+         *     Comissão de Bolsas) e o próprio candidato por posse. Quem apenas
+         *     enxerga a inscrição — a Coordenação, que só acompanha — leva 403
+         *     aqui: laudo de vulnerabilidade e contracheque não são insumo de
+         *     acompanhamento. Mesmo desenho do download de `RequestDocument`
+         *     (`apps/academic/router.py`).
+         *
+         *     A permissão ampla é checada só depois da posse porque ela é a
+         *     exceção, e não a regra: o dono do documento não precisa de permissão
+         *     de secretaria para ler o que ele mesmo enviou.
+         */
+        get: operations["apps_scholarships_router_download_application_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/entries/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entries
+         * @description Os lançamentos de uma inscrição, na ordem do barema.
+         *
+         *     Sem paginação, de propósito: a tela do candidato e a da comissão
+         *     mostram o barema inteiro de uma vez, agrupado por seção, e uma
+         *     segunda página quebraria o agrupamento — são dezenas de linhas, não
+         *     milhares.
+         */
+        get: operations["apps_scholarships_router_list_entries"];
+        put?: never;
+        /**
+         * Create Entry
+         * @description O candidato lança uma linha do barema, com o comprovante junto.
+         *
+         *     O arquivo é obrigatório na assinatura: faltando, o Ninja devolve 422
+         *     antes de qualquer regra — e é exatamente a resposta certa, porque
+         *     "lançamento sem comprovante" não é um estado a ser recusado pelo
+         *     domínio, é um corpo incompleto.
+         *
+         *     Repetir o mesmo item é normal e não é duplicata: dois semestres de
+         *     docência são duas linhas, e é a soma delas que enfrenta o teto do
+         *     item. Por isso não há guarda de unicidade aqui.
+         */
+        post: operations["apps_scholarships_router_create_entry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/entries/{entry_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Entry
+         * @description O candidato apaga um lançamento que fez, na janela aberta.
+         *
+         *     Exige `change_baremeentry`, e não `delete_`: nenhum papel de domínio
+         *     recebe `delete_*` (migration `0008_papeis_da_bolsa`, com teste
+         *     guardando), mesmo precedente do DELETE da inscrição, do barema e da
+         *     comissão.
+         *
+         *     O arquivo sai do storage junto, porque o `delete()` do model não o
+         *     faz; e a auditoria é gravada **antes**, porque depois a instância
+         *     perde o pk e o alvo do registro sairia vazio.
+         */
+        delete: operations["apps_scholarships_router_remove_entry"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Entry
+         * @description Retificação do lançamento pelo candidato, na janela aberta.
+         *
+         *     JSON, e não multipart como o POST: **o Django só monta `request.POST`
+         *     e `request.FILES` em requisição POST** (`HttpRequest
+         *     ._load_post_and_files`), então um corpo multipart em PATCH chegaria
+         *     vazio ao Ninja, sem erro nenhum. Trocar o comprovante tem rota
+         *     própria (`POST .../proof`), pelo mesmo motivo pelo qual anexar o
+         *     comprovante do questionário também é um POST.
+         *
+         *     Trocar item ou quantidade **recalcula** `candidate_score`: a nota é
+         *     derivada, e deixá-la para trás daria ao candidato uma pontuação que
+         *     não corresponde ao que ele lançou.
+         */
+        patch: operations["apps_scholarships_router_update_entry"];
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/entries/{entry_id}/proof": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace Entry Proof
+         * @description Troca o comprovante de um lançamento já feito.
+         *
+         *     Existe porque o `PATCH` não pode ser multipart (ver a docstring dele)
+         *     e porque mandar o candidato apagar e relançar para corrigir a página
+         *     errada do certificado perderia a linha inteira.
+         *
+         *     Substitui, e não empilha: o comprovante é um por lançamento
+         *     (`FileField`, não relação), e o arquivo antigo sai do storage — mas
+         *     só depois do commit, porque apagar arquivo não participa do rollback.
+         */
+        post: operations["apps_scholarships_router_replace_entry_proof"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/entries/{entry_id}/proof/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Entry Proof
+         * @description Entrega o comprovante do lançamento — pelo Django, nunca por URL
+         *     direta do MEDIA.
+         *
+         *     Sem esta rota o comprovante seria inalcançável: `BaremeEntryOut` não
+         *     publica caminho nem URL, justamente porque o Nginx serve o MEDIA sem
+         *     passar pelo Django. E é o comprovante que a comissão lê para decidir
+         *     a nota — é o insumo central da análise (f13).
+         *
+         *     Mesmas duas portas do comprovante do questionário: o dono por posse e
+         *     quem tem `download_applicationdocument`. Leitura auditada, porque é
+         *     documento pessoal de outro candidato.
+         */
+        get: operations["apps_scholarships_router_download_entry_proof"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/editions/{edition_id}/applications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Applications
+         * @description A fila de trabalho da comissão, com os filtros do legado.
+         *
+         *     Paginada de propósito: cada linha lê os lançamentos da inscrição para
+         *     somar as duas notas (o teto é do item, aplicado sobre a soma dos
+         *     lançamentos daquele item — não há SQL de uma consulta só que faça
+         *     isso), e uma edição inteira sem página seria uma consulta por
+         *     candidato.
+         *
+         *     Os oito booleanos são as oito respostas do questionário.
+         *     `cadastro_unico` fica de fora porque não é pergunta de faixa e sim
+         *     critério de desempate (ver o campo no model): filtrar a fila por ele
+         *     não é trabalho da análise.
+         */
+        get: operations["apps_scholarships_router_list_applications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/entries/{entry_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Review Entry
+         * @description A comissão pontua um lançamento.
+         *
+         *     Permissão própria (`review_baremeentry`), separada de
+         *     `change_baremeentry` justamente porque o candidato tem esta última
+         *     sobre o próprio lançamento: uma permissão só para as duas coisas
+         *     juntaria "corrigir o que digitei" com "decidir quanto vale".
+         *
+         *     O schema de entrada tem **dois campos** e nenhum deles é do candidato
+         *     — é o contrato, e não uma checagem, que impede a comissão de reescrever
+         *     quantidade ou descrição. A janela (`under_review` e
+         *     `appeals_under_review`) e a observação obrigatória na divergência são
+         *     do model.
+         */
+        patch: operations["apps_scholarships_router_review_entry"];
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/item-reviews/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Item Reviews
+         * @description As observações por item de uma inscrição.
+         *
+         *     Sem esta rota o `PUT` seria escrita sem leitura: a tela da análise
+         *     precisa mostrar o que a comissão já comentou para poder retificar, e
+         *     o candidato precisa ler o comentário para poder recorrer dele — é a
+         *     mesma razão pela qual `committee_note` já viaja no lançamento.
+         */
+        get: operations["apps_scholarships_router_list_item_reviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/item-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Item Review
+         * @description Grava a observação da comissão sobre um item do barema.
+         *
+         *     `PUT` e não `POST` porque a observação é uma por (inscrição, item):
+         *     reenviar sobrescreve o texto, e não empilha um segundo comentário que
+         *     deixaria o candidato adivinhando qual vale. Por isso responde 200
+         *     também na primeira vez — o recurso identificado pela chave existe a
+         *     partir do momento em que se escreve nele.
+         *
+         *     Exige `review_baremeentry`, a mesma permissão da nota: comentar o item
+         *     é parte do ato de analisar, e um papel que comentasse sem poder
+         *     pontuar não existe no edital.
+         */
+        put: operations["apps_scholarships_router_set_item_review"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/fump": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Fump Level
+         * @description A Secretaria transcreve o nível da FUMP do candidato.
+         *
+         *     Sem guarda de estado de propósito: o resultado da FUMP chega fora do
+         *     sistema e no calendário dela, não no da edição — travá-lo por status
+         *     obrigaria a secretaria a reabrir a edição para digitar um dado que
+         *     ela recebeu por e-mail.
+         */
+        patch: operations["apps_scholarships_router_set_fump_level"];
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/band": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Override Band
+         * @description A Secretaria sobrescreve a faixa de prioridade, com justificativa.
+         *
+         *     A justificativa vazia é recusada pelo `clean()` do model
+         *     (`override_reason_required`) — a regra é do domínio, não da borda.
+         *     Enviar `band_override: null` limpa a sobrescrita, e a faixa volta a
+         *     ser a derivada do questionário.
+         */
+        patch: operations["apps_scholarships_router_override_band"];
+        trace?: never;
+    };
+    "/scholarships/applications/{application_id}/appeal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Appeal
+         * @description O recurso de uma inscrição, para a tela da comissão e a do dono.
+         *
+         *     404 quando não há recurso — "não recorreu" é o caso normal, e é assim
+         *     que a tela sabe que deve oferecer o formulário em branco. Quem não é
+         *     o dono passa pelo mesmo porteiro dos lançamentos
+         *     (`_garantir_acesso_a_inscricao`): `view_scholarshipappeal` sozinha não
+         *     serve, porque o Discente também a tem — é com ela que lê o próprio.
+         */
+        get: operations["apps_scholarships_router_get_appeal"];
+        put?: never;
+        /**
+         * Create Appeal
+         * @description O candidato interpõe recurso contra o resultado preliminar.
+         *
+         *     A guarda é do model (`ensure_appealable`): fase fechada é 409
+         *     `appeals_closed`, inscrição alheia é 403 `not_application_owner`, e o
+         *     segundo recurso é 400 `duplicate_appeal` do `clean()`. Publicar o
+         *     preliminar não abre a fase — quem abre é `open_appeals()`, e é por
+         *     isso que a janela é conferida pelo estado e não pela data.
+         */
+        post: operations["apps_scholarships_router_create_appeal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scholarships/appeals/{appeal_id}/judge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Judge Appeal
+         * @description A comissão julga o recurso, com fundamentação.
+         *
+         *     Rota nomeada pelo ato, e não um `PATCH` de `outcome`: julgar é
+         *     transição, e o model a cobra (fase aberta, recurso ainda não julgado,
+         *     fundamentação não vazia). O instante vai explícito, como nas demais
+         *     transições deste app.
+         */
+        patch: operations["apps_scholarships_router_judge_appeal"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4468,20 +5353,20 @@ export interface components {
         };
         /**
          * ApplicationDocumentOut
-         * @description Um anexo da inscrição, sem o caminho do arquivo.
+         * @description Um comprovante do questionário, sem o caminho do arquivo.
          *
          *     Nem `file` nem `file.url` entram aqui, pelo mesmo motivo de
-         *     `academic.RequestDocumentOut`: o MEDIA é servido pelo Nginx sem passar
-         *     pelo Django, então publicar a URL entregaria o documento de identidade
-         *     do candidato a quem descobrisse o endereço — e sem `AuditLog`. O único
-         *     caminho para o conteúdo é a rota de download, que exige
-         *     `download_applicationdocument` e registra a leitura.
+         *     `RequestDocumentOut` (`apps/academic/schemas.py`): o MEDIA é servido
+         *     pelo Nginx sem passar pelo Django, então publicar a URL entregaria o
+         *     laudo e o contracheque do candidato a quem descobrisse o endereço — e
+         *     sem AuditLog. O único caminho para o conteúdo é a rota de download,
+         *     que exige `download_applicationdocument` de quem não é o dono e
+         *     registra o acesso.
          */
         ApplicationDocumentOut: {
             /** Id */
             id: number;
-            /** Kind */
-            kind: string;
+            kind: components["schemas"]["ApplicationDocumentKind"];
             /** Kind Label */
             kind_label: string;
             /** Filename */
@@ -4887,6 +5772,926 @@ export interface components {
             admission_date: string;
             /** Project Id */
             project_id: number;
+        };
+        /**
+         * ScholarshipEditionStatus
+         * @description Estados da edição anual, sempre para frente (não há volta ao rascunho).
+         *
+         *     Correção de rumo é quebra-vidro no Admin, não transição.
+         * @enum {string}
+         */
+        ScholarshipEditionStatus: "draft" | "submissions_open" | "under_review" | "preliminary_result" | "appeals_under_review" | "final_result";
+        /** PagedScholarshipEditionOut */
+        PagedScholarshipEditionOut: {
+            /** Items */
+            items: components["schemas"]["ScholarshipEditionOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * ScholarshipEditionOut
+         * @description A edição como a tela da secretaria a vê.
+         *
+         *     As cinco guardas de leitura do model viajam resolvidas: é o servidor
+         *     que decide se o barema ainda é editável ou se o resultado já aparece
+         *     para o discente, e a tela só desenha o que elas dizem. Repetir a
+         *     máquina de estados no front seria a segunda porta que o CLAUDE.md
+         *     proíbe.
+         */
+        ScholarshipEditionOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            status: components["schemas"]["ScholarshipEditionStatus"];
+            /** Status Label */
+            status_label: string;
+            /** Submission Starts On */
+            submission_starts_on: string | null;
+            /** Submission Ends On */
+            submission_ends_on: string | null;
+            /** Preliminary Result On */
+            preliminary_result_on: string | null;
+            /** Appeal Ends On */
+            appeal_ends_on: string | null;
+            /** Final Result On */
+            final_result_on: string | null;
+            /** Notice Filename */
+            notice_filename: string;
+            /** Notice Url */
+            notice_url: string;
+            /** Bareme Editable */
+            bareme_editable: boolean;
+            /** Submission Open */
+            submission_open: boolean;
+            /** Committee Can Review */
+            committee_can_review: boolean;
+            /** Appeal Open */
+            appeal_open: boolean;
+            /** Results Visible To Student */
+            results_visible_to_student: boolean;
+            /** Published Preliminary At */
+            published_preliminary_at: string | null;
+            /** Published Final At */
+            published_final_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScholarshipEditionIn
+         * @description Abertura da edição do ano, digitada pela secretaria.
+         *
+         *     Sem `program_id`: o programa é o da requisição (`current_program`),
+         *     nunca o que o chamador escolher. Sem `status` também — a edição nasce
+         *     em rascunho e só anda pelas cinco rotas de transição.
+         *
+         *     As datas do cronograma são opcionais e todas nulas por padrão: elas são
+         *     **informação publicada**, não gatilho (nada abre ou fecha por relógio),
+         *     e no momento em que a secretaria abre a edição o calendário ainda está
+         *     sendo fechado.
+         */
+        ScholarshipEditionIn: {
+            /** Year */
+            year: number;
+            /** Title */
+            title: string;
+            /** Submission Starts On */
+            submission_starts_on?: string | null;
+            /** Submission Ends On */
+            submission_ends_on?: string | null;
+            /** Preliminary Result On */
+            preliminary_result_on?: string | null;
+            /** Appeal Ends On */
+            appeal_ends_on?: string | null;
+            /** Final Result On */
+            final_result_on?: string | null;
+        };
+        /**
+         * ScholarshipEditionPatch
+         * @description Retificação da edição: só os campos presentes são aplicados.
+         *
+         *     Vale em qualquer estado, de propósito. O que a edição publica de
+         *     cronograma é texto informativo, e retificar data divulgada é o caso
+         *     normal do edital — quem trava o que muda nota já dada é
+         *     `bareme_editable()`, no barema, não aqui. O `year` continua defendido
+         *     pelo `clean()` (`duplicate_edition`).
+         */
+        ScholarshipEditionPatch: {
+            /** Year */
+            year?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Submission Starts On */
+            submission_starts_on?: string | null;
+            /** Submission Ends On */
+            submission_ends_on?: string | null;
+            /** Preliminary Result On */
+            preliminary_result_on?: string | null;
+            /** Appeal Ends On */
+            appeal_ends_on?: string | null;
+            /** Final Result On */
+            final_result_on?: string | null;
+        };
+        /**
+         * ScholarshipLevel
+         * @description Nível do vínculo a que a bolsa se refere.
+         *
+         *     Mesmos valores de `Student.Level` (`apps/academic/models.py`) — a
+         *     inscrição copia o nível do aluno no ato e o congela. Enum próprio (e não
+         *     reuso do aninhado) porque enum de módulo é a regra deste app.
+         * @enum {string}
+         */
+        ScholarshipLevel: "masters" | "doctorate";
+        /**
+         * BandOut
+         * @description Uma das dez faixas do documento publicado, **mesmo vazia**.
+         *
+         *     Faixa sem candidato sai só com o cabeçalho (Q8), e por isso a lista
+         *     tem sempre dez elementos, na ordem canônica do edital: a tela e o PDF
+         *     imprimem a ordem de prioridade completa, e uma faixa que sumisse da
+         *     resposta viraria uma prioridade a menos no documento.
+         */
+        BandOut: {
+            band: components["schemas"]["PriorityBand"];
+            /** Title */
+            title: string;
+            /** Priority Label */
+            priority_label: string;
+            /** Ordering Rule */
+            ordering_rule: string;
+            /** Shows Income */
+            shows_income: boolean;
+            /** Rows */
+            rows: components["schemas"]["ResultRowOut"][];
+        };
+        /**
+         * PriorityBand
+         * @description As dez faixas de prioridade, nomeadas pelo inciso do edital.
+         *
+         *     `B24_I` e `B24_II` só existem por sobrescrita da secretaria: não há
+         *     pergunta no questionário que as derive. A residual é a décima e recebe
+         *     quem não se encaixa em nenhum inciso.
+         * @enum {string}
+         */
+        PriorityBand: "b21_i" | "b21_ii" | "b24_i" | "b24_ii" | "b24_iii" | "b24_iv" | "b24_v" | "b24_vi_vii_viii" | "b24_ix" | "residual";
+        /**
+         * ResultRowOut
+         * @description Uma linha da lista, já na posição publicada.
+         *
+         *     `income` e `weekly_hours` viajam sempre, mas só a faixa com
+         *     `shows_income` os imprime: é a coluna "Remuneração" das duas faixas
+         *     ordenadas por rendimento.
+         *
+         *     `draw_order` nula é o caso normal — "não precisou de sorteio". Quando
+         *     vem preenchida, é a ordem que o sorteio de desempate deu, e ela é
+         *     publicada junto porque é o que torna o desempate conferível.
+         */
+        ResultRowOut: {
+            /** Application Id */
+            application_id: number;
+            /** Student Id */
+            student_id: number;
+            /** Name */
+            name: string;
+            /** Score */
+            score: string;
+            /** Position */
+            position: number;
+            /** Income */
+            income: string | null;
+            /** Weekly Hours */
+            weekly_hours: number | null;
+            /** Draw Order */
+            draw_order: number | null;
+        };
+        /**
+         * BaremeItemOut
+         * @description O item do barema como a tela o mostra.
+         *
+         *     Os três rótulos viajam resolvidos porque a tela de lançamento agrupa
+         *     os itens por seção e o nome da seção é do edital, não do front.
+         */
+        BaremeItemOut: {
+            /** Id */
+            id: number;
+            /** Edition Id */
+            edition_id: number;
+            level: components["schemas"]["ScholarshipLevel"];
+            /** Level Label */
+            level_label: string;
+            section: components["schemas"]["BaremeSection"];
+            /** Section Label */
+            section_label: string;
+            /** Code */
+            code: string;
+            /** Text */
+            text: string;
+            unit: components["schemas"]["BaremeUnit"];
+            /** Unit Label */
+            unit_label: string;
+            /** Points Per Unit */
+            points_per_unit: string;
+            /** Cap */
+            cap: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * BaremeSection
+         * @description As seis seções (I..VI) do barema do edital.
+         * @enum {string}
+         */
+        BaremeSection: "formation" | "bibliographic" | "events" | "professional" | "boards" | "other_titles";
+        /**
+         * BaremeUnit
+         * @description Unidade em que o item do barema mede a quantidade lançada.
+         * @enum {string}
+         */
+        BaremeUnit: "semester" | "month" | "hour" | "unit";
+        /**
+         * BaremeItemIn
+         * @description Uma linha do barema, digitada pela secretaria com a edição em
+         *     rascunho.
+         *
+         *     Sem `edition_id`: a edição vem da URL, já escopada no programa da
+         *     sessão. `level` é obrigatório e não tem default — o barema é por
+         *     (edição, nível), e mestrado e doutorado são listas independentes;
+         *     um default aqui faria item de doutorado nascer em mestrado por
+         *     esquecimento.
+         */
+        BaremeItemIn: {
+            level: components["schemas"]["ScholarshipLevel"];
+            section: components["schemas"]["BaremeSection"];
+            /** Code */
+            code: string;
+            /** Text */
+            text: string;
+            unit: components["schemas"]["BaremeUnit"];
+            /** Points Per Unit */
+            points_per_unit: number | string;
+            /** Cap */
+            cap: number | string;
+        };
+        /**
+         * BaremeItemPatch
+         * @description Retificação do item: só os campos presentes são aplicados.
+         *
+         *     Vale apenas com a edição em rascunho (`ensure_bareme_editable`), como
+         *     o POST e o DELETE. O `code` continua defendido pelo `clean()`
+         *     (`duplicate_bareme_item`).
+         */
+        BaremeItemPatch: {
+            level?: components["schemas"]["ScholarshipLevel"] | null;
+            section?: components["schemas"]["BaremeSection"] | null;
+            /** Code */
+            code?: string | null;
+            /** Text */
+            text?: string | null;
+            unit?: components["schemas"]["BaremeUnit"] | null;
+            /** Points Per Unit */
+            points_per_unit?: number | string | null;
+            /** Cap */
+            cap?: number | string | null;
+        };
+        /**
+         * BaremeCloneOut
+         * @description O resultado da clonagem: quantos itens vieram e o barema completo.
+         *
+         *     A tela recarrega a lista sem uma segunda chamada, e `created` é o
+         *     número que a secretaria confere contra o edital do ano anterior.
+         */
+        BaremeCloneOut: {
+            /** Source Edition Id */
+            source_edition_id: number;
+            /** Created */
+            created: number;
+            /** Items */
+            items: components["schemas"]["BaremeItemOut"][];
+        };
+        /**
+         * BaremeCloneIn
+         * @description De onde copiar o barema.
+         *
+         *     O destino é a edição da URL — é ela que precisa estar em rascunho. A
+         *     origem é qualquer outra edição do mesmo programa (tipicamente a do ano
+         *     anterior): montar o barema do zero é a parte mais cara de abrir o
+         *     edital, e ele muda pouco de um ano para o outro.
+         */
+        BaremeCloneIn: {
+            /** Source Edition Id */
+            source_edition_id: number;
+        };
+        /**
+         * CommitteeMemberOut
+         * @description Um membro da comissão, com o nome já resolvido.
+         *
+         *     A tela lista a composição do ano e não deve cruzar id de professor com
+         *     nome. Nada aqui é autorização: quem avalia é quem está no Group
+         *     "Comissão de Bolsas" (docstring de `CommitteeMember`).
+         */
+        CommitteeMemberOut: {
+            /** Id */
+            id: number;
+            /** Edition Id */
+            edition_id: number;
+            /** Teacher Id */
+            teacher_id: number;
+            /** Teacher Name */
+            teacher_name: string;
+            /** Appointed On */
+            appointed_on: string | null;
+            /** Ordinance */
+            ordinance: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * CommitteeMemberIn
+         * @description Designação de um professor na comissão daquele ano.
+         *
+         *     Sem `edition_id`: a edição vem da URL, já escopada no programa da
+         *     sessão. `teacher_id` é conferido contra o programa na rota, e o
+         *     `clean()` do model guarda o mesmo invariante para quem escrever fora
+         *     dela.
+         */
+        CommitteeMemberIn: {
+            /** Teacher Id */
+            teacher_id: number;
+            /** Appointed On */
+            appointed_on?: string | null;
+            /**
+             * Ordinance
+             * @default
+             */
+            ordinance: string;
+        };
+        /**
+         * AppealOutcome
+         * @description Resultado do julgamento do recurso.
+         * @enum {string}
+         */
+        AppealOutcome: "granted" | "partially_granted" | "denied";
+        /**
+         * ApplicationDocumentKind
+         * @description Um tipo por resposta "Sim" do questionário que exige comprovante.
+         *
+         *     São sete: `has_paid_activity` é a chave que joga o candidato do bloco
+         *     2.1 para o 2.4 e não pede documento próprio — quem comprova são os
+         *     incisos abaixo dela.
+         * @enum {string}
+         */
+        ApplicationDocumentKind: "affirmative_action" | "socioeconomic_vulnerability" | "substitute_teacher" | "basic_education_or_collective_health" | "public_service" | "private_service" | "other_non_public_scholarship";
+        /**
+         * PendingDocumentOut
+         * @description Um "Sim" do questionário ainda sem comprovante.
+         *
+         *     Viaja com o rótulo resolvido porque é isto que a tela desenha na
+         *     lista de pendências, e o nome do inciso é do edital, não do front.
+         */
+        PendingDocumentOut: {
+            kind: components["schemas"]["ApplicationDocumentKind"];
+            /** Kind Label */
+            kind_label: string;
+        };
+        /**
+         * ScholarshipAppealOut
+         * @description O recurso como as duas telas o leem: a do candidato e a da comissão.
+         *
+         *     `outcome_label` viaja resolvido porque o rótulo ("Parcialmente
+         *     deferido") é do edital, e montá-lo no front seria a segunda cópia da
+         *     tabela de resultados.
+         */
+        ScholarshipAppealOut: {
+            /** Id */
+            id: number;
+            /** Application Id */
+            application_id: number;
+            /** Text */
+            text: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            outcome: components["schemas"]["AppealOutcome"] | null;
+            /** Outcome Label */
+            outcome_label: string | null;
+            /** Reasoning */
+            reasoning: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Judged */
+            judged: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScholarshipApplicationOut
+         * @description A inscrição como a tela do discente e a da comissão a veem.
+         *
+         *     As derivações viajam resolvidas, e nenhuma delas é recalculável no
+         *     front: `submission_open` (a janela, que decide se a tela desenha os
+         *     botões de edição), `pending_docs` (o "Sim - Não enviado" do legado),
+         *     `band` (a faixa efetiva) e o par do recurso — `can_appeal` (o botão de
+         *     recorrer) e `appeal` (o que já foi interposto e como foi julgado).
+         *
+         *     Os campos de snapshot da publicação não estão aqui: eles entram com a
+         *     tela do resultado (f18/f24), e expô-los antes daria à tela de
+         *     inscrição um resultado que ainda não existe.
+         */
+        ScholarshipApplicationOut: {
+            /** Id */
+            id: number;
+            /** Edition Id */
+            edition_id: number;
+            /** Student Id */
+            student_id: number;
+            /** Student Name */
+            student_name: string;
+            level: components["schemas"]["ScholarshipLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Has Paid Activity */
+            has_paid_activity: boolean;
+            /** Affirmative Action */
+            affirmative_action: boolean;
+            /** Socioeconomic Vulnerability */
+            socioeconomic_vulnerability: boolean;
+            /** Cadastro Unico */
+            cadastro_unico: boolean;
+            /** Substitute Teacher */
+            substitute_teacher: boolean;
+            /** Basic Education Or Collective Health */
+            basic_education_or_collective_health: boolean;
+            /** Public Service */
+            public_service: boolean;
+            /** Private Service */
+            private_service: boolean;
+            /** Other Non Public Scholarship */
+            other_non_public_scholarship: boolean;
+            /** Monthly Income */
+            monthly_income: string | null;
+            /** Weekly Hours */
+            weekly_hours: number | null;
+            /** Fump Level */
+            fump_level: number;
+            band_override: components["schemas"]["PriorityBand"] | null;
+            /** Band Override Reason */
+            band_override_reason: string;
+            band: components["schemas"]["PriorityBand"] | null;
+            /** Submission Open */
+            submission_open: boolean;
+            /** Can Appeal */
+            can_appeal: boolean;
+            appeal: components["schemas"]["ScholarshipAppealOut"] | null;
+            /** Documents */
+            documents: components["schemas"]["ApplicationDocumentOut"][];
+            /** Pending Docs */
+            pending_docs: components["schemas"]["PendingDocumentOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScholarshipApplicationIn
+         * @description A inscrição que o discente monta, com o questionário do edital.
+         *
+         *     Sem `student_id` e sem `level`: o vínculo é o da sessão e o nível é
+         *     copiado dele no ato (`ScholarshipApplication.for_student`) — aceitar
+         *     qualquer um dos dois do corpo deixaria um candidato se inscrever em
+         *     nome de outro ou escolher a lista em que compete.
+         *
+         *     Sem `fump_level`, `band_override` e `band_override_reason` também:
+         *     esses três são da Secretaria, têm permissão própria e rota própria
+         *     (f14). Aqui só o que o candidato declara.
+         *
+         *     Os booleanos têm default `False` para que a tela possa mandar apenas
+         *     os "Sim" — o questionário do edital é uma lista de afirmações, e não
+         *     responder é responder "não".
+         */
+        ScholarshipApplicationIn: {
+            /** Edition Id */
+            edition_id: number;
+            /**
+             * Has Paid Activity
+             * @default false
+             */
+            has_paid_activity: boolean;
+            /**
+             * Affirmative Action
+             * @default false
+             */
+            affirmative_action: boolean;
+            /**
+             * Socioeconomic Vulnerability
+             * @default false
+             */
+            socioeconomic_vulnerability: boolean;
+            /**
+             * Cadastro Unico
+             * @default false
+             */
+            cadastro_unico: boolean;
+            /**
+             * Substitute Teacher
+             * @default false
+             */
+            substitute_teacher: boolean;
+            /**
+             * Basic Education Or Collective Health
+             * @default false
+             */
+            basic_education_or_collective_health: boolean;
+            /**
+             * Public Service
+             * @default false
+             */
+            public_service: boolean;
+            /**
+             * Private Service
+             * @default false
+             */
+            private_service: boolean;
+            /**
+             * Other Non Public Scholarship
+             * @default false
+             */
+            other_non_public_scholarship: boolean;
+            /** Monthly Income */
+            monthly_income?: number | string | null;
+            /** Weekly Hours */
+            weekly_hours?: number | null;
+        };
+        /**
+         * ScholarshipApplicationPatch
+         * @description Retificação do questionário: só os campos presentes são aplicados.
+         *
+         *     Vale enquanto a janela está aberta e só para o próprio candidato
+         *     (`ensure_editable`). A coerência entre atividade remunerada,
+         *     rendimento e carga horária continua sendo do `clean()`
+         *     (`income_required`) — e ela é conferida sobre a inscrição **já
+         *     alterada**, não sobre o payload, porque quem desliga
+         *     `has_paid_activity` sem apagar a renda não está errado.
+         */
+        ScholarshipApplicationPatch: {
+            /** Has Paid Activity */
+            has_paid_activity?: boolean | null;
+            /** Affirmative Action */
+            affirmative_action?: boolean | null;
+            /** Socioeconomic Vulnerability */
+            socioeconomic_vulnerability?: boolean | null;
+            /** Cadastro Unico */
+            cadastro_unico?: boolean | null;
+            /** Substitute Teacher */
+            substitute_teacher?: boolean | null;
+            /** Basic Education Or Collective Health */
+            basic_education_or_collective_health?: boolean | null;
+            /** Public Service */
+            public_service?: boolean | null;
+            /** Private Service */
+            private_service?: boolean | null;
+            /** Other Non Public Scholarship */
+            other_non_public_scholarship?: boolean | null;
+            /** Monthly Income */
+            monthly_income?: number | string | null;
+            /** Weekly Hours */
+            weekly_hours?: number | null;
+        };
+        /**
+         * BaremeEntryOut
+         * @description O lançamento como a tela do candidato e a da comissão o veem.
+         *
+         *     Os dados do item viajam resolvidos (`item_code`, `item_text`,
+         *     `item_section`) porque as duas telas agrupam os lançamentos por seção
+         *     do barema e o texto da linha é do edital, não do front.
+         *
+         *     O comprovante sai como nome e tamanho, nunca como caminho ou URL —
+         *     mesmo motivo de `ApplicationDocumentOut`: o MEDIA é servido pelo Nginx
+         *     sem passar pelo Django, e o único caminho para o conteúdo é a rota de
+         *     download, que audita o acesso.
+         */
+        BaremeEntryOut: {
+            /** Id */
+            id: number;
+            /** Application Id */
+            application_id: number;
+            /** Item Id */
+            item_id: number;
+            /** Item Code */
+            item_code: string;
+            /** Item Text */
+            item_text: string;
+            item_section: components["schemas"]["BaremeSection"];
+            /** Item Section Label */
+            item_section_label: string;
+            item_unit: components["schemas"]["BaremeUnit"];
+            /** Item Unit Label */
+            item_unit_label: string;
+            /** Description */
+            description: string;
+            /** Quantity */
+            quantity: string;
+            /** Candidate Score */
+            candidate_score: string;
+            /** Committee Score */
+            committee_score: string | null;
+            /** Committee Note */
+            committee_note: string;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Proof Filename */
+            proof_filename: string;
+            /** Proof Size */
+            proof_size: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * BaremeEntryIn
+         * @description O que o candidato digita ao lançar uma linha do barema.
+         *
+         *     **Três campos, e só três.** Não há `candidate_score` aqui de
+         *     propósito: a nota do candidato é *calculada* pelo servidor como
+         *     `item.raw_score(quantity)`, e aceitá-la do corpo deixaria o candidato
+         *     escolher a própria pontuação. Também não há `committee_score` nem
+         *     `committee_note` — a nota da comissão tem rota e permissão próprias
+         *     (`review_baremeentry`, f13), e é assim que "a comissão não mexe no que
+         *     o aluno digitou, e o aluno não mexe no que a comissão decidiu" vira
+         *     código, e não combinado.
+         *
+         *     Viaja como **multipart** junto com o comprovante (`Form(...)` no
+         *     router): sem comprovante o lançamento não existe (Q11), então não há
+         *     caminho de criar vazio e anexar depois.
+         */
+        BaremeEntryIn: {
+            /** Item Id */
+            item_id: number;
+            /** Description */
+            description: string;
+            /** Quantity */
+            quantity: number | string;
+        };
+        /**
+         * BaremeEntryPatch
+         * @description Retificação do lançamento: só os campos presentes são aplicados.
+         *
+         *     JSON, ao contrário do `BaremeEntryIn` — o comprovante tem rota
+         *     própria porque o Django não parseia multipart em PATCH. Os campos da
+         *     comissão continuam de fora, pela mesma razão do `In`.
+         */
+        BaremeEntryPatch: {
+            /** Item Id */
+            item_id?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Quantity */
+            quantity?: number | string | null;
+        };
+        /**
+         * AppealState
+         * @description Estado do recurso, como a **fila de análise** o filtra.
+         *
+         *     Não é campo de model nenhum: é derivado da existência do
+         *     `ScholarshipAppeal` e do preenchimento do `outcome`
+         *     (`ScholarshipApplication.appeal_state()`). Existe porque a comissão
+         *     trabalha a fila por estado ("quem recorreu e ainda não foi julgado"),
+         *     e um filtro por `outcome` sozinho não distinguiria "sem recurso" de
+         *     "recurso pendente" — os dois têm `outcome` nulo.
+         * @enum {string}
+         */
+        AppealState: "none" | "pending" | "judged";
+        /** PagedScholarshipApplicationQueueOut */
+        PagedScholarshipApplicationQueueOut: {
+            /** Items */
+            items: components["schemas"]["ScholarshipApplicationQueueOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * ScholarshipApplicationQueueOut
+         * @description Uma linha da fila de trabalho da comissão.
+         *
+         *     É um schema próprio, e não o `ScholarshipApplicationOut`: a fila
+         *     responde a outras perguntas (quanto o candidato pediu, quanto a
+         *     comissão já concedeu, sobrou item a analisar, recorreu) e não precisa
+         *     do questionário inteiro em cada linha — quem quer o questionário abre
+         *     a inscrição.
+         *
+         *     As três leituras de nota (`candidate_score`, `committee_score`,
+         *     `fully_reviewed`) são derivadas dos lançamentos a cada resposta: não
+         *     há campo denormalizado a manter em dia, e o teto do item é aplicado
+         *     sobre a soma dos lançamentos daquele item (ver
+         *     `BaremeItem.raw_score`). É por isso que a fila é paginada.
+         */
+        ScholarshipApplicationQueueOut: {
+            /** Id */
+            id: number;
+            /** Student Id */
+            student_id: number;
+            /** Student Name */
+            student_name: string;
+            level: components["schemas"]["ScholarshipLevel"];
+            /** Level Label */
+            level_label: string;
+            /** Research Line */
+            research_line: string | null;
+            /** Advisor Name */
+            advisor_name: string | null;
+            /** Admission Year */
+            admission_year: number | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Fump Level */
+            fump_level: number;
+            band: components["schemas"]["PriorityBand"] | null;
+            /** Candidate Score */
+            candidate_score: string;
+            /** Committee Score */
+            committee_score: string;
+            /** Fully Reviewed */
+            fully_reviewed: boolean;
+            appeal_state: components["schemas"]["AppealState"];
+            appeal_outcome: components["schemas"]["AppealOutcome"] | null;
+            /** Pending Docs */
+            pending_docs: components["schemas"]["PendingDocumentOut"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * BaremeEntryReviewIn
+         * @description A avaliação da comissão sobre um lançamento — **dois campos**.
+         *
+         *     Não há `description`, `quantity`, `item_id` nem `candidate_score`
+         *     aqui, e a ausência é o ponto: a comissão pontua o que o candidato
+         *     lançou e não reescreve o que ele lançou. Campo extra no corpo é
+         *     ignorado pelo pydantic, sem erro — o teste que prova isso manda o
+         *     campo e confere o gravado.
+         *
+         *     `committee_note` tem default vazio porque nota igual à do candidato
+         *     não precisa de justificativa; a divergência sem observação é recusada
+         *     pelo `clean()` do lançamento (`note_required`), que é onde a regra
+         *     mora desde o model.
+         */
+        BaremeEntryReviewIn: {
+            /** Committee Score */
+            committee_score: number | string;
+            /**
+             * Committee Note
+             * @default
+             */
+            committee_note: string;
+        };
+        /** ItemReviewOut */
+        ItemReviewOut: {
+            /** Id */
+            id: number;
+            /** Application Id */
+            application_id: number;
+            /** Item Id */
+            item_id: number;
+            /** Item Code */
+            item_code: string;
+            /** Item Text */
+            item_text: string;
+            item_section: components["schemas"]["BaremeSection"];
+            /** Note */
+            note: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ItemReviewIn
+         * @description A observação da comissão sobre um item inteiro do barema.
+         *
+         *     Outra coisa que `committee_note`: aquela explica **um lançamento**,
+         *     esta comenta o item como um todo. Uma por (inscrição, item) — por isso
+         *     a rota é `PUT`, e reenviar sobrescreve em vez de empilhar.
+         */
+        ItemReviewIn: {
+            /** Item Id */
+            item_id: number;
+            /** Note */
+            note: string;
+        };
+        /**
+         * FumpLevelIn
+         * @description O nível da FUMP transcrito pela Secretaria — **um campo**.
+         *
+         *     O resultado da FUMP chega à Comissão fora do sistema (Q9); aqui ele é
+         *     só transcrito, e vale duas vezes: bônus na nota final (`BONUS_FUMP`) e
+         *     1º critério de desempate. Os limites são os de `NIVEIS_DA_FUMP` (0 é
+         *     "sem nível"), conferidos aqui para que valor fora do domínio pare na
+         *     borda, com 422, em vez de virar linha gravada que ninguém entende.
+         */
+        FumpLevelIn: {
+            /** Fump Level */
+            fump_level: number;
+        };
+        /**
+         * BandOverrideIn
+         * @description A sobrescrita da faixa de prioridade, com a justificativa.
+         *
+         *     A válvula da decisão B6: 2.4-I e 2.4-II não têm pergunta no
+         *     questionário e só chegam por aqui, junto de todo caso omisso.
+         *
+         *     `band_override` nulo **limpa** a sobrescrita e devolve a inscrição à
+         *     faixa derivada do questionário. A justificativa continua aceita nesse
+         *     caso (desfazer também é ato discricionário e merece motivo escrito),
+         *     mas só é *exigida* quando há faixa — quem cobra é o `clean()` do
+         *     model (`override_reason_required`), que é onde a regra mora.
+         */
+        BandOverrideIn: {
+            band_override?: components["schemas"]["PriorityBand"] | null;
+            /**
+             * Band Override Reason
+             * @default
+             */
+            band_override_reason: string;
+        };
+        /**
+         * ScholarshipAppealIn
+         * @description As razões do candidato — **um campo, e sem anexo**.
+         *
+         *     A ausência do anexo é do edital, não do esquecimento: o item 1.3 veta
+         *     a postagem de documento fora do prazo de inscrição, e o recurso ataca
+         *     a pontuação com argumento sobre o que já foi entregue. Ver a docstring
+         *     de `ScholarshipAppeal`.
+         */
+        ScholarshipAppealIn: {
+            /** Text */
+            text: string;
+        };
+        /**
+         * ScholarshipAppealJudgeIn
+         * @description O julgamento da comissão: resultado e fundamentação.
+         *
+         *     A fundamentação vazia é recusada pelo `judge()` do model
+         *     (`appeal_reasoning_required`) e não aqui — decisão sem fundamentação é
+         *     o que o próprio candidato recorreria, e isso é regra do domínio.
+         */
+        ScholarshipAppealJudgeIn: {
+            outcome: components["schemas"]["AppealOutcome"];
+            /** Reasoning */
+            reasoning: string;
         };
     };
     responses: never;
@@ -7637,6 +9442,1036 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrollmentOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_list_editions: {
+        parameters: {
+            query?: {
+                year?: number | null;
+                status?: components["schemas"]["ScholarshipEditionStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_create_edition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScholarshipEditionIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_get_edition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_update_edition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScholarshipEditionPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_open_submissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_start_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_publish_preliminary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_open_appeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_publish_final: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipEditionOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_edition_result: {
+        parameters: {
+            query: {
+                /**
+                 * @description Nível do vínculo a que a bolsa se refere.
+                 *
+                 *     Mesmos valores de `Student.Level` (`apps/academic/models.py`) — a
+                 *     inscrição copia o nível do aluno no ato e o congela. Enum próprio (e não
+                 *     reuso do aninhado) porque enum de módulo é a regra deste app.
+                 */
+                level: "masters" | "doctorate";
+            };
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BandOut"][];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_edition_result_pdf: {
+        parameters: {
+            query: {
+                /**
+                 * @description Nível do vínculo a que a bolsa se refere.
+                 *
+                 *     Mesmos valores de `Student.Level` (`apps/academic/models.py`) — a
+                 *     inscrição copia o nível do aluno no ato e o congela. Enum próprio (e não
+                 *     reuso do aninhado) porque enum de módulo é a regra deste app.
+                 */
+                level: "masters" | "doctorate";
+            };
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_scholarships_router_list_bareme: {
+        parameters: {
+            query?: {
+                level?: components["schemas"]["ScholarshipLevel"] | null;
+            };
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeItemOut"][];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_add_bareme_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaremeItemIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeItemOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_remove_bareme_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_scholarships_router_update_bareme_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaremeItemPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeItemOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_clone_bareme_from_edition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaremeCloneIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeCloneOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_list_committee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitteeMemberOut"][];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_add_committee_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommitteeMemberIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitteeMemberOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_remove_committee_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+                member_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_scholarships_router_get_my_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipApplicationOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_create_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScholarshipApplicationIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipApplicationOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_remove_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_scholarships_router_update_application: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScholarshipApplicationPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipApplicationOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_upload_application_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * ApplicationDocumentKind
+                     * @description Um tipo por resposta "Sim" do questionário que exige comprovante.
+                     *
+                     *     São sete: `has_paid_activity` é a chave que joga o candidato do bloco
+                     *     2.1 para o 2.4 e não pede documento próprio — quem comprova são os
+                     *     incisos abaixo dela.
+                     * @enum {string}
+                     */
+                    kind: "affirmative_action" | "socioeconomic_vulnerability" | "substitute_teacher" | "basic_education_or_collective_health" | "public_service" | "private_service" | "other_non_public_scholarship";
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDocumentOut"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDocumentOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_download_application_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_scholarships_router_list_entries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeEntryOut"][];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_create_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Item Id */
+                    item_id: number;
+                    /** Description */
+                    description: string;
+                    /** Quantity */
+                    quantity: number | string;
+                    /**
+                     * Proof
+                     * Format: binary
+                     */
+                    proof: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeEntryOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_remove_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_scholarships_router_update_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaremeEntryPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeEntryOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_replace_entry_proof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Proof
+                     * Format: binary
+                     */
+                    proof: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeEntryOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_download_entry_proof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    apps_scholarships_router_list_applications: {
+        parameters: {
+            query: {
+                /**
+                 * @description Nível do vínculo a que a bolsa se refere.
+                 *
+                 *     Mesmos valores de `Student.Level` (`apps/academic/models.py`) — a
+                 *     inscrição copia o nível do aluno no ato e o congela. Enum próprio (e não
+                 *     reuso do aninhado) porque enum de módulo é a regra deste app.
+                 */
+                level: "masters" | "doctorate";
+                research_line_id?: number | null;
+                advisor_id?: number | null;
+                admission_year?: number | null;
+                has_paid_activity?: boolean | null;
+                affirmative_action?: boolean | null;
+                socioeconomic_vulnerability?: boolean | null;
+                substitute_teacher?: boolean | null;
+                basic_education_or_collective_health?: boolean | null;
+                public_service?: boolean | null;
+                private_service?: boolean | null;
+                other_non_public_scholarship?: boolean | null;
+                appeal?: components["schemas"]["AppealState"] | null;
+                pending_review?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                edition_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedScholarshipApplicationQueueOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_review_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaremeEntryReviewIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaremeEntryOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_list_item_reviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemReviewOut"][];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_set_item_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemReviewIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemReviewOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_set_fump_level: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FumpLevelIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipApplicationOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_override_band: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BandOverrideIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipApplicationOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_get_appeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipAppealOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_create_appeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScholarshipAppealIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipAppealOut"];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_judge_appeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appeal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScholarshipAppealJudgeIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScholarshipAppealOut"];
                 };
             };
         };
