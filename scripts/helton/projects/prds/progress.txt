@@ -264,3 +264,51 @@ Started: ter. 01 set 2026 11:06:15 -03
   - `_validar_item()` só dispara com as duas FKs **gravadas** (`application_id`
     e `item_id` preenchidos): teste de mismatch é `django_db`, ao contrário do
     espelho de `UniqueConstraint`, que basta o `<fk>_id`.
+
+## 2026-09-01 - f7-recurso-model
+- `ScholarshipAppeal`: `application` `OneToOneField` CASCADE
+  (`related_name="appeal"` — um recurso por candidato por edição, Q14, porque a
+  inscrição já é única em `(edition, student)`), `text`, `submitted_at`
+  (`auto_now_add` — o recurso nasce interposto, não há rascunho), `outcome`
+  nulo até julgar, `reasoning` blank, `decided_at`. `clean()` espelha o
+  `unique` do OneToOne como `duplicate_appeal`. QuerySet com `for_program()`
+  (via `application__program`), `for_edition()` e `pending()`.
+- **Sem model de documento, e a ausência está comentada em CAIXA ALTA na
+  docstring da classe**: o item 1.3 do edital de bolsas veta postagem fora do
+  prazo de inscrição, ao contrário do recurso das isoladas. Um teste
+  (`test_o_recurso_nao_tem_model_de_anexo`) trava a regressão pelo
+  `_meta.related_objects` vazio.
+- `judge(*, outcome, reasoning, at)`: exige `edition.appeal_open()`
+  (`edition_not_appeals_under_review`, 409), recurso ainda não julgado
+  (`appeal_already_judged`, 409), `outcome` do enum
+  (`invalid_appeal_outcome`, 400) e fundamentação não vazia
+  (`appeal_reasoning_required`, 400). Não salva.
+- **Não há recálculo de nota, e a docstring diz por quê**: não existe campo a
+  recalcular — `committee_score()` da inscrição é derivada dos `BaremeEntry` a
+  cada leitura, e `committee_can_review()` já é verdadeiro em
+  `appeals_under_review`, de modo que o deferimento reabre o lançamento sem
+  código novo. O teste
+  `test_deferido_o_recurso_a_nota_muda_sozinha_ao_corrigir_o_lancamento`
+  prova isso ponta a ponta.
+- Migration `0006_scholarshipappeal` gerada, lida (tabela nova,
+  retrocompatível) e aplicada no canteiro. Admin quebra-vidro com
+  `submitted_at` em `readonly_fields`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0006_scholarshipappeal.py`,
+  `.../tests/test_bolsas_recurso.py`.
+- `make ready` verde (1438 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - Teste que precisa da edição em `appeals_under_review` **no banco** tem de
+    percorrer a escada inteira (`open_submissions` → `start_review` →
+    `publish_preliminary(at=)` → `open_appeals`): as transições exigem o estado
+    anterior e não há atalho. Em memória, é mais barato construir a
+    `ScholarshipEdition(status=...)` direto — foi o que o `_recurso()` deste
+    arquivo faz.
+  - Model sem FK própria além da do pai (`ScholarshipAppeal`) monta em memória
+    com `ScholarshipApplication(edition=ScholarshipEdition(program_id=1), ...)`:
+    o `clean()` só consulta o banco com `application_id` preenchido, e sem pk
+    na inscrição os testes de `judge()` rodam sem `django_db`.
+  - `ScholarshipEditionStatus.values` serve de matriz de parametrização para
+    "transição fora do estado" — o caso "o preliminar publicado ainda não abre
+    a fase de recursos" sai de graça.
+---

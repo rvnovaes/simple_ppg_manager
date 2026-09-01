@@ -15,6 +15,7 @@ from .models import (
     BaremeItem,
     CommitteeMember,
     ItemReview,
+    ScholarshipAppeal,
     ScholarshipApplication,
     ScholarshipEdition,
 )
@@ -185,3 +186,21 @@ class ItemReviewAdmin(AuditedModelAdmin):
     list_select_related = ("application", "item")
     raw_id_fields = ("application", "item")
     readonly_fields = CARIMBOS
+
+
+@admin.register(ScholarshipAppeal)
+class ScholarshipAppealAdmin(AuditedModelAdmin):
+    __doc__ = QUEBRA_VIDRO
+
+    list_display = ("application", "outcome", "submitted_at", "decided_at")
+    list_filter = (
+        "application__edition__program",
+        "application__edition",
+        "outcome",
+    )
+    search_fields = ("text", "reasoning", "application__student__person__full_name")
+    list_select_related = ("application",)
+    raw_id_fields = ("application",)
+    # `submitted_at` é `auto_now_add`: reescrevê-lo à mão faria o recurso
+    # parecer interposto dentro do prazo quando não foi.
+    readonly_fields = ("submitted_at", *CARIMBOS)

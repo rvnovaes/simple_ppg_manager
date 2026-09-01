@@ -1565,3 +1565,164 @@ class ItemReview(models.Model):
                 "Esta inscrição já tem observação neste item do barema.",
                 code="duplicate_item_review",
             )
+
+
+# ---------------------------------------------------------------------------
+# ScholarshipAppeal (o recurso contra o resultado preliminar)
+# ---------------------------------------------------------------------------
+
+
+class ScholarshipAppealQuerySet(models.QuerySet["ScholarshipAppeal"]):
+    def for_program(self, program: Any) -> "ScholarshipAppealQuerySet":
+        return self.filter(application__program=program)
+
+    def for_edition(self, edition: Any) -> "ScholarshipAppealQuerySet":
+        return self.filter(application__edition=edition)
+
+    def pending(self) -> "ScholarshipAppealQuerySet":
+        """Os recursos ainda não julgados — a fila da comissão na fase."""
+        return self.filter(outcome__isnull=True)
+
+
+class ScholarshipAppeal(models.Model):
+    """O recurso do candidato contra o resultado preliminar.
+
+    Um por candidato por edição (Q14): a inscrição já é única em
+    `(edition, student)`, então o `OneToOneField` sobre ela é o que fecha
+    a conta — quem recorreu não recorre de novo, e nem a réplica do
+    indeferimento é recurso novo.
+
+    **NÃO EXISTE MODEL DE DOCUMENTO AQUI, E A AUSÊNCIA É DELIBERADA.**
+    O item 1.3 do edital de bolsas veta a postagem de documento fora do
+    prazo de inscrição: o recurso ataca a pontuação com argumento sobre o
+    que já foi entregue, e não com comprovante novo. É o oposto do
+    recurso das isoladas (`apps/academic/models.py`), que aceita anexo —
+    e é por isso que este aviso está escrito: um `ScholarshipAppealDocument`
+    "por simetria com as isoladas" reabriria, sem discussão, a janela que
+    o edital fechou.
+
+    **O deferimento também não recalcula nota nenhuma.** Não há rotina de
+    recálculo neste model porque não há campo a recalcular: a nota da
+    inscrição é derivada dos `BaremeEntry`
+    (`ScholarshipApplication.committee_score()` agrupa, limita e soma a
+    cada leitura). O que o deferimento faz é reabrir o lançamento — e
+    isso já é verdade sem escrever uma linha, porque
+    `ScholarshipEdition.committee_can_review()` vale em
+    `appeals_under_review`, o mesmo estado em que o recurso é julgado.
+    Corrigido o `committee_score` do lançamento atacado, a nota da
+    inscrição muda na leitura seguinte. O snapshot publicado é outra
+    coisa: quem o regrava é o serviço de publicação do resultado final.
+    """
+
+    application = models.OneToOneField(
+        ScholarshipApplication,
+        on_delete=models.CASCADE,
+        related_name="appeal",
+        verbose_name="inscrição",
+    )
+    text = models.TextField(
+        "razões do recurso",
+        help_text="O texto do candidato: o que ele contesta e por quê.",
+    )
+    # Carimbo do ato de interpor: o recurso nasce interposto (não há
+    # rascunho de recurso), então o instante é o da criação da linha.
+    submitted_at = models.DateTimeField("interposto em", auto_now_add=True)
+    outcome = models.CharField(  # noqa: DJ001
+        "resultado",
+        max_length=20,
+        choices=AppealOutcome,
+        null=True,
+        blank=True,
+        help_text="Nulo enquanto o recurso não foi julgado.",
+    )
+    reasoning = models.TextField(
+        "fundamentação da decisão",
+        blank=True,
+        help_text=(
+            "Vazia enquanto não há julgamento; obrigatória no julgamento "
+            "(`judge()`). Decisão sem fundamentação é o que o próprio "
+            "candidato recorreria."
+        ),
+    )
+    decided_at = models.DateTimeField("julgado em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ScholarshipAppealQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "recurso de bolsa"
+        verbose_name_plural = "recursos de bolsa"
+        ordering = ["-submitted_at"]
+
+    def __str__(self) -> str:
+        return f"Recurso de {self.application}"
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        super().clean()
+        self._validar_duplicata()
+
+    def _validar_duplicata(self) -> None:
+        """Espelho do `unique` do `OneToOneField`, como nos demais models
+        do app: `.save()` não roda `clean()`, e sem o espelho o segundo
+        recurso vira `IntegrityError` → 500 em vez de 400 com código."""
+        if self.application_id is None:
+            return
+        duplicatas = ScholarshipAppeal.objects.filter(
+            application_id=self.application_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Esta inscrição já tem recurso interposto.",
+                code="duplicate_appeal",
+            )
+
+    # -- leitura -----------------------------------------------------------
+
+    def judged(self) -> bool:
+        return self.outcome is not None
+
+    # -- transição ---------------------------------------------------------
+    #
+    # Não salva: quem persiste é o router, no mesmo `transaction.atomic()`
+    # do `AuditLog`.
+
+    def judge(self, *, outcome: str, reasoning: str, at: datetime) -> None:
+        """Julga o recurso. Exige a edição em `appeals_under_review`,
+        fundamentação não vazia e recurso ainda não julgado.
+
+        Recebe `at` explícito, como as demais transições que carimbam
+        instante neste app (`publish_preliminary`, `publish_final`): nada
+        aqui olha o relógio por conta própria.
+
+        O que este método **não** faz é recalcular nota — ver a docstring
+        da classe. Deferir é decidir; refazer o lançamento atacado é ato
+        seguinte da comissão, no mesmo estado da edição.
+        """
+        if not self.application.edition.appeal_open():
+            raise InvalidStateTransition(
+                "O recurso só pode ser julgado com a fase de recursos aberta.",
+                code="edition_not_appeals_under_review",
+            )
+        if self.judged():
+            raise InvalidStateTransition(
+                "Este recurso já foi julgado.",
+                code="appeal_already_judged",
+            )
+        if outcome not in AppealOutcome.values:
+            raise DomainError(
+                "Resultado de recurso inválido.",
+                code="invalid_appeal_outcome",
+            )
+        if not reasoning.strip():
+            raise DomainError(
+                "O julgamento do recurso exige fundamentação.",
+                code="appeal_reasoning_required",
+            )
+        self.outcome = outcome
+        self.reasoning = reasoning
+        self.decided_at = at

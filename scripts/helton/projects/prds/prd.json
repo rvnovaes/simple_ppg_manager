@@ -173,7 +173,7 @@
         "f6-lancamento-e-observacao-por-item"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
