@@ -123,7 +123,7 @@ if [[ -f "$REPO_ROOT/scripts/helton/projects/plans/manifest.json" ]] \
    antes da próxima rodada, para regravá-lo sem ele."
 fi
 
-restantes="$( (cd "$REPO_ROOT/plans" && ls -1 *.md 2>/dev/null | grep -vx 'README.md') || true )"
+restantes="$( (cd "$REPO_ROOT/scripts/helton/projects/plans" && ls -1 *.md 2>/dev/null | grep -vx 'README.md') || true )"
 echo ""
 if [[ -n "$restantes" ]]; then
   echo "Planos ainda em scripts/helton/projects/plans/:"
