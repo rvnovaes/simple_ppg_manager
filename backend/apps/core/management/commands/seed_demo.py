@@ -22,7 +22,7 @@ exigir `program_id` em toda rota:
 """
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -55,13 +55,32 @@ from apps.programs.models import (
     ResearchLine,
 )
 from apps.scholarships.models import (
+    AppealOutcome,
+    BaremeEntry,
     BaremeItem,
     BaremeSection,
     BaremeUnit,
     CommitteeMember,
+    PriorityBand,
+    ScholarshipAppeal,
+    ScholarshipApplication,
     ScholarshipEdition,
     ScholarshipEditionStatus,
     ScholarshipLevel,
+)
+from apps.scholarships.models import (
+    # `ApplicationDocument` é nome de dois apps: o do processo seletivo já
+    # está importado abaixo. O apelido evita que o último import vença em
+    # silêncio e a carga anexe o documento no model errado.
+    ApplicationDocument as ScholarshipApplicationDocument,
+)
+from apps.scholarships.models import (
+    ApplicationDocumentKind as ScholarshipApplicationDocumentKind,
+)
+from apps.scholarships.services import (
+    clone_bareme,
+    publish_final,
+    publish_preliminary,
 )
 from apps.selection import services as selecao
 from apps.selection.models import (
@@ -161,6 +180,240 @@ class CandidatoDemo:
     motivo: str = ""
 
 
+@dataclass(frozen=True)
+class CandidatoDeBolsa:
+    """Um candidato à bolsa e o questionário com que ele nasce.
+
+    Um campo por pergunta, porque o questionário é fixo em código: a
+    resposta não é dado cadastrável, e uma tupla de oito booleanos seria
+    ilegível justamente onde a leitura importa — é o questionário que
+    decide a faixa, e a faixa que decide a ordem da lista publicada.
+
+    `lancamentos` é `(código do item, quantidade, descrição)`. O código
+    casa com `ITENS_DO_BAREMA`; a nota do candidato não entra aqui porque
+    é o item que a calcula (`raw_score`).
+    """
+
+    nome: str
+    email: str
+    nivel: str
+    lancamentos: list[tuple[str, Decimal, str]]
+    atividade_remunerada: bool = False
+    acao_afirmativa: bool = False
+    vulnerabilidade: bool = False
+    cadastro_unico: bool = False
+    professor_substituto: bool = False
+    educacao_basica: bool = False
+    servico_publico: bool = False
+    servico_privado: bool = False
+    outra_bolsa: bool = False
+    rendimento: Decimal | None = None
+    carga_horaria: int | None = None
+    # O comprovante que este candidato deixa de enviar. Existe para a
+    # fila da Comissão ter o estado `Sim - Não enviado` do legado: a
+    # resposta e o documento são coisas distintas, e é a divergência
+    # entre as duas que a análise precisa enxergar.
+    comprovante_faltante: str = ""
+
+
+# O barema da carga: quatro itens por nível, em três seções. Os números
+# são os da spec, e servem de conferência da aritmética — 12 meses de
+# grupo de estudos batem exatamente no teto de 3,00, e 3 horas × 0,01
+# dão 0,03. Módulo, e não método, porque `_barema` e a clonagem leem a
+# mesma tabela.
+ITENS_DO_BAREMA: list[tuple[str, str, str, str, Decimal, Decimal]] = [
+    (
+        BaremeSection.FORMATION,
+        "1.1",
+        "Curso de especialização concluído",
+        BaremeUnit.UNIT,
+        Decimal("5.00"),
+        Decimal("10.00"),
+    ),
+    (
+        BaremeSection.FORMATION,
+        "1.3",
+        "Participação em grupo de estudos",
+        BaremeUnit.MONTH,
+        Decimal("0.25"),
+        Decimal("3.00"),
+    ),
+    (
+        BaremeSection.BIBLIOGRAPHIC,
+        "2.1",
+        "Artigo publicado em periódico Qualis A",
+        BaremeUnit.UNIT,
+        Decimal("8.00"),
+        Decimal("24.00"),
+    ),
+    (
+        BaremeSection.EVENTS,
+        "3.1",
+        "Apresentação de trabalho em evento científico",
+        BaremeUnit.HOUR,
+        Decimal("0.01"),
+        Decimal("1.00"),
+    ),
+]
+
+# Quanto a Comissão desconta de um lançamento daquele item. Só estes dois
+# divergem: a divergência é que exige observação escrita, e é ela que o
+# recurso ataca. Item fora do mapa é homologado pelo que o candidato
+# lançou, que é o caso comum.
+DESCONTO_DA_COMISSAO: dict[str, Decimal] = {
+    "1.3": Decimal("1.00"),
+    "3.1": Decimal("0.01"),
+}
+
+OBSERVACAO_DA_COMISSAO = (
+    "Não é possível computar a pontuação integral porque o certificado não "
+    "informa o período das atividades."
+)
+
+# Nível FUMP por candidato, lançado pela Secretaria (a FUMP responde à
+# Comissão, fora do sistema). Bonifica +15 no nível 1 e +9 no nível 2, e é
+# também o primeiro critério de desempate.
+NIVEL_FUMP_POR_CANDIDATO: dict[str, int] = {
+    "Renata Sarmento": 1,
+    "Otávio Bicalho": 2,
+    "Vera Toledo": 1,
+}
+
+# A sobrescrita de faixa da Secretaria. Existe porque 2.4-I e 2.4-II não
+# têm pergunta no questionário: sem ela, duas das dez faixas seriam
+# inalcançáveis e a lista publicada nunca as mostraria com gente.
+FAIXA_SOBRESCRITA_POR_CANDIDATO: dict[str, str] = {
+    # Beatriz, e não um dos gêmeos do sorteio: a sobrescrita move o
+    # candidato de faixa, e mover um dos dois desfaria justamente o empate
+    # que existe para o sorteio rodar.
+    "Beatriz Lacerda": PriorityBand.B24_I,
+}
+
+# Um candidato por forma de faixa, mais a dupla que só o sorteio separa.
+# Mestrado cobre as oito formas; doutorado repete quatro delas, porque as
+# duas listas correm independentes e uma precisa ter conteúdo próprio.
+CANDIDATOS_DE_BOLSA: list[CandidatoDeBolsa] = [
+    CandidatoDeBolsa(
+        nome="Renata Sarmento",
+        email="renata.sarmento@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        acao_afirmativa=True,
+        lancamentos=[
+            ("1.1", Decimal("1"), "Especialização em Direito Público (UFMG)"),
+            ("2.1", Decimal("2"), "Dois artigos em periódico Qualis A"),
+        ],
+    ),
+    CandidatoDeBolsa(
+        nome="Otávio Bicalho",
+        email="otavio.bicalho@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        vulnerabilidade=True,
+        cadastro_unico=True,
+        comprovante_faltante=(
+            ScholarshipApplicationDocumentKind.SOCIOECONOMIC_VULNERABILITY
+        ),
+        lancamentos=[
+            ("1.3", Decimal("12"), "Grupo de estudos em Teoria do Estado"),
+            ("3.1", Decimal("3"), "Comunicação oral no congresso da ANPG"),
+        ],
+    ),
+    # A dupla do sorteio: mesmas respostas, mesmos lançamentos, mesmo
+    # nível FUMP. Os quatro primeiros critérios de desempate empatam, e a
+    # ordem entre os dois sai do sorteio — é a única forma de ver aquele
+    # trecho de `classify()` rodando numa carga.
+    CandidatoDeBolsa(
+        nome="Simone Aguiar",
+        email="simone.aguiar@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        lancamentos=[("1.1", Decimal("1"), "Especialização em Direito Civil")],
+    ),
+    CandidatoDeBolsa(
+        nome="Tarcísio Moura",
+        email="tarcisio.moura@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        lancamentos=[("1.1", Decimal("1"), "Especialização em Direito Civil")],
+    ),
+    CandidatoDeBolsa(
+        nome="Ulisses Pena",
+        email="ulisses.pena@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        atividade_remunerada=True,
+        professor_substituto=True,
+        rendimento=Decimal("3200.00"),
+        carga_horaria=20,
+        lancamentos=[("2.1", Decimal("1"), "Artigo em periódico Qualis A")],
+    ),
+    CandidatoDeBolsa(
+        nome="Vera Toledo",
+        email="vera.toledo@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        atividade_remunerada=True,
+        servico_publico=True,
+        rendimento=Decimal("1400.00"),
+        carga_horaria=20,
+        lancamentos=[
+            ("1.1", Decimal("2"), "Duas especializações concluídas"),
+            ("3.1", Decimal("3"), "Apresentação no seminário de pesquisa"),
+        ],
+    ),
+    CandidatoDeBolsa(
+        nome="Wilson Drumond",
+        email="wilson.drumond@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        atividade_remunerada=True,
+        servico_privado=True,
+        rendimento=Decimal("2100.00"),
+        carga_horaria=30,
+        lancamentos=[("2.1", Decimal("4"), "Quatro artigos Qualis A")],
+    ),
+    CandidatoDeBolsa(
+        nome="Yara Nogueira",
+        email="yara.nogueira@ppgd.test",
+        nivel=ScholarshipLevel.MASTERS,
+        atividade_remunerada=True,
+        rendimento=Decimal("5000.00"),
+        carga_horaria=40,
+        lancamentos=[("1.3", Decimal("6"), "Grupo de estudos em Direito Penal")],
+    ),
+    CandidatoDeBolsa(
+        nome="Alceu Ramires",
+        email="alceu.ramires@ppgd.test",
+        nivel=ScholarshipLevel.DOCTORATE,
+        vulnerabilidade=True,
+        lancamentos=[
+            ("2.1", Decimal("3"), "Três artigos em periódico Qualis A"),
+            ("1.3", Decimal("12"), "Grupo de estudos em Filosofia do Direito"),
+        ],
+    ),
+    CandidatoDeBolsa(
+        nome="Beatriz Lacerda",
+        email="beatriz.lacerda@ppgd.test",
+        nivel=ScholarshipLevel.DOCTORATE,
+        lancamentos=[("1.1", Decimal("2"), "Duas especializações concluídas")],
+    ),
+    CandidatoDeBolsa(
+        nome="Célio Vasques",
+        email="celio.vasques@ppgd.test",
+        nivel=ScholarshipLevel.DOCTORATE,
+        atividade_remunerada=True,
+        servico_publico=True,
+        rendimento=Decimal("2800.00"),
+        carga_horaria=20,
+        lancamentos=[("2.1", Decimal("2"), "Dois artigos Qualis A")],
+    ),
+    CandidatoDeBolsa(
+        nome="Dulce Peixoto",
+        email="dulce.peixoto@ppgd.test",
+        nivel=ScholarshipLevel.DOCTORATE,
+        atividade_remunerada=True,
+        servico_privado=True,
+        rendimento=Decimal("2800.00"),
+        carga_horaria=25,
+        lancamentos=[("3.1", Decimal("3"), "Apresentação em congresso internacional")],
+    ),
+]
+
+
 class Command(BaseCommand):
     help = "Popula o banco com uma carga de demonstração (idempotente)."
 
@@ -234,7 +487,7 @@ class Command(BaseCommand):
             ciclo, ofertas = self._ciclo(programa, disciplinas, docentes, periodos)
             self._requerimentos(programa, ciclo, ofertas, periodos)
             self._selecao(programa, linhas, projetos, docentes)
-            self._bolsas(programa, docentes)
+            self._bolsas(programa, projetos, docentes)
 
         self._relatar(programa, equipe)
 
@@ -605,13 +858,22 @@ class Command(BaseCommand):
                 if situacao != EnrollmentAdjustmentRequest.Status.OPEN
                 else None
             )
+            # A chave inclui a justificativa, e não é só (student, term),
+            # porque `EnrollmentAdjustmentRequest` NÃO tem constraint única
+            # nesse par — o domínio deixa o mesmo aluno abrir mais de um
+            # acerto no mesmo período, e é o que ele faz assim que alguém
+            # usa a tela. Com a chave curta, o `get_or_create` da segunda
+            # carga encontra duas linhas e estoura MultipleObjectsReturned,
+            # levando junto tudo o que vem depois. A justificativa é texto
+            # que só esta carga escreve: é a marca que identifica o acerto
+            # DELA entre os que o uso do sistema criou em volta.
             acerto, criado = EnrollmentAdjustmentRequest.objects.get_or_create(
                 student=aluno,
                 term=termo,
+                justification=justificativa,
                 defaults={
                     "program": programa,
                     "status": situacao,
-                    "justification": justificativa,
                     "decision_note": motivo,
                     "decided_at": decidido,
                 },
@@ -1404,75 +1666,92 @@ class Command(BaseCommand):
     # Edital de bolsas
     # ------------------------------------------------------------------
 
-    def _bolsas(self, programa: Program, docentes: list[Teacher]) -> None:
-        """Uma edição de bolsas com inscrições abertas, barema e comissão.
+    def _bolsas(
+        self,
+        programa: Program,
+        projetos: list[CollectiveProject],
+        docentes: list[Teacher],
+    ) -> None:
+        """Duas edições: a do ano passado encerrada, a deste ano em análise.
 
         Roda para **todo** programa que a carga semeia, e é isso que
         importa: com um tenant só, a listagem que esqueceu `for_program()`
         devolve exatamente o mesmo resultado da que filtrou, e o vazamento
         não aparece em teste nenhum.
 
-        O barema é uma amostra (dois itens por nível), não o do edital
-        real: o que a carga precisa é de item com `cap` para exercitar o
-        teto e de seções diferentes para a tela de lançamento ter o que
-        agrupar.
+        Duas edições, e não uma, porque nenhum estado sozinho enche as
+        cinco telas do módulo. A encerrada dá conteúdo ao resultado
+        publicado, ao PDF e ao recurso julgado; a corrente dá fila de
+        trabalho à Comissão, que numa edição já publicada seria só
+        leitura. De quebra, é o par que exercita `clone_bareme` — a
+        operação que a Secretaria faz uma vez por ano e que, com uma
+        edição só, nunca apareceria.
+
+        O caminho é o do sistema, não o do banco: `open_submissions()`,
+        `start_review()`, `review()`, `publish_preliminary()`, `judge()`,
+        `publish_final()`. Carga que escreve `status="final_result"` na
+        marra produz um banco que nenhuma sequência de cliques produziria
+        — e é justamente contra isso que a demonstração serve.
         """
-        agora = timezone.now().date()
+        anterior = self._edicao_de_bolsa(
+            programa, ANO_DA_BOLSA - 1, docentes, clonar_de=None
+        )
+        atual = self._edicao_de_bolsa(
+            programa, ANO_DA_BOLSA, docentes, clonar_de=anterior
+        )
+        candidatos = self._candidatos_de_bolsa(programa, projetos, docentes)
+        self._ciclo_encerrado(anterior, candidatos)
+        self._ciclo_em_analise(atual, candidatos)
+
+    def _edicao_de_bolsa(
+        self,
+        programa: Program,
+        ano: int,
+        docentes: list[Teacher],
+        *,
+        clonar_de: ScholarshipEdition | None,
+    ) -> ScholarshipEdition:
+        """A edição em rascunho, com barema e comissão, pronta para abrir.
+
+        O cronograma nasce relativo ao ano da edição, e não ao instante da
+        carga: a de `ANO_DA_BOLSA - 1` tem de aparecer com datas no
+        passado, senão a tela mostra um edital encerrado cujo prazo de
+        recurso ainda não venceu.
+
+        `clonar_de` é o caminho real da Secretaria: o barema do ano novo
+        sai do ano anterior e é ajustado, não redigitado. Quando é `None`
+        (a primeira edição), os itens vêm das definições abaixo.
+        """
+        base = date(ano, 3, 1)
         edicao, criada = ScholarshipEdition.objects.get_or_create(
             program=programa,
-            year=ANO_DA_BOLSA,
+            year=ano,
             defaults={
-                "title": f"Edital de Bolsas {programa.acronym} {ANO_DA_BOLSA}",
-                "submission_starts_on": agora - timedelta(days=7),
-                "submission_ends_on": agora + timedelta(days=21),
-                "preliminary_result_on": agora + timedelta(days=30),
-                "appeal_ends_on": agora + timedelta(days=35),
-                "final_result_on": agora + timedelta(days=40),
+                "title": f"Edital de Bolsas {programa.acronym} {ano}",
+                "submission_starts_on": base,
+                "submission_ends_on": base + timedelta(days=14),
+                "preliminary_result_on": base + timedelta(days=30),
+                "appeal_ends_on": base + timedelta(days=35),
+                "final_result_on": base + timedelta(days=45),
             },
         )
         self._contar("edição de bolsas", criada)
 
-        definicoes = [
-            (
-                BaremeSection.FORMATION,
-                "1.1",
-                "Curso de especialização concluído",
-                BaremeUnit.UNIT,
-                Decimal("5.00"),
-                Decimal("10.00"),
-            ),
-            (
-                BaremeSection.BIBLIOGRAPHIC,
-                "2.1",
-                "Artigo publicado em periódico Qualis A",
-                BaremeUnit.UNIT,
-                Decimal("8.00"),
-                Decimal("24.00"),
-            ),
-        ]
-        for nivel in ScholarshipLevel.values:
-            for secao, codigo, texto, unidade, pontos, teto in definicoes:
-                _, criado_item = BaremeItem.objects.get_or_create(
-                    edition=edicao,
-                    level=nivel,
-                    code=codigo,
-                    defaults={
-                        "section": secao,
-                        "text": texto,
-                        "unit": unidade,
-                        "points_per_unit": pontos,
-                        "cap": teto,
-                    },
-                )
-                self._contar("item do barema", criado_item)
+        if edicao.bareme_editable() and not edicao.bareme_items.exists():
+            if clonar_de is not None:
+                itens = clone_bareme(source=clonar_de, target=edicao)
+                for _ in itens:
+                    self._contar("item do barema (clonado)", True)
+            else:
+                self._barema(edicao)
 
         for docente in docentes[:2]:
             _, criado_membro = CommitteeMember.objects.get_or_create(
                 edition=edicao,
                 teacher=docente,
                 defaults={
-                    "appointed_on": agora - timedelta(days=30),
-                    "ordinance": f"Portaria {ANO_DA_BOLSA}/01",
+                    "appointed_on": base - timedelta(days=30),
+                    "ordinance": f"Portaria {ano}/01",
                 },
             )
             self._contar("membro da comissão de bolsas", criado_membro)
@@ -1487,13 +1766,389 @@ class Command(BaseCommand):
             email="comissao.bolsas@ppgd.test",
             papel="Comissão de Bolsas",
         )
+        return edicao
 
-        # Só na primeira carga: `open_submissions()` congela o barema, e
-        # numa segunda rodada a edição já saiu do rascunho — o
-        # `get_or_create` acima adota a que existe e nada é reescrito.
+    def _barema(self, edicao: ScholarshipEdition) -> None:
+        """Quatro itens por nível, em três seções.
+
+        Não é o barema do edital real (que tem seis seções e dezenas de
+        itens): é a amostra menor que ainda exercita tudo o que a tela e o
+        cálculo precisam — seções diferentes para a análise ter o que
+        agrupar, e as três unidades que aparecem nos dados de 2026.
+
+        Os números saem da spec e servem de conferência da aritmética:
+        1 semestre × 0,50 = 0,50; 12 meses de grupo de estudos batem
+        exatamente no teto de 3,00; 3 horas × 0,01 = 0,03. O teto é do
+        **item**, aplicado sobre a soma dos lançamentos — é por isso que
+        o 2.1 nasce com teto 24,00 e um candidato lança dois artigos.
+        """
+        for nivel in ScholarshipLevel.values:
+            for secao, codigo, texto, unidade, pontos, teto in ITENS_DO_BAREMA:
+                _, criado = BaremeItem.objects.get_or_create(
+                    edition=edicao,
+                    level=nivel,
+                    code=codigo,
+                    defaults={
+                        "section": secao,
+                        "text": texto,
+                        "unit": unidade,
+                        "points_per_unit": pontos,
+                        "cap": teto,
+                    },
+                )
+                self._contar("item do barema", criado)
+
+    def _candidatos_de_bolsa(
+        self,
+        programa: Program,
+        projetos: list[CollectiveProject],
+        docentes: list[Teacher],
+    ) -> list[tuple[Student, CandidatoDeBolsa]]:
+        """Os alunos que disputam a bolsa, um por forma de faixa.
+
+        São vínculos próprios, e não os quatro regulares de `_alunos`:
+        aqueles existem para as telas de aluno e de acerto, e amarrar a
+        demonstração de bolsas a eles faria uma mudança lá quebrar a lista
+        publicada aqui. Aqui o que interessa é o questionário, e cada
+        candidato existe para produzir uma faixa diferente.
+
+        A dupla de 2.1-II é deliberada: mesmas respostas, mesmos
+        lançamentos, mesmo nível FUMP e mesmos subtotais. Os quatro
+        primeiros critérios de desempate não resolvem, e a lista só sai
+        porque o **sorteio** roda — que é a única forma de ver aquele
+        código funcionando numa carga.
+        """
+        alunos = []
+        for indice, definicao in enumerate(CANDIDATOS_DE_BOLSA):
+            pessoa = self._pessoa(
+                programa,
+                nome=definicao.nome,
+                email=definicao.email,
+                papel="Discente",
+            )
+            aluno, criado = Student.objects.get_or_create(
+                person=pessoa,
+                modality=Student.Modality.REGULAR,
+                defaults={
+                    "program": programa,
+                    "level": definicao.nivel,
+                    "project": projetos[indice % len(projetos)],
+                    "advisor": docentes[indice % len(docentes)],
+                    "admission_date": date(ANO_DA_BOLSA - 1, 3, 1),
+                    # Prefixo com a sigla porque `registration_number` é
+                    # unique GLOBAL, e não por programa (ver `_alunos`).
+                    "registration_number": f"{programa.acronym}B{2000 + indice}",
+                    "status": Student.Status.ACTIVE,
+                },
+            )
+            self._contar("aluno candidato a bolsa", criado)
+            alunos.append((aluno, definicao))
+        return alunos
+
+    def _ciclo_encerrado(
+        self,
+        edicao: ScholarshipEdition,
+        candidatos: list[tuple[Student, CandidatoDeBolsa]],
+        *,
+        _agora: datetime | None = None,
+    ) -> None:
+        """Leva a edição do rascunho ao resultado final, pelo caminho real.
+
+        Cada bloco é guardado pelo estado, e não por uma flag da carga:
+        rodar de novo encontra a edição já em `final_result` e não repete
+        transição nenhuma. É o mesmo motivo de a carga inteira ser
+        idempotente — quem roda `make seed` duas vezes é você, não um
+        teste.
+        """
+        agora = _agora or timezone.now()
+
         if edicao.status == ScholarshipEditionStatus.DRAFT:
             edicao.open_submissions()
             edicao.save(update_fields=["status", "updated_at"])
+
+        if edicao.status == ScholarshipEditionStatus.SUBMISSIONS_OPEN:
+            for aluno, definicao in candidatos:
+                self._inscricao_de_bolsa(edicao, aluno, definicao, agora)
+            edicao.start_review()
+            edicao.save(update_fields=["status", "updated_at"])
+
+        if edicao.status == ScholarshipEditionStatus.UNDER_REVIEW:
+            self._analise(edicao, agora, parcial=False)
+            self._fump_e_faixa(edicao)
+            publish_preliminary(edition=edicao)
+            edicao.refresh_from_db()
+
+        if edicao.status == ScholarshipEditionStatus.PRELIMINARY_RESULT:
+            self._recurso(edicao)
+            edicao.open_appeals()
+            edicao.save(update_fields=["status", "updated_at"])
+
+        if edicao.status == ScholarshipEditionStatus.APPEALS_UNDER_REVIEW:
+            self._julgar_recurso(edicao, agora)
+            publish_final(edition=edicao)
+            edicao.refresh_from_db()
+
+    def _ciclo_em_analise(
+        self,
+        edicao: ScholarshipEdition,
+        candidatos: list[tuple[Student, CandidatoDeBolsa]],
+        *,
+        _agora: datetime | None = None,
+    ) -> None:
+        """Para em `under_review`, com a análise pela metade.
+
+        É este estado que dá conteúdo à tela da Comissão: o filtro
+        "somente candidatos com itens a analisar" precisa de gente dos
+        dois lados, e `fully_reviewed()` precisa ser verdadeiro para uns e
+        falso para outros. Numa edição já publicada, a tela existe mas não
+        tem o que fazer.
+        """
+        agora = _agora or timezone.now()
+
+        if edicao.status == ScholarshipEditionStatus.DRAFT:
+            edicao.open_submissions()
+            edicao.save(update_fields=["status", "updated_at"])
+
+        if edicao.status == ScholarshipEditionStatus.SUBMISSIONS_OPEN:
+            for aluno, definicao in candidatos:
+                self._inscricao_de_bolsa(edicao, aluno, definicao, agora)
+            edicao.start_review()
+            edicao.save(update_fields=["status", "updated_at"])
+            self._analise(edicao, agora, parcial=True)
+            self._fump_e_faixa(edicao)
+
+    def _inscricao_de_bolsa(
+        self,
+        edicao: ScholarshipEdition,
+        aluno: Student,
+        definicao: CandidatoDeBolsa,
+        agora: datetime,
+    ) -> ScholarshipApplication:
+        """A inscrição de um candidato: questionário, comprovantes e itens."""
+        inscricao, criada = ScholarshipApplication.objects.get_or_create(
+            edition=edicao,
+            student=aluno,
+            defaults={
+                "program": edicao.program,
+                # `definicao.nivel`, e não `aluno.level`: o campo do
+                # Student é nulável (aluno de isolada não tem nível), e a
+                # inscrição congela um nível que precisa existir.
+                "level": definicao.nivel,
+                "submitted_at": agora,
+                "has_paid_activity": definicao.atividade_remunerada,
+                "affirmative_action": definicao.acao_afirmativa,
+                "socioeconomic_vulnerability": definicao.vulnerabilidade,
+                "cadastro_unico": definicao.cadastro_unico,
+                "substitute_teacher": definicao.professor_substituto,
+                "basic_education_or_collective_health": definicao.educacao_basica,
+                "public_service": definicao.servico_publico,
+                "private_service": definicao.servico_privado,
+                "other_non_public_scholarship": definicao.outra_bolsa,
+                "monthly_income": definicao.rendimento,
+                "weekly_hours": definicao.carga_horaria,
+            },
+        )
+        self._contar("inscrição de bolsa", criada)
+        self._comprovantes_do_questionario(inscricao, definicao)
+        self._lancamentos(inscricao, definicao)
+        return inscricao
+
+    def _comprovantes_do_questionario(
+        self, inscricao: ScholarshipApplication, definicao: CandidatoDeBolsa
+    ) -> None:
+        """Anexa o que cada "Sim" do questionário exige.
+
+        A lista sai de `pending_docs()`, e não de uma cópia do mapa aqui:
+        no dia em que uma resposta passar a exigir comprovante, a carga
+        acompanha sozinha. Sobra um candidato de propósito sem um dos
+        anexos — é o `Sim - Não enviado` do legado, e a Comissão precisa
+        ver esse estado na fila.
+        """
+        for tipo in inscricao.pending_docs():
+            if tipo == definicao.comprovante_faltante:
+                continue
+            documento = ScholarshipApplicationDocument(application=inscricao, kind=tipo)
+            documento.file.save(f"{tipo}.pdf", ContentFile(PDF_MINIMO), save=False)
+            documento.save()
+            self._contar("comprovante do questionário", True)
+
+    def _lancamentos(
+        self, inscricao: ScholarshipApplication, definicao: CandidatoDeBolsa
+    ) -> None:
+        """Os itens que o candidato lança, com comprovante obrigatório.
+
+        `candidate_score` é calculado pelo item (`raw_score`), e não
+        digitado: é a mesma conta que a tela faz, e escrever um número à
+        mão aqui esconderia justamente o erro que a conferência procura.
+        """
+        for codigo, quantidade, descricao in definicao.lancamentos:
+            item = BaremeItem.objects.filter(
+                edition=inscricao.edition, level=inscricao.level, code=codigo
+            ).first()
+            if item is None:
+                continue
+            if BaremeEntry.objects.filter(
+                application=inscricao, item=item, description=descricao
+            ).exists():
+                continue
+            lancamento = BaremeEntry(
+                application=inscricao,
+                item=item,
+                description=descricao,
+                quantity=quantidade,
+                candidate_score=item.raw_score(quantidade),
+            )
+            lancamento.proof.save(f"{codigo}.pdf", ContentFile(PDF_MINIMO), save=False)
+            lancamento.save()
+            self._contar("lançamento do barema", True)
+
+    def _analise(
+        self, edicao: ScholarshipEdition, agora: datetime, *, parcial: bool
+    ) -> None:
+        """A Comissão avalia lançamento a lançamento.
+
+        A nota da comissão bate com a do candidato na maioria dos casos; o
+        `desconto` da definição é o que produz divergência — e divergência
+        **exige** observação (`note_required` no `clean()`), que é a
+        fundamentação que o recurso ataca depois.
+
+        Com `parcial=True` metade dos candidatos fica sem avaliação
+        nenhuma: é o que enche o filtro "somente candidatos com itens a
+        analisar".
+        """
+        inscricoes = list(
+            ScholarshipApplication.objects.filter(edition=edicao)
+            .select_related("student__person")
+            .order_by("pk")
+        )
+        for posicao, inscricao in enumerate(inscricoes):
+            if parcial and posicao % 2 == 1:
+                continue
+            for lancamento in inscricao.bareme_entries.select_related("item"):
+                if lancamento.committee_score is not None:
+                    continue
+                desconto = DESCONTO_DA_COMISSAO.get(lancamento.item.code)
+                if desconto is None:
+                    nota = lancamento.candidate_score
+                    observacao = ""
+                else:
+                    nota = max(lancamento.candidate_score - desconto, Decimal("0.00"))
+                    observacao = OBSERVACAO_DA_COMISSAO
+                lancamento.review(
+                    committee_score=nota, committee_note=observacao, at=agora
+                )
+                lancamento.save(
+                    update_fields=[
+                        "committee_score",
+                        "committee_note",
+                        "reviewed_at",
+                        "updated_at",
+                    ]
+                )
+                self._contar("lançamento avaliado", True)
+
+    def _fump_e_faixa(self, edicao: ScholarshipEdition) -> None:
+        """O que só a Secretaria lança: nível FUMP e sobrescrita de faixa.
+
+        A FUMP manda o resultado direto à Comissão, fora do sistema — o
+        aluno não digita nem anexa. E a sobrescrita existe porque as
+        faixas 2.4-I e 2.4-II não têm pergunta no questionário: sem ela,
+        duas das dez faixas seriam inalcançáveis. Aqui um candidato nasce
+        com a faixa trocada, com justificativa, que é o registro que a
+        auditoria cobra.
+        """
+        for inscricao in ScholarshipApplication.objects.filter(
+            edition=edicao
+        ).select_related("student__person"):
+            nome = inscricao.student.person.full_name
+            campos = []
+            nivel_fump = NIVEL_FUMP_POR_CANDIDATO.get(nome)
+            if nivel_fump is not None and inscricao.fump_level != nivel_fump:
+                inscricao.fump_level = nivel_fump
+                campos.append("fump_level")
+            faixa = FAIXA_SOBRESCRITA_POR_CANDIDATO.get(nome)
+            if faixa is not None and not inscricao.band_override:
+                inscricao.band_override = faixa
+                inscricao.band_override_reason = (
+                    "Vínculo comprovado pela Secretaria fora do questionário, "
+                    "conforme decisão da Comissão registrada em ata."
+                )
+                campos += ["band_override", "band_override_reason"]
+            if campos:
+                inscricao.save(update_fields=[*campos, "updated_at"])
+                self._contar("inscrição ajustada pela Secretaria", True)
+
+    def _recurso(self, edicao: ScholarshipEdition) -> None:
+        """Um recurso interposto, ainda sem julgamento.
+
+        Vai em quem a Comissão descontou: recurso contra nota que ninguém
+        cortou não teria o que atacar, e é a observação da divergência que
+        dá ao candidato o que contestar — que é exatamente o motivo de a
+        publicação do preliminar revelar as observações.
+        """
+        inscricao = (
+            ScholarshipApplication.objects.filter(edition=edicao)
+            .filter(bareme_entries__committee_note__gt="")
+            .order_by("pk")
+            .first()
+        )
+        if inscricao is None or hasattr(inscricao, "appeal"):
+            return
+        ScholarshipAppeal.objects.create(
+            application=inscricao,
+            text=(
+                "O certificado anexado indica o período integral da atividade "
+                "na página 2, que peço seja reconsiderada."
+            ),
+        )
+        self._contar("recurso de bolsa", True)
+
+    def _julgar_recurso(self, edicao: ScholarshipEdition, agora: datetime) -> None:
+        """Defere em parte e refaz o lançamento atacado.
+
+        São dois atos, e o model os mantém separados de propósito:
+        `judge()` decide, e refazer a nota é ato seguinte da Comissão, no
+        mesmo estado da edição. É esse segundo passo que dá sentido a
+        "deferido parcialmente" — sem ele o deferimento não mudaria a
+        lista, e o `publish_final` sairia igual ao preliminar.
+        """
+        for recurso in ScholarshipAppeal.objects.filter(
+            application__edition=edicao
+        ).select_related("application"):
+            if recurso.judged():
+                continue
+            recurso.judge(
+                outcome=AppealOutcome.PARTIALLY_GRANTED,
+                reasoning=(
+                    "Reconhecida a comprovação do período no item 1.3; mantido "
+                    "o corte do item 3.1, cuja carga horária não está no "
+                    "certificado."
+                ),
+                at=agora,
+            )
+            recurso.save(update_fields=["outcome", "reasoning", "decided_at"])
+            self._contar("recurso julgado", True)
+
+            for lancamento in recurso.application.bareme_entries.select_related("item"):
+                if lancamento.item.code != "1.3":
+                    continue
+                lancamento.review(
+                    committee_score=lancamento.candidate_score,
+                    committee_note=(
+                        "Recurso deferido em parte: período comprovado na "
+                        "página 2 do certificado."
+                    ),
+                    at=agora,
+                )
+                lancamento.save(
+                    update_fields=[
+                        "committee_score",
+                        "committee_note",
+                        "reviewed_at",
+                        "updated_at",
+                    ]
+                )
+                self._contar("lançamento refeito após recurso", True)
 
     # ------------------------------------------------------------------
     # Relato
@@ -1535,6 +2190,8 @@ class Command(BaseCommand):
             ("Docente de oferta", "bruno.rocha@ppgd.test"),
             ("Docente presidente de banca", "nubia.prates@ppgd.test"),
             ("Discente com acerto aberto", "daniel.prado@ppgd.test"),
+            ("Candidata a bolsa (2.1-I, ação afirmativa)", "renata.sarmento@ppgd.test"),
+            ("Candidato a bolsa (2.4-V, serviço público)", "vera.toledo@ppgd.test"),
             ("Candidato em rascunho", "isabela.fontes@externo.test"),
             ("Candidato deferido", "karina.belo@externo.test"),
         ]
