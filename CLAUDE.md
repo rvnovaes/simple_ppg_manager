@@ -542,3 +542,11 @@ As que já custaram iteração aqui:
   devia dar 403 (ou o contrário). Fixture que só precisa do dado grava pelo ORM;
   quando dois papéis precisam mesmo agir no mesmo teste, cada um recebe um
   `Client()` próprio.
+- **Upload só funciona em `POST`: o Django não parseia `multipart/form-data` em
+  `PUT` nem em `PATCH`.** `HttpRequest._load_post_and_files` devolve `POST` e
+  `FILES` vazios quando o método não é POST, então uma rota Ninja com
+  `Form(...)`/`File(...)` sob `@router.patch` recebe corpo vazio — 422 por campo
+  faltando, ou pior, os defaults aplicados como se o cliente tivesse mandado.
+  Não há erro que aponte a causa. Rota que recebe arquivo é `POST`, sempre; a
+  retificação dos demais campos fica no `PATCH` em JSON, ao lado
+  (`POST .../entries/{id}/proof` × `PATCH .../entries/{id}/`).

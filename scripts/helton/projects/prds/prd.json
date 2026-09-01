@@ -292,7 +292,7 @@
         "f11-api-inscricao-e-documentos"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

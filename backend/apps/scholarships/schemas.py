@@ -13,6 +13,7 @@ from ninja import Schema
 from .models import (
     ApplicationDocument,
     ApplicationDocumentKind,
+    BaremeEntry,
     BaremeItem,
     BaremeSection,
     BaremeUnit,
@@ -461,3 +462,115 @@ class ScholarshipApplicationOut(Schema):
         return [
             {"kind": kind, "kind_label": rotulos[kind]} for kind in obj.pending_docs()
         ]
+
+
+# ---------------------------------------------------------------------------
+# Lançamentos do barema
+# ---------------------------------------------------------------------------
+
+
+class BaremeEntryIn(Schema):
+    """O que o candidato digita ao lançar uma linha do barema.
+
+    **Três campos, e só três.** Não há `candidate_score` aqui de
+    propósito: a nota do candidato é *calculada* pelo servidor como
+    `item.raw_score(quantity)`, e aceitá-la do corpo deixaria o candidato
+    escolher a própria pontuação. Também não há `committee_score` nem
+    `committee_note` — a nota da comissão tem rota e permissão próprias
+    (`review_baremeentry`, f13), e é assim que "a comissão não mexe no que
+    o aluno digitou, e o aluno não mexe no que a comissão decidiu" vira
+    código, e não combinado.
+
+    Viaja como **multipart** junto com o comprovante (`Form(...)` no
+    router): sem comprovante o lançamento não existe (Q11), então não há
+    caminho de criar vazio e anexar depois.
+    """
+
+    item_id: int
+    description: str
+    quantity: decimal.Decimal
+
+
+class BaremeEntryPatch(Schema):
+    """Retificação do lançamento: só os campos presentes são aplicados.
+
+    JSON, ao contrário do `BaremeEntryIn` — o comprovante tem rota
+    própria porque o Django não parseia multipart em PATCH. Os campos da
+    comissão continuam de fora, pela mesma razão do `In`.
+    """
+
+    item_id: int | None = None
+    description: str | None = None
+    quantity: decimal.Decimal | None = None
+
+
+class BaremeEntryOut(Schema):
+    """O lançamento como a tela do candidato e a da comissão o veem.
+
+    Os dados do item viajam resolvidos (`item_code`, `item_text`,
+    `item_section`) porque as duas telas agrupam os lançamentos por seção
+    do barema e o texto da linha é do edital, não do front.
+
+    O comprovante sai como nome e tamanho, nunca como caminho ou URL —
+    mesmo motivo de `ApplicationDocumentOut`: o MEDIA é servido pelo Nginx
+    sem passar pelo Django, e o único caminho para o conteúdo é a rota de
+    download, que audita o acesso.
+    """
+
+    id: int
+    application_id: int
+    item_id: int
+    item_code: str
+    item_text: str
+    item_section: BaremeSection
+    item_section_label: str
+    item_unit: BaremeUnit
+    item_unit_label: str
+    description: str
+    quantity: decimal.Decimal
+    candidate_score: decimal.Decimal
+    committee_score: decimal.Decimal | None
+    committee_note: str
+    reviewed_at: datetime.datetime | None
+    proof_filename: str
+    proof_size: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_item_code(obj: BaremeEntry) -> str:
+        return obj.item.code
+
+    @staticmethod
+    def resolve_item_text(obj: BaremeEntry) -> str:
+        return obj.item.text
+
+    @staticmethod
+    def resolve_item_section(obj: BaremeEntry) -> str:
+        return obj.item.section
+
+    @staticmethod
+    def resolve_item_section_label(obj: BaremeEntry) -> str:
+        return obj.item.get_section_display()
+
+    @staticmethod
+    def resolve_item_unit(obj: BaremeEntry) -> str:
+        return obj.item.unit
+
+    @staticmethod
+    def resolve_item_unit_label(obj: BaremeEntry) -> str:
+        return obj.item.get_unit_display()
+
+    @staticmethod
+    def resolve_proof_filename(obj: BaremeEntry) -> str:
+        return Path(obj.proof.name or "").name
+
+    @staticmethod
+    def resolve_proof_size(obj: BaremeEntry) -> int:
+        """Arquivo sumido do storage vale 0, e não erro 500 — mesma
+        decisão de `ApplicationDocumentOut.resolve_size`: a comissão
+        precisa continuar vendo o lançamento para poder pedir o reenvio."""
+        try:
+            return obj.proof.size
+        except (FileNotFoundError, ValueError):
+            return 0

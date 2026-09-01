@@ -28,6 +28,7 @@ from apps.programs.models import Program
 from .models import (
     ApplicationDocument,
     ApplicationDocumentKind,
+    BaremeEntry,
     BaremeItem,
     CommitteeMember,
     ScholarshipApplication,
@@ -39,6 +40,9 @@ from .schemas import (
     ApplicationDocumentOut,
     BaremeCloneIn,
     BaremeCloneOut,
+    BaremeEntryIn,
+    BaremeEntryOut,
+    BaremeEntryPatch,
     BaremeItemIn,
     BaremeItemOut,
     BaremeItemPatch,
@@ -757,4 +761,299 @@ def download_application_document(request: HttpRequest, document_id: int):
         documento.file.open("rb"),
         as_attachment=True,
         filename=Path(documento.file.name or "").name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Lançamentos do barema
+# ---------------------------------------------------------------------------
+#
+# O comprovante vem **no mesmo POST** (multipart), e não em um segundo
+# passo: sem comprovante o lançamento não existe (Q11), então um lançamento
+# vazio à espera de anexo seria um estado que o domínio não reconhece — e
+# que a comissão acabaria recebendo para analisar.
+#
+# `candidate_score` é gravado pelo servidor (`item.raw_score(quantity)`) e
+# não existe no schema de entrada: aceitá-lo do corpo deixaria o candidato
+# escolher a própria nota. `committee_score` e `committee_note` também
+# ficam de fora — são da rota de avaliação (f13), com permissão própria.
+
+
+def _lancamentos(program: Program):
+    return BaremeEntry.objects.for_program(program).select_related(
+        "item", "application__student__person"
+    )
+
+
+def _garantir_acesso_a_inscricao(
+    request: HttpRequest, inscricao: ScholarshipApplication, program: Program
+) -> None:
+    """Quem não é o dono da inscrição precisa da permissão ampla.
+
+    `view_baremeentry` sozinha não serve de porteiro: o papel Discente
+    também a tem (é com ela que o candidato lê os próprios lançamentos),
+    então uma checagem só de permissão abriria o barema de um candidato
+    para todos os outros do programa.
+
+    A permissão que de fato marca "pode ver o material de candidato
+    alheio" é `download_applicationdocument` — Secretaria e Comissão de
+    Bolsas a têm, a Coordenação não. É a mesma linha do download do
+    comprovante do questionário, e pelo mesmo motivo: acompanhar o edital
+    não é ler a papelada de cada candidato.
+    """
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if pessoas.filter(pk=inscricao.student.person_id).exists():
+        return
+    require_perm(request, "scholarships.download_applicationdocument")
+
+
+@router.get(
+    "/applications/{int:application_id}/entries/", response=list[BaremeEntryOut]
+)
+def list_entries(request: HttpRequest, application_id: int):
+    """Os lançamentos de uma inscrição, na ordem do barema.
+
+    Sem paginação, de propósito: a tela do candidato e a da comissão
+    mostram o barema inteiro de uma vez, agrupado por seção, e uma
+    segunda página quebraria o agrupamento — são dezenas de linhas, não
+    milhares.
+    """
+    require_perm(request, "scholarships.view_baremeentry")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    _garantir_acesso_a_inscricao(request, inscricao, program)
+    return list(_lancamentos(program).for_application(inscricao))
+
+
+@router.post(
+    "/applications/{int:application_id}/entries/", response={201: BaremeEntryOut}
+)
+def create_entry(
+    request: HttpRequest,
+    application_id: int,
+    payload: BaremeEntryIn = Form(...),
+    proof: UploadedFile = File(...),
+):
+    """O candidato lança uma linha do barema, com o comprovante junto.
+
+    O arquivo é obrigatório na assinatura: faltando, o Ninja devolve 422
+    antes de qualquer regra — e é exatamente a resposta certa, porque
+    "lançamento sem comprovante" não é um estado a ser recusado pelo
+    domínio, é um corpo incompleto.
+
+    Repetir o mesmo item é normal e não é duplicata: dois semestres de
+    docência são duas linhas, e é a soma delas que enfrenta o teto do
+    item. Por isso não há guarda de unicidade aqui.
+    """
+    require_perm(request, "scholarships.add_baremeentry")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    inscricao.ensure_editable(request.user)
+    BaremeEntry.validate_upload(filename=proof.name or "", size=proof.size or 0)
+    # 404 e não `bareme_item_mismatch`: id de outro programa não existe
+    # aqui. O item de outra edição ou de outro nível **existe** no
+    # programa, e esse é o caso que o `clean()` recusa com o código.
+    item = get_object_or_404(
+        BaremeItem.objects.for_program(program), pk=payload.item_id
+    )
+    lancamento = BaremeEntry(
+        application=inscricao,
+        item=item,
+        description=payload.description,
+        quantity=payload.quantity,
+        # A nota do candidato é derivada, nunca digitada.
+        candidate_score=item.raw_score(payload.quantity),
+        proof=proof,
+    )
+    with transaction.atomic():
+        lancamento.clean()
+        lancamento.save()
+        audit.record(
+            "scholarships.entry.create",
+            request=request,
+            target=lancamento,
+            program=program,
+            application_id=inscricao.pk,
+            item_id=item.pk,
+            quantity=str(lancamento.quantity),
+            candidate_score=str(lancamento.candidate_score),
+        )
+    return Status(201, lancamento)
+
+
+@router.patch(
+    "/applications/{int:application_id}/entries/{int:entry_id}/",
+    response=BaremeEntryOut,
+)
+def update_entry(
+    request: HttpRequest,
+    application_id: int,
+    entry_id: int,
+    payload: BaremeEntryPatch,
+):
+    """Retificação do lançamento pelo candidato, na janela aberta.
+
+    JSON, e não multipart como o POST: **o Django só monta `request.POST`
+    e `request.FILES` em requisição POST** (`HttpRequest
+    ._load_post_and_files`), então um corpo multipart em PATCH chegaria
+    vazio ao Ninja, sem erro nenhum. Trocar o comprovante tem rota
+    própria (`POST .../proof`), pelo mesmo motivo pelo qual anexar o
+    comprovante do questionário também é um POST.
+
+    Trocar item ou quantidade **recalcula** `candidate_score`: a nota é
+    derivada, e deixá-la para trás daria ao candidato uma pontuação que
+    não corresponde ao que ele lançou.
+    """
+    require_perm(request, "scholarships.change_baremeentry")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    lancamento = get_object_or_404(
+        _lancamentos(program).for_application(inscricao), pk=entry_id
+    )
+    inscricao.ensure_editable(request.user)
+
+    dados = payload.model_dump(exclude_unset=True)
+    campos: list[str] = []
+    if "item_id" in dados:
+        lancamento.item = get_object_or_404(
+            BaremeItem.objects.for_program(program), pk=dados["item_id"]
+        )
+        campos.append("item")
+    for campo in ("description", "quantity"):
+        if campo in dados:
+            setattr(lancamento, campo, dados[campo])
+            campos.append(campo)
+    if "item" in campos or "quantity" in campos:
+        lancamento.candidate_score = lancamento.item.raw_score(lancamento.quantity)
+        campos.append("candidate_score")
+
+    with transaction.atomic():
+        lancamento.clean()
+        lancamento.save(update_fields=[*campos, "updated_at"] if campos else None)
+        audit.record(
+            "scholarships.entry.update",
+            request=request,
+            target=lancamento,
+            program=program,
+            application_id=inscricao.pk,
+            fields=sorted(campos),
+            candidate_score=str(lancamento.candidate_score),
+        )
+    return lancamento
+
+
+@router.post(
+    "/applications/{int:application_id}/entries/{int:entry_id}/proof",
+    response=BaremeEntryOut,
+)
+def replace_entry_proof(
+    request: HttpRequest,
+    application_id: int,
+    entry_id: int,
+    proof: UploadedFile = File(...),
+):
+    """Troca o comprovante de um lançamento já feito.
+
+    Existe porque o `PATCH` não pode ser multipart (ver a docstring dele)
+    e porque mandar o candidato apagar e relançar para corrigir a página
+    errada do certificado perderia a linha inteira.
+
+    Substitui, e não empilha: o comprovante é um por lançamento
+    (`FileField`, não relação), e o arquivo antigo sai do storage — mas
+    só depois do commit, porque apagar arquivo não participa do rollback.
+    """
+    require_perm(request, "scholarships.change_baremeentry")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    lancamento = get_object_or_404(
+        _lancamentos(program).for_application(inscricao), pk=entry_id
+    )
+    inscricao.ensure_editable(request.user)
+    BaremeEntry.validate_upload(filename=proof.name or "", size=proof.size or 0)
+
+    anterior = lancamento.proof.name
+    lancamento.proof = proof
+    with transaction.atomic():
+        lancamento.save(update_fields=["proof", "updated_at"])
+        audit.record(
+            "scholarships.entry.proof_replace",
+            request=request,
+            target=lancamento,
+            program=program,
+            application_id=inscricao.pk,
+            filename=proof.name,
+        )
+    if anterior and anterior != lancamento.proof.name:
+        lancamento.proof.storage.delete(anterior)
+    return lancamento
+
+
+@router.delete(
+    "/applications/{int:application_id}/entries/{int:entry_id}/",
+    response={204: None},
+)
+def remove_entry(request: HttpRequest, application_id: int, entry_id: int):
+    """O candidato apaga um lançamento que fez, na janela aberta.
+
+    Exige `change_baremeentry`, e não `delete_`: nenhum papel de domínio
+    recebe `delete_*` (migration `0008_papeis_da_bolsa`, com teste
+    guardando), mesmo precedente do DELETE da inscrição, do barema e da
+    comissão.
+
+    O arquivo sai do storage junto, porque o `delete()` do model não o
+    faz; e a auditoria é gravada **antes**, porque depois a instância
+    perde o pk e o alvo do registro sairia vazio.
+    """
+    require_perm(request, "scholarships.change_baremeentry")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(_inscricoes(program), pk=application_id)
+    lancamento = get_object_or_404(
+        _lancamentos(program).for_application(inscricao), pk=entry_id
+    )
+    inscricao.ensure_editable(request.user)
+    with transaction.atomic():
+        audit.record(
+            "scholarships.entry.remove",
+            request=request,
+            target=lancamento,
+            program=program,
+            application_id=inscricao.pk,
+            item_id=lancamento.item_id,
+        )
+        lancamento.proof.delete(save=False)
+        lancamento.delete()
+    return Status(204, None)
+
+
+@router.get("/entries/{int:entry_id}/proof/download")
+def download_entry_proof(request: HttpRequest, entry_id: int):
+    """Entrega o comprovante do lançamento — pelo Django, nunca por URL
+    direta do MEDIA.
+
+    Sem esta rota o comprovante seria inalcançável: `BaremeEntryOut` não
+    publica caminho nem URL, justamente porque o Nginx serve o MEDIA sem
+    passar pelo Django. E é o comprovante que a comissão lê para decidir
+    a nota — é o insumo central da análise (f13).
+
+    Mesmas duas portas do comprovante do questionário: o dono por posse e
+    quem tem `download_applicationdocument`. Leitura auditada, porque é
+    documento pessoal de outro candidato.
+    """
+    require_perm(request, "scholarships.view_baremeentry")
+    program: Program = current_program(request)
+    lancamento = get_object_or_404(_lancamentos(program), pk=entry_id)
+    _garantir_acesso_a_inscricao(request, lancamento.application, program)
+
+    with transaction.atomic():
+        audit.record(
+            "scholarships.entry.proof_download",
+            request=request,
+            target=lancamento,
+            program=program,
+            application_id=lancamento.application_id,
+        )
+    return FileResponse(
+        lancamento.proof.open("rb"),
+        as_attachment=True,
+        filename=Path(lancamento.proof.name or "").name,
     )

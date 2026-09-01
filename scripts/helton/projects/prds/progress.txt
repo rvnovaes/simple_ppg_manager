@@ -67,6 +67,19 @@ Started: ter. 01 set 2026 11:06:15 -03
 - Rota de ato com nome literal (`.../bareme/clone`) só convive com
   `.../bareme/{item_id}/` porque o conversor é `int:`. Sem o conversor
   tipado a ordem de registro decide, em silêncio.
+- **Upload é sempre `POST`.** O Django só monta `request.POST`/`request.FILES`
+  em requisição POST, então `Form(...)`/`File(...)` sob `@router.patch` recebe
+  corpo vazio, em silêncio. Arquivo entra por rota `POST` própria; o `PATCH`
+  dos demais campos é JSON, ao lado. Registrado no `CLAUDE.md`.
+- `view_<model>` sozinha não é porteiro de dado de candidato: o papel Discente
+  tem `view_` de quase tudo (é com ela que lê o próprio). A porta de "material
+  de candidato alheio" é `download_applicationdocument` (Secretaria e Comissão;
+  a Coordenação não tem) — checada **depois** da posse, que é a regra, e não a
+  exceção. Helper `_garantir_acesso_a_inscricao` em `scholarships/router.py`.
+- Nota derivada (`candidate_score = item.raw_score(quantity)`) **não entra no
+  schema de entrada**: é assim que "o candidato não escolhe a própria nota"
+  vira código. Campo extra no corpo é ignorado pelo pydantic, sem erro — o
+  teste que prova isso manda o campo e confere o gravado.
 - Upload de teste cai em `tmp_path` pela fixture autouse `media_temporaria`
   (`backend/conftest.py`) — não montar `MEDIA_ROOT` local. E teste de "o
   arquivo antigo sumiu do storage" precisa de **nomes diferentes** nos dois
@@ -573,4 +586,64 @@ Started: ter. 01 set 2026 11:06:15 -03
     tela do resultado provavelmente quer um `Out` próprio, e não este.
   - Nenhuma rota **lista** inscrições ainda — a fila da comissão, com os
     filtros do legado, é f13. `ScholarshipApplicationOut` já serve a ela.
+---
+
+## 2026-09-01 - f12-api-lancamentos
+- CRUD dos lançamentos do barema em
+  `/api/v1/scholarships/applications/{id}/entries/`: `GET` (sem paginação — a
+  tela agrupa o barema inteiro por seção), `POST` **multipart** com o
+  comprovante junto, `PATCH {entry_id}/` (JSON), `DELETE {entry_id}/`, mais
+  `POST {entry_id}/proof` (troca do comprovante) e
+  `GET /entries/{id}/proof/download`.
+- **`candidate_score` é do servidor**: gravado como `item.raw_score(quantity)`
+  no POST e **recalculado** no PATCH quando item ou quantidade mudam.
+  `BaremeEntryIn` não tem o campo — nem `committee_score`/`committee_note`,
+  que são da rota de avaliação (f13, `review_baremeentry`).
+- Sem comprovante o lançamento não existe (Q11): `proof: UploadedFile =
+  File(...)` faz o 422 vir do Ninja, antes de qualquer regra — corpo
+  incompleto, e não estado que o domínio precise recusar.
+- As quatro escritas passam por `ScholarshipApplication.ensure_editable(user)`
+  (409 `submissions_closed` fora da janela, 403 `not_application_owner` para
+  quem não é o dono). Permissões: `add_baremeentry` no POST,
+  `change_baremeentry` no PATCH/DELETE/troca de comprovante (nenhum papel tem
+  `delete_*`), `view_baremeentry` na leitura.
+- Item de outro **programa** é 404 (`BaremeItem.objects.for_program`); item de
+  outra edição ou de outro nível existe no programa e é o `clean()` que recusa,
+  com `bareme_item_mismatch`.
+- Leitura do barema alheio: posse primeiro, e só depois
+  `download_applicationdocument` (`_garantir_acesso_a_inscricao`). O colega e a
+  Coordenação levam 403; Secretaria e Comissão passam. Mesma linha do download
+  do comprovante do questionário, e o download do comprovante do lançamento é
+  auditado pelo mesmo motivo.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_lancamentos.py` (novo),
+  `CLAUDE.md` (armadilha do multipart em PATCH).
+- `make ready` verde (1677 passed, 10 skipped). Sem migration.
+- **Learnings for future iterations:**
+  - **O `PATCH` não pode ser multipart.** Custou a primeira versão da rota:
+    `HttpRequest._load_post_and_files` devolve `POST`/`FILES` vazios quando o
+    método não é POST, e o Ninja não tem como saber — o corpo simplesmente
+    chega vazio. Por isso a troca do comprovante virou `POST .../proof` em vez
+    de um campo opcional no `PATCH`. Está no `CLAUDE.md`.
+  - O corpo multipart do front é **plano** (`comoFormData` em
+    `frontend/src/lib/api/client.ts` faz `append` chave a chave), então
+    `payload: BaremeEntryIn = Form(...)` serve: o Ninja achata o schema em
+    campos de formulário no OpenAPI (mesmo precedente de
+    `submit_public_application`, `selection/router.py`).
+  - **A rota de download do comprovante do lançamento entrou aqui, e não em
+    f13**, embora nenhuma story a peça: sem ela o comprovante seria
+    inalcançável (o `Out` não publica caminho nem URL, porque o Nginx serve o
+    MEDIA sem passar pelo Django) — e é justamente o comprovante que a comissão
+    lê para decidir a nota. f13 já a encontra pronta.
+  - `_garantir_acesso_a_inscricao` foi escrito para ser reusado por f13: a fila
+    da comissão tem o mesmo problema, porque `view_scholarshipapplication`
+    também está no papel Discente.
+  - Apagar arquivo do storage fica **fora** do `transaction.atomic`: o delete
+    não participa do rollback. Na troca do comprovante, guardar o
+    `proof.name` antigo antes de atribuir o novo, e conferir que mudou antes
+    de apagar (com o mesmo nome o caminho é reocupado e o delete levaria o
+    arquivo novo).
+  - `BaremeSection` não tem `TEACHING`: as seções são as seis do edital
+    (`FORMATION`, `BIBLIOGRAPHIC`, `EVENTS`, `PROFESSIONAL`, `BOARDS`,
+    `OTHER_TITLES`). Estágio em docência é `PROFESSIONAL`.
 ---
