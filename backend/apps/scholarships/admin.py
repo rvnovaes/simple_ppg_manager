@@ -11,8 +11,10 @@ from apps.core.admin import AuditedModelAdmin
 
 from .models import (
     ApplicationDocument,
+    BaremeEntry,
     BaremeItem,
     CommitteeMember,
+    ItemReview,
     ScholarshipApplication,
     ScholarshipEdition,
 )
@@ -90,6 +92,14 @@ class ApplicationDocumentInline(admin.TabularInline):
     show_change_link = True
 
 
+class BaremeEntryInline(admin.TabularInline):
+    model = BaremeEntry
+    extra = 0
+    fields = ("item", "description", "quantity", "candidate_score", "committee_score")
+    raw_id_fields = ("item",)
+    show_change_link = True
+
+
 @admin.register(ScholarshipApplication)
 class ScholarshipApplicationAdmin(AuditedModelAdmin):
     __doc__ = QUEBRA_VIDRO
@@ -125,7 +135,7 @@ class ScholarshipApplicationAdmin(AuditedModelAdmin):
         "published_at",
         *CARIMBOS,
     )
-    inlines = [ApplicationDocumentInline]
+    inlines = [ApplicationDocumentInline, BaremeEntryInline]
 
 
 @admin.register(ApplicationDocument)
@@ -140,3 +150,38 @@ class ApplicationDocumentAdmin(AuditedModelAdmin):
     # `uploaded_at` é `auto_now_add`: reescrevê-lo à mão faria o anexo
     # parecer entregue dentro do prazo quando não foi.
     readonly_fields = ("uploaded_at",)
+
+
+@admin.register(BaremeEntry)
+class BaremeEntryAdmin(AuditedModelAdmin):
+    __doc__ = QUEBRA_VIDRO
+
+    list_display = (
+        "application",
+        "item",
+        "quantity",
+        "candidate_score",
+        "committee_score",
+        "reviewed_at",
+    )
+    list_filter = (
+        "application__edition__program",
+        "application__edition",
+        "item__section",
+    )
+    search_fields = ("description", "application__student__person__full_name")
+    list_select_related = ("application", "item")
+    raw_id_fields = ("application", "item")
+    readonly_fields = CARIMBOS
+
+
+@admin.register(ItemReview)
+class ItemReviewAdmin(AuditedModelAdmin):
+    __doc__ = QUEBRA_VIDRO
+
+    list_display = ("application", "item")
+    list_filter = ("application__edition__program", "application__edition")
+    search_fields = ("note", "application__student__person__full_name")
+    list_select_related = ("application", "item")
+    raw_id_fields = ("application", "item")
+    readonly_fields = CARIMBOS

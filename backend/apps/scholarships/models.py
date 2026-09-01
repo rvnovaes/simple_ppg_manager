@@ -658,9 +658,10 @@ class ScholarshipApplication(models.Model):
     escolhem o inciso dentro do bloco (a derivação completa é da
     `classify()` da edição).
 
-    A leitura dos campos de nota (`committee_score`, `final_score`,
-    `subtotal`, `fully_reviewed`) depende de `BaremeEntry` e entra com
-    ele, na story seguinte.
+    A leitura dos campos de nota (`committee_score`, `candidate_score`,
+    `subtotal`, `fully_reviewed`) lê os `BaremeEntry` da inscrição.
+    `final_score()` — a nota da comissão mais o bônus da FUMP — entra com
+    o algoritmo de classificação.
     """
 
     program = models.ForeignKey(
@@ -953,6 +954,79 @@ class ScholarshipApplication(models.Model):
         """
         return self.band_override or None
 
+    # -- notas -------------------------------------------------------------
+    #
+    # Três leituras da mesma tabela de lançamentos, e a sutileza é sempre a
+    # mesma: **o teto é do item, aplicado sobre a soma dos lançamentos
+    # daquele item** (ver o comentário de `BaremeItem.raw_score`). Somar os
+    # lançamentos já limitados daria a resposta certa nos casos fáceis e a
+    # errada exatamente onde importa.
+
+    def committee_score(self) -> Decimal:
+        """A nota do barema segundo a comissão.
+
+        Lançamento ainda não avaliado (`committee_score` nulo) conta
+        **zero**: a lista pode ser calculada a qualquer momento, e quem
+        avisa que ela ainda não está madura é `fully_reviewed()`, não um
+        total que se recusa a existir.
+
+        Sem o bônus da FUMP — ele entra em `final_score()`, com o resto do
+        algoritmo de classificação.
+        """
+        return self._somar_por_item("committee_score")
+
+    def candidate_score(self) -> Decimal:
+        """O mesmo cálculo sobre o que o candidato lançou.
+
+        É a coluna "Candidato" do cabeçalho da tela de análise: a comissão
+        precisa ver, lado a lado, o que foi pedido e o que foi concedido.
+        """
+        return self._somar_por_item("candidate_score")
+
+    def subtotal(self, section: str) -> Decimal:
+        """A nota da comissão restrita a uma seção do barema.
+
+        Existe para os critérios III e IV do desempate (item 3.3): maior
+        subtotal em Formação Acadêmica, depois em Produção Bibliográfica.
+        """
+        return self._somar_por_item("committee_score", section=section)
+
+    def _somar_por_item(self, campo: str, *, section: str | None = None) -> Decimal:
+        """Agrupa os lançamentos por item, limita cada grupo e soma.
+
+        Inscrição ainda não salva não tem lançamento — e o gerente reverso
+        nem existe nela.
+        """
+        if self.pk is None:
+            return Decimal("0.00")
+        lancamentos = self.bareme_entries.select_related("item")
+        if section is not None:
+            lancamentos = lancamentos.filter(item__section=section)
+        totais: dict[int, Decimal] = {}
+        itens: dict[int, BaremeItem] = {}
+        for lancamento in lancamentos:
+            valor = getattr(lancamento, campo)
+            totais[lancamento.item_id] = totais.get(
+                lancamento.item_id, Decimal("0.00")
+            ) + (valor if valor is not None else Decimal("0.00"))
+            itens[lancamento.item_id] = lancamento.item
+        return sum(
+            (itens[item_id].apply_cap(total) for item_id, total in totais.items()),
+            Decimal("0.00"),
+        )
+
+    def fully_reviewed(self) -> bool:
+        """Todos os lançamentos já têm nota da comissão.
+
+        É o "Todos itens analisados" do legado, e é **derivado**: não há
+        botão de "concluí a análise" para alguém esquecer de apertar ou
+        apertar cedo demais. Inscrição sem lançamento nenhum é vacuamente
+        analisada — não há o que avaliar nela.
+        """
+        if self.pk is None:
+            return True
+        return not self.bareme_entries.filter(committee_score__isnull=True).exists()
+
     # -- documentos --------------------------------------------------------
 
     def pending_docs(self) -> list[str]:
@@ -1180,3 +1254,314 @@ class ApplicationDocument(models.Model):
             anterior.delete()
         documento = cls.objects.create(application=application, kind=kind, file=file)
         return documento, anterior is not None
+
+
+# ---------------------------------------------------------------------------
+# BaremeEntry (o lançamento do candidato em uma linha do barema)
+# ---------------------------------------------------------------------------
+
+
+def caminho_do_comprovante(instance: "BaremeEntry", filename: str) -> str:
+    """Onde o comprovante de um lançamento do barema é gravado.
+
+    Mesmo particionamento por edição e por inscrição do comprovante do
+    questionário (`caminho_do_documento_da_inscricao`), e pelo mesmo
+    motivo: a operação do edital é por lote. Sem o subdiretório
+    `questionario/`, porque este é o outro conjunto — dois grupos de
+    anexo com regras de acesso diferentes não se misturam no disco.
+
+    Função de módulo, e não lambda, porque a migração precisa conseguir
+    serializar a referência.
+    """
+    return (
+        f"bolsas/edicao-{instance.application.edition_id}/"
+        f"inscricao-{instance.application_id}/{filename}"
+    )
+
+
+# O comprovante do barema é **mais estrito** que o do questionário
+# (`EXTENSOES_DO_DOCUMENTO_DA_INSCRICAO`, que aceita imagem): aqui o anexo
+# é certificado, declaração de orientador, publicação — documento emitido,
+# não foto de celular. São duas constantes de propósito.
+EXTENSOES_DO_COMPROVANTE_DO_BAREMA = (".pdf",)
+TAMANHO_MAXIMO_DO_COMPROVANTE_DO_BAREMA = 10 * 1024 * 1024
+
+
+class BaremeEntryQuerySet(models.QuerySet["BaremeEntry"]):
+    def for_program(self, program: Any) -> "BaremeEntryQuerySet":
+        """Filho de agregado: chega ao programa pela inscrição, e continua
+        sendo o primeiro filtro de toda busca."""
+        return self.filter(application__program=program)
+
+    def for_application(self, application: Any) -> "BaremeEntryQuerySet":
+        return self.filter(application=application)
+
+    def for_item(self, item: Any) -> "BaremeEntryQuerySet":
+        return self.filter(item=item)
+
+    def pending_review(self) -> "BaremeEntryQuerySet":
+        """Os lançamentos que a comissão ainda não pontuou."""
+        return self.filter(committee_score__isnull=True)
+
+
+class BaremeEntry(models.Model):
+    """Um lançamento do candidato em uma linha do barema.
+
+    Duas notas convivem na mesma linha, e essa é a peça central da análise:
+    `candidate_score` é o que o candidato pediu (gravado como
+    `item.raw_score(quantity)`, sem teto — o teto é do item e se aplica à
+    soma, em `ScholarshipApplication.committee_score()`), e
+    `committee_score` é o que a comissão concedeu. Nulo em
+    `committee_score` significa **não avaliado**, e não zero: zerar é uma
+    decisão da comissão, e ela vem com observação obrigatória.
+
+    O comprovante é **obrigatório** (Q11): sem ele o lançamento não
+    existe. A consequência prática é que a comissão nunca recebe item
+    vazio para zerar — o que chega para análise já veio provado.
+
+    Vários lançamentos no mesmo item são normais e não são duplicata: dois
+    semestres de docência são duas linhas, e é a soma delas que enfrenta o
+    `cap` do item. Por isso não há `UniqueConstraint` aqui.
+    """
+
+    application = models.ForeignKey(
+        ScholarshipApplication,
+        on_delete=models.CASCADE,
+        related_name="bareme_entries",
+        verbose_name="inscrição",
+    )
+    item = models.ForeignKey(
+        BaremeItem,
+        on_delete=models.PROTECT,
+        related_name="entries",
+        verbose_name="item do barema",
+    )
+    description = models.TextField(
+        "descrição",
+        help_text="O que o candidato lançou: título do artigo, nome da disciplina.",
+    )
+    quantity = models.DecimalField(
+        "quantidade",
+        max_digits=6,
+        decimal_places=2,
+        help_text=(
+            "Decimal, e não inteiro: o barema mede semestres, meses e horas, "
+            "e meio semestre é lançamento legítimo."
+        ),
+    )
+    candidate_score = models.DecimalField(
+        "pontuação do candidato",
+        max_digits=7,
+        decimal_places=2,
+        help_text="Gravada como item.raw_score(quantity) — sem teto, que é do item.",
+    )
+    committee_score = models.DecimalField(
+        "pontuação da comissão",
+        max_digits=7,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Nulo é NÃO AVALIADO; zero é a comissão tendo negado o ponto.",
+    )
+    committee_note = models.TextField(
+        "observação da comissão",
+        blank=True,
+        help_text="Obrigatória quando a nota da comissão diverge da do candidato.",
+    )
+    reviewed_at = models.DateTimeField("avaliado em", null=True, blank=True)
+    proof = models.FileField(
+        "comprovante", upload_to=caminho_do_comprovante, max_length=255
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = BaremeEntryQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "lançamento do barema"
+        verbose_name_plural = "lançamentos do barema"
+        ordering = ["application", "item", "pk"]
+        permissions = [
+            # Avaliar **não** é `change`: o candidato tem `change` sobre o
+            # próprio lançamento (enquanto as inscrições estão abertas) e
+            # não pode encostar na nota da comissão. Uma permissão só para
+            # as duas coisas juntaria os dois papéis num verbo.
+            ("review_baremeentry", "Pode avaliar lançamento do barema"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.item.code} — {self.description[:40]}"
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """As três regras do lançamento.
+
+        Não há espelho de `UniqueConstraint` aqui (o model não tem
+        nenhuma): repetir o item é o caso normal.
+        """
+        super().clean()
+        self._validar_item()
+        self._validar_quantidade()
+        self._validar_observacao()
+
+    def _validar_item(self) -> None:
+        """O item precisa ser da mesma edição **e do mesmo nível**.
+
+        O nível importa tanto quanto a edição: o barema é por (edição,
+        nível), e o código "1.3" do mestrado é outro item, com outros
+        pontos, que não o "1.3" do doutorado. Sem esta checagem um
+        candidato de mestrado pontuaria pela tabela do doutorado.
+        """
+        if self.application_id is None or self.item_id is None:
+            return
+        if (
+            self.item.edition_id != self.application.edition_id
+            or self.item.level != self.application.level
+        ):
+            raise DomainError(
+                "O item do barema precisa ser da mesma edição e do mesmo "
+                "nível da inscrição.",
+                code="bareme_item_mismatch",
+            )
+
+    def _validar_quantidade(self) -> None:
+        if self.quantity is None or self.quantity <= 0:
+            raise DomainError(
+                "A quantidade lançada precisa ser maior que zero.",
+                code="invalid_quantity",
+            )
+
+    def _validar_observacao(self) -> None:
+        """Divergência sem justificativa não passa (decisão B9).
+
+        A observação é o que o recurso ataca: um lançamento cortado sem
+        motivo escrito deixa o candidato recorrendo contra um número, e a
+        comissão julgando o recurso sem lembrar por que cortou.
+        """
+        if self.committee_score is None:
+            return
+        if (
+            self.committee_score != self.candidate_score
+            and not self.committee_note.strip()
+        ):
+            raise DomainError(
+                "Quando a nota da comissão diverge da do candidato, a "
+                "observação é obrigatória.",
+                code="note_required",
+            )
+
+    @classmethod
+    def validate_upload(cls, *, filename: str, size: int) -> None:
+        """Só PDF, 10 MB — mesmo contrato de `validate_upload` dos demais
+        anexos (`RequestDocument`, `ApplicationDocument`), inclusive no
+        `code` único, e no motivo de morar no model: `FileField.validators`
+        só roda em `full_clean()` e não vê o tamanho do upload."""
+        if not filename or not filename.lower().endswith(
+            EXTENSOES_DO_COMPROVANTE_DO_BAREMA
+        ):
+            aceitas = ", ".join(EXTENSOES_DO_COMPROVANTE_DO_BAREMA)
+            raise DomainError(
+                f"O comprovante do barema precisa ser um arquivo {aceitas}.",
+                code="invalid_document",
+            )
+        if size > TAMANHO_MAXIMO_DO_COMPROVANTE_DO_BAREMA:
+            limite = TAMANHO_MAXIMO_DO_COMPROVANTE_DO_BAREMA // (1024 * 1024)
+            raise DomainError(
+                f"O comprovante do barema tem no máximo {limite} MB.",
+                code="invalid_document",
+            )
+
+
+# ---------------------------------------------------------------------------
+# ItemReview (a observação da comissão por item do barema)
+# ---------------------------------------------------------------------------
+
+
+class ItemReviewQuerySet(models.QuerySet["ItemReview"]):
+    def for_program(self, program: Any) -> "ItemReviewQuerySet":
+        return self.filter(application__program=program)
+
+    def for_application(self, application: Any) -> "ItemReviewQuerySet":
+        return self.filter(application=application)
+
+
+class ItemReview(models.Model):
+    """A observação da comissão sobre um **item do barema** da inscrição.
+
+    É a segunda observação do legado, e não a mesma de
+    `BaremeEntry.committee_note`: aquela explica **um lançamento**
+    ("este certificado não cobre o semestre inteiro"), esta comenta o
+    item como um todo ("a produção bibliográfica declarada foi
+    reclassificada em bloco"). Uma por (inscrição, item).
+    """
+
+    application = models.ForeignKey(
+        ScholarshipApplication,
+        on_delete=models.CASCADE,
+        related_name="item_reviews",
+        verbose_name="inscrição",
+    )
+    item = models.ForeignKey(
+        BaremeItem,
+        on_delete=models.PROTECT,
+        related_name="reviews",
+        verbose_name="item do barema",
+    )
+    note = models.TextField("observação")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ItemReviewQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "observação por item do barema"
+        verbose_name_plural = "observações por item do barema"
+        ordering = ["application", "item"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "item"],
+                name="unique_observacao_por_inscricao_e_item_do_barema",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Observação em {self.item.code} de {self.application}"
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        super().clean()
+        self._validar_item()
+        self._validar_duplicata()
+
+    def _validar_item(self) -> None:
+        """Mesma checagem do lançamento, e pelo mesmo motivo: comentar o
+        "1.3" do doutorado numa inscrição de mestrado é comentar outro
+        item."""
+        if self.application_id is None or self.item_id is None:
+            return
+        if (
+            self.item.edition_id != self.application.edition_id
+            or self.item.level != self.application.level
+        ):
+            raise DomainError(
+                "O item do barema precisa ser da mesma edição e do mesmo "
+                "nível da inscrição.",
+                code="bareme_item_mismatch",
+            )
+
+    def _validar_duplicata(self) -> None:
+        """Espelho da `UniqueConstraint`, como nos demais models do app."""
+        if self.application_id is None or self.item_id is None:
+            return
+        duplicatas = ItemReview.objects.filter(
+            application_id=self.application_id, item_id=self.item_id
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                "Esta inscrição já tem observação neste item do barema.",
+                code="duplicate_item_review",
+            )

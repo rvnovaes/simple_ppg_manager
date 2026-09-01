@@ -35,6 +35,9 @@ Started: ter. 01 set 2026 11:06:15 -03
 - `SimpleNamespace` **não** substitui FK (`ValueError` do descriptor). Para
   montar uma cadeia de relações em memória, atribua instâncias reais não
   salvas: `Student(person=Person(pk=5, user_id=7))`.
+- Método derivado que lê relação reversa (`self.<related_name>`) precisa de
+  guarda `if self.pk is None` — o gerente reverso não existe em instância não
+  salva, e os testes de invariante deste projeto são em memória.
 - Upload de teste cai em `tmp_path` pela fixture autouse `media_temporaria`
   (`backend/conftest.py`) — não montar `MEDIA_ROOT` local. E teste de "o
   arquivo antigo sumiu do storage" precisa de **nomes diferentes** nos dois
@@ -218,3 +221,46 @@ Started: ter. 01 set 2026 11:06:15 -03
     falha sem que nada esteja errado.
   - `SimpleUploadedFile` cai em `tmp_path` por causa da fixture autouse
     `media_temporaria` de `backend/conftest.py`; não montar MEDIA_ROOT local.
+
+## 2026-09-01 - f6-lancamento-e-observacao-por-item
+- `BaremeEntry`: `application` CASCADE (`bareme_entries`), `item` PROTECT,
+  `description`, `quantity` Decimal(6,2), `candidate_score` Decimal(7,2)
+  (gravado = `item.raw_score(quantity)`, **sem teto**), `committee_score`
+  Decimal(7,2) **null = não avaliado**, `committee_note` blank, `reviewed_at`,
+  `proof` FileField obrigatório (`caminho_do_comprovante`, função de módulo,
+  `bolsas/edicao-{id}/inscricao-{id}/{filename}` — sem o `questionario/` do
+  outro anexo). Sem `UniqueConstraint`: vários lançamentos no mesmo item são o
+  caso normal, e é a soma deles que enfrenta o `cap`.
+- `clean()` do lançamento: `bareme_item_mismatch` (item de outra edição **ou**
+  de outro nível), `invalid_quantity` (≤ 0) e `note_required` (comissão diverge
+  do candidato sem observação — B9). `validate_upload` de classe: **só PDF**,
+  10 MB (`EXTENSOES_DO_COMPROVANTE_DO_BAREMA`,
+  `TAMANHO_MAXIMO_DO_COMPROVANTE_DO_BAREMA`). `Meta.permissions` com
+  `review_baremeentry`, separada de `change_baremeentry`.
+- `ItemReview`: `application` CASCADE (`item_reviews`), `item` PROTECT, `note`,
+  unique `(application, item)` espelhado como `duplicate_item_review`, mais a
+  mesma checagem de edição/nível do lançamento.
+- Notas em `ScholarshipApplication`: `committee_score()`, `candidate_score()`,
+  `subtotal(section)` — todas pelo helper privado `_somar_por_item()`, que
+  agrupa por item, aplica `item.apply_cap()` em cada grupo e só então soma — e
+  `fully_reviewed()` derivado (`pending_review()` vazio).
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../migrations/0005_baremeentry_itemreview.py`, `.../admin.py`,
+  `.../tests/test_bolsas_barema.py`.
+- **Learnings for future iterations:**
+  - A seção de produção bibliográfica do enum chama-se
+    `BaremeSection.BIBLIOGRAPHIC`, não `PUBLICATION` — o plano usa o rótulo
+    do edital ("Produção Bibliográfica") e o código usa o valor do enum.
+  - Nota agregada **nunca** soma lançamentos já limitados: agrupe por
+    `item_id`, some o grupo e só depois chame `apply_cap()`. Somar
+    `apply_cap()` de cada lançamento dá a mesma resposta com um lançamento só
+    e a errada com dois — e é a diferença entre 24,00 e 18,00 no item 1.8.
+  - `committee_score` nulo é **não avaliado** e conta zero no total; quem
+    denuncia a lista imatura é `fully_reviewed()`, e não um total que se recusa
+    a existir. Inscrição sem lançamento nenhum é vacuamente `fully_reviewed()`.
+  - Método derivado que lê relação reversa precisa de guarda `if self.pk is
+    None`: o gerente reverso não existe em instância não salva, e os testes de
+    invariante deste app são em memória.
+  - `_validar_item()` só dispara com as duas FKs **gravadas** (`application_id`
+    e `item_id` preenchidos): teste de mismatch é `django_db`, ao contrário do
+    espelho de `UniqueConstraint`, que basta o `<fk>_id`.
