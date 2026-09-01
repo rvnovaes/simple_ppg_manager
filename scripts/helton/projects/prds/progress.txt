@@ -767,3 +767,47 @@ Started: ter. 01 set 2026 11:06:15 -03
   - `Field` do Ninja precisa ser importado em `schemas.py` (`from ninja import
     Field, Schema`) — foi o primeiro uso de validação de faixa numérica no app.
 ---
+
+## 2026-09-01 - f15-classificacao-nota-e-faixa
+- **A nota que o resultado publica**: `ScholarshipApplication.final_score()` =
+  `committee_score()` + `BONUS_FUMP.get(fump_level, 0.00)` (item 3.2: nível 1
+  vale 15,00 e o nível 2, 9,00 — o 1 é o de maior vulnerabilidade). O teto do
+  item é aplicado **antes** do bônus, porque quem corta é `committee_score()`:
+  somar o bônus dentro do teto o comeria inteiro em quem já bateu o limite.
+- **A derivação da faixa** entrou em `derived_band()`, e `band()` virou
+  "sobrescrita **ou** derivada" — não devolve mais `None`. `has_paid_activity`
+  falso → 2.1-I se (ação afirmativa **ou** vulnerabilidade), senão 2.1-II (o
+  bloco 2.1 não tem residual); verdadeiro → **primeiro inciso aplicável** da
+  constante nova `INCISOS_DA_ATIVIDADE_REMUNERADA`; nenhum → residual.
+- **A ordem dos incisos é dado nomeado, não cadeia de `elif`**: é a linha que o
+  humano lê no merge contra o item 2.4 do edital. 2.4-I e 2.4-II ficam de fora
+  da lista de propósito — só chegam por sobrescrita (B6), e há um teste que
+  varre as 2⁶ combinações do questionário provando que nenhuma as deriva.
+- `derived_band()` existe separada de `band()` para a tela e o merge poderem
+  comparar "o que o questionário diz" com "o que a secretaria escreveu por
+  cima". Sem ela a sobrescrita apagaria a derivação sem rastro legível.
+- Duas assunções marcadas em docstring, como o `prd.json` pede: `subtotal()`
+  usa as notas **da comissão** (item 3.3 diz "maior pontuação na seção" e não
+  explicita de quem), e o `cadastro_unico` que já vinha de f4.
+- Arquivos: `backend/apps/scholarships/models.py`,
+  `.../tests/test_bolsas_classificacao.py` (novo, 33 casos),
+  `.../tests/test_bolsas_inscricao.py` e `.../tests/test_bolsas_api_analise.py`
+  (os dois que assumiam `band()` nula). Sem migration — nenhum campo novo.
+- `make ready` verde (1780 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **`band()` não devolve mais `None`**, mas os dois `resolve_band` de
+    `schemas.py` continuam tipados `str | None` e o campo do schema segue
+    anulável. Não é bug: é contrato publicado, e estreitá-lo é mexer em
+    `openapi.json`/`schema.d.ts` — f20 é a story que regenera os tipos, e o
+    lugar certo de decidir isso.
+  - O `AuditLog` de `override_band` grava `band_override` (a sobrescrita), e a
+    resposta da rota grava `band()` (a faixa efetiva). Os dois são "band" e
+    querem dizer coisas diferentes — o teste de desfazer a sobrescrita agora
+    espera `b21_ii` no corpo e `None` no payload.
+  - `_com_atividade()` no teste manda `monthly_income`/`weekly_hours` junto
+    mesmo sem a derivação lê-los: `clean()` os exige com `has_paid_activity`, e
+    teste que fabrica estado impossível de gravar engana quem o lê depois.
+  - f16 vai precisar da nota da edição inteira: `final_score()` é uma consulta
+    por inscrição (o teto por item não sai em SQL de uma passada só, como f13
+    já registrou). `classify()` deve carregar os lançamentos com
+    `prefetch_related`, não chamar o método N vezes cru.

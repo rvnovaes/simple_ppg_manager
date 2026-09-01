@@ -126,7 +126,10 @@ def test_justificativa_sem_sobrescrita_nao_e_erro():
     _inscricao(band_override_reason="Anotação da secretaria.").clean()
 
 
-# --- band(): a sobrescrita vence; sem ela, a derivação vem depois ----------
+# --- band(): a sobrescrita vence; sem ela, a faixa é a derivada -----------
+#
+# A tabela completa da derivação está em `test_bolsas_classificacao.py`;
+# aqui só a precedência entre a sobrescrita e o questionário.
 
 
 def test_band_devolve_a_sobrescrita_quando_ha_uma():
@@ -137,10 +140,11 @@ def test_band_devolve_a_sobrescrita_quando_ha_uma():
     assert inscricao.band() == PriorityBand.B24_I
 
 
-def test_band_sem_sobrescrita_e_none_e_nao_residual():
-    """`None` é "ainda não derivada". Devolver `residual` aqui poria
-    candidato do bloco 2.1 no fim da fila sem ninguém perceber."""
-    assert _inscricao().band() is None
+def test_band_sem_sobrescrita_e_a_faixa_derivada_do_questionario():
+    """Sem atividade remunerada e sem nenhum dos dois critérios do 2.1, a
+    faixa é 2.1-II — e nunca a residual, que poria candidato do bloco 2.1
+    no fim da fila sem ninguém perceber."""
+    assert _inscricao().band() == PriorityBand.B21_II
 
 
 # --- ensure_editable: janela aberta e dono da inscrição --------------------

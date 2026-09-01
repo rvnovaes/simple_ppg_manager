@@ -982,7 +982,10 @@ def test_a_sobrescrita_pode_ser_desfeita(
     resposta = _patch(client_da_secretaria, url_band(inscricao_ana), {})
 
     assert resposta.status_code == 200, resposta.content
-    assert resposta.json()["band"] is None
+    # Ana não exerce atividade remunerada e não marcou nenhum dos dois
+    # critérios do 2.1: desfeita a sobrescrita, a derivação a devolve ao
+    # 2.1-II. O `band` da resposta é a faixa efetiva, não a sobrescrita.
+    assert resposta.json()["band"] == PriorityBand.B21_II
     inscricao_ana.refresh_from_db()
     assert inscricao_ana.band_override is None
     registro = AuditLog.objects.get(event="scholarships.application.override_band")

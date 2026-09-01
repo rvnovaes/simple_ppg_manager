@@ -360,7 +360,7 @@
         "f14-api-fump-e-override-de-faixa"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Story que mais pede olho humano no merge, junto com f16."
     },
     {

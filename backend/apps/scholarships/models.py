@@ -183,6 +183,24 @@ ORDEM_DAS_FAIXAS: list[str] = [
 # que é consultado com `.get(fump_level, Decimal("0.00"))`.
 BONUS_FUMP: dict[int, Decimal] = {1: Decimal("15.00"), 2: Decimal("9.00")}
 
+# Os incisos do bloco 2.4, na ORDEM DE PRECEDÊNCIA do edital: quem exerce
+# atividade remunerada cai no **primeiro aplicável**, e não em todos os que
+# marcou. A ordem é o que decide o candidato que responde "Sim" a mais de
+# um (o professor substituto que também tem vínculo privado é 2.4-III), e
+# por isso é dado nomeado e não uma cadeia de `elif` — a lista é lida no
+# merge contra o edital.
+#
+# 2.4-I e 2.4-II não estão aqui de propósito: não há pergunta no
+# questionário que as derive, e o único caminho até elas é a sobrescrita
+# da secretaria (B6).
+INCISOS_DA_ATIVIDADE_REMUNERADA: tuple[tuple[str, str], ...] = (
+    ("substitute_teacher", PriorityBand.B24_III),
+    ("basic_education_or_collective_health", PriorityBand.B24_IV),
+    ("public_service", PriorityBand.B24_V),
+    ("private_service", PriorityBand.B24_VI_VII_VIII),
+    ("other_non_public_scholarship", PriorityBand.B24_IX),
+)
+
 # Regra de ordenação dentro de cada faixa. Faixa ausente ordena só por
 # nota (decrescente); as duas listadas ordenam antes pela remuneração —
 # menor rendimento primeiro — e a 2.4-VI/VII/VIII ainda pela menor carga
@@ -779,8 +797,9 @@ class ScholarshipApplication(models.Model):
 
     A leitura dos campos de nota (`committee_score`, `candidate_score`,
     `subtotal`, `fully_reviewed`) lê os `BaremeEntry` da inscrição.
-    `final_score()` — a nota da comissão mais o bônus da FUMP — entra com
-    o algoritmo de classificação.
+    `final_score()` é a nota da comissão mais o bônus da FUMP, e é ela que
+    o resultado publica; `band()` é a faixa de prioridade, derivada do
+    questionário quando a secretaria não sobrescreveu.
     """
 
     program = models.ForeignKey(
@@ -1071,21 +1090,44 @@ class ScholarshipApplication(models.Model):
 
     # -- derivação ---------------------------------------------------------
 
-    def band(self) -> str | None:
-        """A faixa de prioridade: a sobrescrita, quando existe.
+    def band(self) -> str:
+        """A faixa de prioridade: a sobrescrita, se houver; senão a derivada.
 
         A sobrescrita da secretaria vence sempre — é a válvula do B6, e
         também o único caminho para 2.4-I e 2.4-II, que não têm pergunta
         no questionário.
-
-        Sem sobrescrita, a faixa é **derivada do questionário**, e essa
-        derivação mora na `classify()` da edição, com o resto do
-        algoritmo. Até ela existir, este método devolve `None` para quem
-        não tem override — "ainda não derivada", nunca "residual": tratar
-        a ausência como residual poria candidato do bloco 2.1 no fim da
-        fila sem que ninguém percebesse.
         """
-        return self.band_override or None
+        return self.band_override or self.derived_band()
+
+    def derived_band(self) -> str:
+        """A faixa que o **questionário** dá, ignorando a sobrescrita.
+
+        Item 2 do edital, e é uma decisão em dois passos:
+
+        1. `has_paid_activity` é a chave. Falso → bloco 2.1: `2.1-I` para
+           quem entrou por ação afirmativa **ou** declarou vulnerabilidade
+           socioeconômica, `2.1-II` para o resto. Note que o bloco 2.1 não
+           tem residual: quem não exerce atividade remunerada sempre cai
+           num dos dois.
+        2. Verdadeiro → bloco 2.4, no **primeiro inciso aplicável** da
+           ordem de `INCISOS_DA_ATIVIDADE_REMUNERADA`. Nenhum se aplicando
+           (o candidato disse que tem atividade remunerada e não marcou
+           inciso nenhum), a faixa é a residual — que é justamente o que
+           ela existe para receber.
+
+        Existe separada de `band()` para que a tela e o merge consigam
+        comparar "o que o questionário diz" com "o que a secretaria
+        escreveu por cima": com as duas no mesmo método a sobrescrita
+        apagaria a derivação sem deixar rastro legível.
+        """
+        if not self.has_paid_activity:
+            if self.affirmative_action or self.socioeconomic_vulnerability:
+                return PriorityBand.B21_I
+            return PriorityBand.B21_II
+        for campo, faixa in INCISOS_DA_ATIVIDADE_REMUNERADA:
+            if getattr(self, campo):
+                return faixa
+        return PriorityBand.RESIDUAL
 
     # -- notas -------------------------------------------------------------
     #
@@ -1116,11 +1158,30 @@ class ScholarshipApplication(models.Model):
         """
         return self._somar_por_item("candidate_score")
 
+    def final_score(self) -> Decimal:
+        """A nota da comissão mais o bônus da FUMP (item 3.2 do edital).
+
+        É **esta** que sai na coluna "Nota do Barema" do documento
+        publicado, e não a `committee_score()` — o bônus da FUMP não é um
+        critério de desempate à parte, ele entra na nota.
+
+        Nível 0 ("sem nível") não pontua: por isso o `BONUS_FUMP` não tem
+        a chave 0 e a leitura é por `.get()`.
+        """
+        return self.committee_score() + BONUS_FUMP.get(self.fump_level, Decimal("0.00"))
+
     def subtotal(self, section: str) -> Decimal:
         """A nota da comissão restrita a uma seção do barema.
 
         Existe para os critérios III e IV do desempate (item 3.3): maior
         subtotal em Formação Acadêmica, depois em Produção Bibliográfica.
+
+        ASSUNÇÃO A CONFIRMAR NO MERGE: o desempate usa os subtotais **da
+        comissão**, não os que o candidato lançou. O item 3.3 do edital
+        diz "maior pontuação na seção", e a única pontuação que vale
+        depois da análise é a concedida — mas o texto não é explícito, e
+        trocar por `candidate_score` mudaria a ordem de quem lançou muito
+        e teve corte.
         """
         return self._somar_por_item("committee_score", section=section)
 
