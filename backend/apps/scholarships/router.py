@@ -12,6 +12,7 @@ from io import BytesIO
 from pathlib import Path
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -47,6 +48,7 @@ from .models import (
 )
 from .schemas import (
     ApplicationDocumentOut,
+    ApplicationItemTotalOut,
     BandOut,
     BandOverrideIn,
     BaremeCloneIn,
@@ -1299,6 +1301,49 @@ def list_item_reviews(request: HttpRequest, application_id: int):
         .for_application(inscricao)
         .select_related("item")
     )
+
+
+@router.get(
+    "/applications/{int:application_id}/item-totals/",
+    response=list[ApplicationItemTotalOut],
+)
+def list_item_totals(request: HttpRequest, application_id: int):
+    """A "Nota total" de cada item, com o teto do edital já aplicado.
+
+    Existe para que a tela de análise não some nada: o teto corta a SOMA
+    dos lançamentos do item (`BaremeItem.apply_cap`), e um `min` repetido
+    no front seria a segunda porta para a mesma regra. Mesma permissão e
+    mesmo porteiro dos lançamentos — é a leitura deles, agrupada.
+
+    O `prefetch_related` é o que faz a conta caber numa consulta: o
+    `item_totals()` lê `bareme_entries.all()` e cai no cache (ver
+    `_lancamentos_carregados`).
+    """
+    require_perm(request, "scholarships.view_baremeentry")
+    program: Program = current_program(request)
+    inscricao = get_object_or_404(
+        _inscricoes(program).prefetch_related(
+            Prefetch(
+                "bareme_entries",
+                queryset=BaremeEntry.objects.select_related("item"),
+            )
+        ),
+        pk=application_id,
+    )
+    _garantir_acesso_a_inscricao(request, inscricao, program)
+    return [
+        {
+            "item_id": item.pk,
+            "item_code": item.code,
+            "item_text": item.text,
+            "item_section": item.section,
+            "item_section_label": item.get_section_display(),
+            "cap": item.cap,
+            "candidate_total": do_candidato,
+            "committee_total": da_comissao,
+        }
+        for item, do_candidato, da_comissao in inscricao.item_totals()
+    ]
 
 
 @router.put("/applications/{int:application_id}/item-review", response=ItemReviewOut)

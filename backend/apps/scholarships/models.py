@@ -1587,6 +1587,46 @@ class ScholarshipApplication(models.Model):
         """
         return self._somar_por_item("committee_score", section=section)
 
+    def item_totals(self) -> list[tuple["BaremeItem", Decimal, Decimal]]:
+        """Item a item: o total do candidato e o da comissão, **com o teto**.
+
+        É a linha "Nota total" da tela de análise, e ela existe aqui porque
+        o teto é regra do edital: `apply_cap` corta a SOMA dos lançamentos
+        daquele item, e repetir esse `min` no front seria a segunda porta
+        que o CLAUDE.md proíbe — com o agravante de que a tela só veria a
+        divergência depois de publicada.
+
+        Mesmo recorte de `_somar_por_item`, e as mesmas duas sutilezas: só
+        aparece item que tem lançamento (é sob ele que a comissão comenta),
+        e lançamento ainda não avaliado conta zero na coluna da comissão —
+        quem avisa que a análise não terminou é `fully_reviewed()`.
+
+        A ordem é a do barema (`code`), que é a ordem em que o edital
+        escreve os itens e a ordem em que a tela os agrupa.
+        """
+        if self.pk is None:
+            return []
+        itens: dict[int, BaremeItem] = {}
+        brutos: dict[int, list[Decimal]] = {}
+        for lancamento in self._lancamentos_carregados():
+            itens[lancamento.item_id] = lancamento.item
+            somas = brutos.setdefault(
+                lancamento.item_id, [Decimal("0.00"), Decimal("0.00")]
+            )
+            somas[0] += lancamento.candidate_score
+            if lancamento.committee_score is not None:
+                somas[1] += lancamento.committee_score
+        return [
+            (
+                itens[item_id],
+                itens[item_id].apply_cap(somas[0]),
+                itens[item_id].apply_cap(somas[1]),
+            )
+            for item_id, somas in sorted(
+                brutos.items(), key=lambda par: itens[par[0]].code
+            )
+        ]
+
     def _somar_por_item(self, campo: str, *, section: str | None = None) -> Decimal:
         """Agrupa os lançamentos por item, limita cada grupo e soma.
 

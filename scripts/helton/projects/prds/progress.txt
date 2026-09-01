@@ -134,6 +134,18 @@ Started: ter. 01 set 2026 11:06:15 -03
   do `make seed` antes de fechar a story.
 - **Decimal do Ninja viaja como string no `schema.d.ts`** — estado de
   formulário é `string`, senão `2.50` volta `2.5` na tela.
+- **Papel novo de um módulo só tem permissões daquele app**: a Comissão de
+  Bolsas não tem `programs.view_researchline` nem `academic.view_teacher`, e
+  filtro que depende de catálogo de outro app é condicional na tela
+  (`podeVerLinhas`, `podeVerDocentes`), nunca chamada certa de 403.
+- **Rota nova com `{id}` no caminho exige entrada em `CASOS`** de
+  `test_bolsas_tenant.py`: `test_a_lista_de_casos_cobre_todas_as_rotas_com_id`
+  varre o `router` e falha quando alguma fica de fora. É o guarda que impede
+  rota nascer sem teste de tenant — a falha aparece só na suíte inteira.
+- **Conta derivada que a tela exibe vira rota, não aritmética no front.** O
+  total por item com o teto aplicado é `item_totals()` no model +
+  `GET /applications/{id}/item-totals/`; somar e cortar pelo `cap` publicado
+  reescreveria `apply_cap` do outro lado do fio.
 - **Teste de escopo de tenant precisa do estado que PERMITE a operação.** Num
   estado restritivo o vazamento se esconde atrás do 409 da guarda de fase, e a
   asserção passa sem nunca ter tocado o objeto do outro programa. E a asserção
@@ -1265,4 +1277,79 @@ Started: ter. 01 set 2026 11:06:15 -03
     (I - Formação Acadêmica e II - Produção Bibliográfica).
   - `quantity` volta do backend como `"1"`, e não `"1.00"`: quem exibe passa
     por `formatarNota`, senão a coluna mistura `1` e `2,50` na mesma tabela.
+---
+
+## 2026-09-01 - f23-tela-analise
+- **`frontend/src/routes/(app)/bolsas/analise/+page.svelte`** (novo): a tela da
+  Comissão numa página só — fila com os filtros do legado e, no lugar dela, a
+  análise de um candidato item a item. Svelte 5 com runas; nenhuma chamada
+  fora de `lib/api/client.ts`.
+- **A "Nota total" por item virou rota do backend, e não soma no front.** O
+  teto é do edital e corta a SOMA dos lançamentos do item
+  (`BaremeItem.apply_cap`); repetir esse `min` na tela seria a segunda porta
+  que o CLAUDE.md proíbe. Entraram `ScholarshipApplication.item_totals()`
+  (models), `ApplicationItemTotalOut` (schemas) e
+  `GET /applications/{id}/item-totals/` (router), com o mesmo porteiro dos
+  lançamentos (`view_baremeentry` + `_garantir_acesso_a_inscricao`) e
+  `Prefetch` para a conta caber numa consulta.
+- **A fila e o detalhe alternam na mesma tela**: abrir um candidato substitui
+  a lista, e "Voltar à fila" não refaz a busca (a fila continua em memória).
+  Depois de cada escrita, `recarregarCandidato()` refaz **os dois**: as duas
+  notas do cabeçalho vêm da linha da fila, e elas são derivadas no servidor.
+- **A janela da análise é o bool do servidor** (`committee_can_review` para a
+  avaliação, `appeal_open` para o julgamento). A tela não compara `status`.
+- **Nota divergente exige observação na tela antes de tentar salvar**
+  (`faltaObservacao` desabilita o botão) — a regra que vale continua sendo o
+  `clean()` do lançamento (`note_required`, 400 conferido por curl).
+- **A Coordenação abre a tela e não abre candidato.** `list_applications` só
+  exige `view_scholarshipapplication`, mas ler o material de candidato alheio
+  é `download_applicationdocument`, que ela não tem (403 conferido). A tela
+  esconde o botão "Analisar" e diz por quê, em vez de deixar o clique virar
+  erro sem explicação.
+- **Item de menu**: `scholarships.review_baremeentry` (exclusiva da Comissão,
+  e o superusuário a tem) **ou** papel Secretaria/Coordenação. Não existe
+  permissão que reúna os três sem alcançar o Discente — ele lê a observação da
+  própria inscrição em "Minha bolsa".
+- **`frontend/src/lib/bolsas.ts`**: entram `ESTADOS_DO_RECURSO` e
+  `RESULTADOS_DO_RECURSO` — as duas listas que o filtro e o formulário de
+  julgamento desenham antes de o objeto existir. O rótulo do recurso julgado
+  continua vindo resolvido (`outcome_label`).
+- Arquivos: `frontend/src/routes/(app)/bolsas/analise/+page.svelte` (novo),
+  `frontend/src/lib/bolsas.ts`, `frontend/src/routes/(app)/+layout.svelte`,
+  `backend/apps/scholarships/{models,schemas,router}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_analise.py`,
+  `frontend/src/lib/api/{openapi.json,schema.d.ts}` (gerados).
+- **Learnings for future iterations:**
+  - **Papel criado pela migration de um módulo não ganha as leituras de
+    catálogo dos outros apps.** A Comissão de Bolsas tem só permissões de
+    `scholarships`: sem `programs.view_researchline` e `academic.view_teacher`,
+    os filtros de linha e de orientador dariam 403 na cara dela. A tela os
+    desenha condicionalmente (`podeVerLinhas`, `podeVerDocentes`), como a f21
+    já fazia com a lista de professores. **Se o humano quiser esses dois
+    filtros para a Comissão, é uma data migration de papéis — não foi feita
+    aqui de propósito, mexer em permissão é decisão de merge.**
+  - **Conta derivada que a tela precisa exibir vira rota, não `Math.min` no
+    front.** Foi o caso do total por item: a alternativa barata (somar os
+    lançamentos e cortar pelo `cap` publicado) reescreveria `apply_cap` do
+    outro lado do fio, e a divergência só apareceria depois de publicada.
+  - O **`EACCES` em `.svelte-kit/`** reapareceu pela terceira rota nova
+    seguida: `docker compose exec -T frontend rm -rf` nos artefatos
+    `root:root` (`types/src/routes/(app)/bolsas/analise` e
+    `generated/client/nodes/37.js`).
+  - **O guarda de tenant cobra a rota nova**:
+    `test_a_lista_de_casos_cobre_todas_as_rotas_com_id`
+    (`test_bolsas_tenant.py`) varre o `router` e reprovou a primeira rodada
+    por causa de `GET /applications/{id}/item-totals/`. O caso entrou em
+    `CASOS` ao lado do `item-reviews/`, e a asserção é 404 estrito.
+  - **Verificação visual continua pendente**: o binário `browser-use` não
+    existe nesta máquina. No lugar dela, o fluxo inteiro da tela foi
+    exercitado por curl com as mesmas requisições que ela monta — fila
+    (`?level=masters`), `entries/`, `item-totals/`, avaliação divergente sem
+    observação (400 `note_required`) e com observação (200), `item-review`
+    (200), e a Coordenação em `item-totals/` (403). A rota também compila no
+    Vite do canteiro (`/bolsas/analise` responde 200).
+  - **Esse exercício mexeu no banco do canteiro**: a edição 1 foi para
+    `under_review` (`start-review` pela secretaria) e o lançamento 1 de Daniel
+    Prado está avaliado em 2,50 com observação. Útil para a f24 (já há
+    material para publicar); quem quiser o cenário limpo refaz o `make seed`.
 ---

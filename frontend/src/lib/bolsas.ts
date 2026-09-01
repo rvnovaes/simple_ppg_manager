@@ -195,6 +195,35 @@ export const QUESTIONARIO: Pergunta[] = [
 	}
 ];
 
+/**
+ * O recurso, nas duas palavras que a fila da análise usa.
+ *
+ * `EstadoDoRecurso` é derivado no servidor (`appeal_state()`) e não é campo
+ * de model nenhum: ele existe porque a comissão trabalha a fila por estado
+ * ("quem recorreu e ainda não foi julgado"), e filtrar por `outcome` não
+ * distinguiria "sem recurso" de "recurso pendente" — os dois têm `outcome`
+ * nulo. `ResultadoDoRecurso` é o julgamento em si.
+ *
+ * As duas listas moram aqui pela mesma razão das demais: são opções que o
+ * filtro e o formulário de julgamento desenham **antes** de existir o
+ * objeto. O rótulo do recurso já julgado continua vindo resolvido do
+ * servidor (`outcome_label`).
+ */
+export type EstadoDoRecurso = components['schemas']['AppealState'];
+export type ResultadoDoRecurso = components['schemas']['AppealOutcome'];
+
+export const ESTADOS_DO_RECURSO: { valor: EstadoDoRecurso; rotulo: string }[] = [
+	{ valor: 'none', rotulo: 'Sem recurso' },
+	{ valor: 'pending', rotulo: 'Interposto, não julgado' },
+	{ valor: 'judged', rotulo: 'Julgado' }
+];
+
+export const RESULTADOS_DO_RECURSO: { valor: ResultadoDoRecurso; rotulo: string }[] = [
+	{ valor: 'granted', rotulo: 'Deferido' },
+	{ valor: 'partially_granted', rotulo: 'Parcialmente deferido' },
+	{ valor: 'denied', rotulo: 'Indeferido' }
+];
+
 /** Extensões que o comprovante do questionário aceita (o barema só aceita PDF). */
 export const ACEITA_DOCUMENTO = '.pdf,.jpg,.jpeg,.png';
 export const ACEITA_COMPROVANTE = '.pdf';

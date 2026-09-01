@@ -542,7 +542,7 @@
         "f22-tela-inscricao"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": "Se travar, quebre em 'fila com filtros' e 'analise de um candidato + julgamento do recurso'."
     },
     {

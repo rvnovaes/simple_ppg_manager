@@ -1075,3 +1075,98 @@ def test_inscricao_de_outro_programa_nao_existe_para_a_secretaria(
     resposta = _patch(client_da_secretaria, url_fump(alheia), {"fump_level": 1})
 
     assert resposta.status_code == 404, resposta.content
+
+
+# --- a nota total por item -------------------------------------------------
+#
+# O teto é do item e corta a SOMA dos lançamentos dele (`apply_cap`). A
+# rota existe para que a tela de análise leia essa conta em vez de
+# refazê-la: um `min` no front seria a segunda porta para a mesma regra.
+
+
+def url_item_totals(inscricao: ScholarshipApplication) -> str:
+    return f"/api/v1/scholarships/applications/{inscricao.pk}/item-totals/"
+
+
+def test_o_total_por_item_ja_vem_cortado_pelo_teto(
+    client_da_comissao: Client,
+    edicao: ScholarshipEdition,
+    inscricao_ana: ScholarshipApplication,
+):
+    """Dois lançamentos de 6,00 num item de limite 5,00 valem 5,00 — e
+    nenhum dos dois é cortado sozinho."""
+    limitado = criar_item(edicao, code="1.3", points="3.00", cap="5.00")
+    criar_lancamento(inscricao_ana, limitado, quantidade="1")
+    criar_lancamento(inscricao_ana, limitado, quantidade="1")
+
+    resposta = client_da_comissao.get(url_item_totals(inscricao_ana))
+
+    assert resposta.status_code == 200, resposta.content
+    linha = resposta.json()[0]
+    assert linha["item_id"] == limitado.pk
+    assert linha["item_code"] == "1.3"
+    assert Decimal(linha["cap"]) == Decimal("5.00")
+    assert Decimal(linha["candidate_total"]) == Decimal("5.00")
+
+
+def test_o_total_da_comissao_conta_zero_no_lancamento_sem_nota(
+    client_da_comissao: Client,
+    inscricao_ana: ScholarshipApplication,
+    item: BaremeItem,
+):
+    """Quem avisa que a análise não terminou é `fully_reviewed`, e não um
+    total que se recusa a existir."""
+    criar_lancamento(
+        inscricao_ana,
+        item,
+        quantidade="1",
+        committee_score=Decimal("3.00"),
+        committee_note="Um semestre comprovado.",
+    )
+    criar_lancamento(inscricao_ana, item, quantidade="2")
+
+    linha = client_da_comissao.get(url_item_totals(inscricao_ana)).json()[0]
+
+    assert Decimal(linha["candidate_total"]) == Decimal("9.00")
+    assert Decimal(linha["committee_total"]) == Decimal("3.00")
+
+
+def test_item_sem_lancamento_nao_aparece_nos_totais(
+    client_da_comissao: Client,
+    edicao: ScholarshipEdition,
+    inscricao_ana: ScholarshipApplication,
+    item: BaremeItem,
+):
+    """A lista é a dos lançamentos agrupados; o barema inteiro é outra
+    rota, e é sob ele que a tela desenha os itens vazios."""
+    criar_item(edicao, code="2.1")
+    criar_lancamento(inscricao_ana, item)
+
+    corpo = client_da_comissao.get(url_item_totals(inscricao_ana)).json()
+
+    assert [linha["item_code"] for linha in corpo] == [item.code]
+
+
+def test_o_candidato_le_os_proprios_totais(
+    client_da_ana: Client, inscricao_ana: ScholarshipApplication, item: BaremeItem
+):
+    criar_lancamento(inscricao_ana, item, quantidade="2")
+
+    resposta = client_da_ana.get(url_item_totals(inscricao_ana))
+
+    assert resposta.status_code == 200, resposta.content
+    assert Decimal(resposta.json()[0]["candidate_total"]) == Decimal("6.00")
+
+
+def test_a_coordenacao_nao_le_os_totais_de_candidato_alheio(
+    client_da_coordenacao: Client,
+    inscricao_ana: ScholarshipApplication,
+    item: BaremeItem,
+):
+    """Mesmo porteiro dos lançamentos: `view_baremeentry` não separa o
+    dono do resto, quem separa é `download_applicationdocument`."""
+    criar_lancamento(inscricao_ana, item)
+
+    resposta = client_da_coordenacao.get(url_item_totals(inscricao_ana))
+
+    assert resposta.status_code == 403, resposta.content

@@ -7338,6 +7338,48 @@
         ]
       }
     },
+    "/scholarships/applications/{application_id}/item-totals/": {
+      "get": {
+        "operationId": "apps_scholarships_router_list_item_totals",
+        "summary": "List Item Totals",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "schema": {
+              "title": "Application Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationItemTotalOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "A \"Nota total\" de cada item, com o teto do edital já aplicado.\n\nExiste para que a tela de análise não some nada: o teto corta a SOMA\ndos lançamentos do item (`BaremeItem.apply_cap`), e um `min` repetido\nno front seria a segunda porta para a mesma regra. Mesma permissão e\nmesmo porteiro dos lançamentos — é a leitura deles, agrupada.\n\nO `prefetch_related` é o que faz a conta caber numa consulta: o\n`item_totals()` lê `bareme_entries.all()` e cai no cache (ver\n`_lancamentos_carregados`).",
+        "tags": [
+          "scholarships"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
     "/scholarships/applications/{application_id}/item-review": {
       "put": {
         "operationId": "apps_scholarships_router_set_item_review",
@@ -15861,6 +15903,57 @@
           "updated_at"
         ],
         "title": "ItemReviewOut",
+        "type": "object"
+      },
+      "ApplicationItemTotalOut": {
+        "description": "A \"Nota total\" de um item do barema, do jeito que a análise a lê.\n\nO teto já vem aplicado (`ScholarshipApplication.item_totals`), e é por\nisso que este schema existe: somar os lançamentos e cortar pelo limite\nno front seria reescrever `BaremeItem.apply_cap` do outro lado do fio\n— e o teto é do item sobre a SOMA, não de cada lançamento.\n\n`cap` viaja junto porque a tela publica o limite ao lado do total\n(\"Limite: 3,00\"): é o texto do edital, e sem ele o corte apareceria\ncomo um número menor sem explicação.",
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "item_code": {
+            "title": "Item Code",
+            "type": "string"
+          },
+          "item_text": {
+            "title": "Item Text",
+            "type": "string"
+          },
+          "item_section": {
+            "$ref": "#/components/schemas/BaremeSection"
+          },
+          "item_section_label": {
+            "title": "Item Section Label",
+            "type": "string"
+          },
+          "cap": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cap",
+            "type": "string"
+          },
+          "candidate_total": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Candidate Total",
+            "type": "string"
+          },
+          "committee_total": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Committee Total",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "item_code",
+          "item_text",
+          "item_section",
+          "item_section_label",
+          "cap",
+          "candidate_total",
+          "committee_total"
+        ],
+        "title": "ApplicationItemTotalOut",
         "type": "object"
       },
       "ItemReviewIn": {

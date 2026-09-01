@@ -353,6 +353,9 @@ CASOS: dict[str, Any] = {
     "GET /applications/{id}/item-reviews/": lambda c, b, a: c.get(
         f"{BASE}/applications/{b.inscricao.pk}/item-reviews/"
     ),
+    "GET /applications/{id}/item-totals/": lambda c, b, a: c.get(
+        f"{BASE}/applications/{b.inscricao.pk}/item-totals/"
+    ),
     "PUT /applications/{id}/item-review": lambda c, b, a: _json(
         c,
         "put",

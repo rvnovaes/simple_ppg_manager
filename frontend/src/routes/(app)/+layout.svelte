@@ -284,6 +284,19 @@
 								Bolsas
 							</a>
 						{/if}
+						<!-- A tela de quem analisa. `review_baremeentry` é exclusiva da
+						Comissão de Bolsas (`scholarships.0008_papeis_da_bolsa`) e é ela que
+						abre os formulários; Secretaria e Coordenação entram por papel,
+						porque acompanham a análise em leitura e não há permissão que as
+						reúna sem alcançar o Discente — ele lê a observação da própria
+						inscrição em "Minha bolsa", não aqui. O superusuário continua vendo
+						o item pela permissão. -->
+						{#if sessao.pode('scholarships.review_baremeentry') || sessao.temPapel('Secretaria', 'Coordenação')}
+							<a class="item-menu" href={resolve('/bolsas/analise')}>
+								<Icone nome="analise" tamanho={14} />
+								Análise de bolsas
+							</a>
+						{/if}
 						<!-- A outra ponta do mesmo edital: a tela do próprio candidato.
 						`add_scholarshipapplication` é exclusiva do Discente
 						(`scholarships.0008_papeis_da_bolsa`) — Secretaria, Coordenação e

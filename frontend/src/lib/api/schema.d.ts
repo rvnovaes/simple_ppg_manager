@@ -2755,6 +2755,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scholarships/applications/{application_id}/item-totals/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Item Totals
+         * @description A "Nota total" de cada item, com o teto do edital já aplicado.
+         *
+         *     Existe para que a tela de análise não some nada: o teto corta a SOMA
+         *     dos lançamentos do item (`BaremeItem.apply_cap`), e um `min` repetido
+         *     no front seria a segunda porta para a mesma regra. Mesma permissão e
+         *     mesmo porteiro dos lançamentos — é a leitura deles, agrupada.
+         *
+         *     O `prefetch_related` é o que faz a conta caber numa consulta: o
+         *     `item_totals()` lê `bareme_entries.all()` e cai no cache (ver
+         *     `_lancamentos_carregados`).
+         */
+        get: operations["apps_scholarships_router_list_item_totals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scholarships/applications/{application_id}/item-review": {
         parameters: {
             query?: never;
@@ -6619,6 +6648,36 @@ export interface components {
             updated_at: string;
         };
         /**
+         * ApplicationItemTotalOut
+         * @description A "Nota total" de um item do barema, do jeito que a análise a lê.
+         *
+         *     O teto já vem aplicado (`ScholarshipApplication.item_totals`), e é por
+         *     isso que este schema existe: somar os lançamentos e cortar pelo limite
+         *     no front seria reescrever `BaremeItem.apply_cap` do outro lado do fio
+         *     — e o teto é do item sobre a SOMA, não de cada lançamento.
+         *
+         *     `cap` viaja junto porque a tela publica o limite ao lado do total
+         *     ("Limite: 3,00"): é o texto do edital, e sem ele o corte apareceria
+         *     como um número menor sem explicação.
+         */
+        ApplicationItemTotalOut: {
+            /** Item Id */
+            item_id: number;
+            /** Item Code */
+            item_code: string;
+            /** Item Text */
+            item_text: string;
+            item_section: components["schemas"]["BaremeSection"];
+            /** Item Section Label */
+            item_section_label: string;
+            /** Cap */
+            cap: string;
+            /** Candidate Total */
+            candidate_total: string;
+            /** Committee Total */
+            committee_total: string;
+        };
+        /**
          * ItemReviewIn
          * @description A observação da comissão sobre um item inteiro do barema.
          *
@@ -10320,6 +10379,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemReviewOut"][];
+                };
+            };
+        };
+    };
+    apps_scholarships_router_list_item_totals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationItemTotalOut"][];
                 };
             };
         };

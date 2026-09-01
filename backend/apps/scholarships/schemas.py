@@ -687,6 +687,29 @@ class BaremeEntryReviewIn(Schema):
     committee_note: str = ""
 
 
+class ApplicationItemTotalOut(Schema):
+    """A "Nota total" de um item do barema, do jeito que a análise a lê.
+
+    O teto já vem aplicado (`ScholarshipApplication.item_totals`), e é por
+    isso que este schema existe: somar os lançamentos e cortar pelo limite
+    no front seria reescrever `BaremeItem.apply_cap` do outro lado do fio
+    — e o teto é do item sobre a SOMA, não de cada lançamento.
+
+    `cap` viaja junto porque a tela publica o limite ao lado do total
+    ("Limite: 3,00"): é o texto do edital, e sem ele o corte apareceria
+    como um número menor sem explicação.
+    """
+
+    item_id: int
+    item_code: str
+    item_text: str
+    item_section: BaremeSection
+    item_section_label: str
+    cap: decimal.Decimal
+    candidate_total: decimal.Decimal
+    committee_total: decimal.Decimal
+
+
 class ItemReviewIn(Schema):
     """A observação da comissão sobre um item inteiro do barema.
 
