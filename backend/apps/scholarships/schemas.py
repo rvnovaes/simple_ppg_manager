@@ -5,14 +5,19 @@ Schemas explícitos de entrada e saída (Seção 3 do CLAUDE.md); nenhum model
 """
 
 import datetime
+import decimal
 from pathlib import Path
 
 from ninja import Schema
 
 from .models import (
+    BaremeItem,
+    BaremeSection,
+    BaremeUnit,
     CommitteeMember,
     ScholarshipEdition,
     ScholarshipEditionStatus,
+    ScholarshipLevel,
 )
 
 # ---------------------------------------------------------------------------
@@ -169,3 +174,104 @@ class CommitteeMemberOut(Schema):
     @staticmethod
     def resolve_teacher_name(obj: CommitteeMember) -> str:
         return obj.teacher.person.full_name
+
+
+# ---------------------------------------------------------------------------
+# Barema
+# ---------------------------------------------------------------------------
+
+
+class BaremeItemIn(Schema):
+    """Uma linha do barema, digitada pela secretaria com a edição em
+    rascunho.
+
+    Sem `edition_id`: a edição vem da URL, já escopada no programa da
+    sessão. `level` é obrigatório e não tem default — o barema é por
+    (edição, nível), e mestrado e doutorado são listas independentes;
+    um default aqui faria item de doutorado nascer em mestrado por
+    esquecimento.
+    """
+
+    level: ScholarshipLevel
+    section: BaremeSection
+    code: str
+    text: str
+    unit: BaremeUnit
+    points_per_unit: decimal.Decimal
+    cap: decimal.Decimal
+
+
+class BaremeItemPatch(Schema):
+    """Retificação do item: só os campos presentes são aplicados.
+
+    Vale apenas com a edição em rascunho (`ensure_bareme_editable`), como
+    o POST e o DELETE. O `code` continua defendido pelo `clean()`
+    (`duplicate_bareme_item`).
+    """
+
+    level: ScholarshipLevel | None = None
+    section: BaremeSection | None = None
+    code: str | None = None
+    text: str | None = None
+    unit: BaremeUnit | None = None
+    points_per_unit: decimal.Decimal | None = None
+    cap: decimal.Decimal | None = None
+
+
+class BaremeItemOut(Schema):
+    """O item do barema como a tela o mostra.
+
+    Os três rótulos viajam resolvidos porque a tela de lançamento agrupa
+    os itens por seção e o nome da seção é do edital, não do front.
+    """
+
+    id: int
+    edition_id: int
+    level: ScholarshipLevel
+    level_label: str
+    section: BaremeSection
+    section_label: str
+    code: str
+    text: str
+    unit: BaremeUnit
+    unit_label: str
+    points_per_unit: decimal.Decimal
+    cap: decimal.Decimal
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @staticmethod
+    def resolve_level_label(obj: BaremeItem) -> str:
+        return obj.get_level_display()
+
+    @staticmethod
+    def resolve_section_label(obj: BaremeItem) -> str:
+        return obj.get_section_display()
+
+    @staticmethod
+    def resolve_unit_label(obj: BaremeItem) -> str:
+        return obj.get_unit_display()
+
+
+class BaremeCloneIn(Schema):
+    """De onde copiar o barema.
+
+    O destino é a edição da URL — é ela que precisa estar em rascunho. A
+    origem é qualquer outra edição do mesmo programa (tipicamente a do ano
+    anterior): montar o barema do zero é a parte mais cara de abrir o
+    edital, e ele muda pouco de um ano para o outro.
+    """
+
+    source_edition_id: int
+
+
+class BaremeCloneOut(Schema):
+    """O resultado da clonagem: quantos itens vieram e o barema completo.
+
+    A tela recarrega a lista sem uma segunda chamada, e `created` é o
+    número que a secretaria confere contra o edital do ano anterior.
+    """
+
+    source_edition_id: int
+    created: int
+    items: list[BaremeItemOut]

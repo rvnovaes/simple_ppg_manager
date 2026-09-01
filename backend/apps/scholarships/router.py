@@ -22,17 +22,25 @@ from apps.core.tenancy import current_program
 from apps.programs.models import Program
 
 from .models import (
+    BaremeItem,
     CommitteeMember,
     ScholarshipEdition,
     ScholarshipEditionStatus,
+    ScholarshipLevel,
 )
 from .schemas import (
+    BaremeCloneIn,
+    BaremeCloneOut,
+    BaremeItemIn,
+    BaremeItemOut,
+    BaremeItemPatch,
     CommitteeMemberIn,
     CommitteeMemberOut,
     ScholarshipEditionIn,
     ScholarshipEditionOut,
     ScholarshipEditionPatch,
 )
+from .services import clone_bareme
 
 router = Router(tags=["scholarships"])
 
@@ -239,6 +247,144 @@ def publish_final(request: HttpRequest, edition_id: int):
         campos=["status", "published_final_at"],
         at=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Barema — as linhas pontuáveis daquela edição, por nível
+# ---------------------------------------------------------------------------
+#
+# TODA ESCRITA DAQUI PARA BAIXO PASSA POR `ensure_bareme_editable()`: item
+# só nasce, muda ou some com a edição em rascunho (409 `bareme_frozen`).
+# Depois de `open-submissions` o candidato lança contra os pontos que leu,
+# e mexer no `points_per_unit` mudaria nota já dada. A leitura continua
+# aberta em qualquer estado — é o barema publicado do edital.
+
+
+def _itens_do_barema(edicao: ScholarshipEdition):
+    """O barema é filho de agregado: buscar dentro da edição já escopada
+    é o que garante o tenant, sem um `for_program` próprio."""
+    return edicao.bareme_items.all()
+
+
+@router.get("/editions/{int:edition_id}/bareme/", response=list[BaremeItemOut])
+def list_bareme(
+    request: HttpRequest, edition_id: int, level: ScholarshipLevel | None = None
+):
+    """O barema da edição, na ordem do edital (nível, depois código).
+
+    Sem paginação de propósito: o barema é a tabela do edital e a tela de
+    lançamento monta as seis seções de uma vez — paginar aqui obrigaria o
+    front a remontar a tabela em pedaços.
+    """
+    require_perm(request, "scholarships.view_baremeitem")
+    itens = _itens_do_barema(_edicao_do_programa(request, edition_id))
+    if level is not None:
+        itens = itens.for_level(level)
+    return itens
+
+
+@router.post("/editions/{int:edition_id}/bareme/", response={201: BaremeItemOut})
+def add_bareme_item(request: HttpRequest, edition_id: int, payload: BaremeItemIn):
+    """A secretaria acrescenta uma linha ao barema, em rascunho."""
+    require_perm(request, "scholarships.add_baremeitem")
+    edicao = _edicao_do_programa(request, edition_id)
+    edicao.ensure_bareme_editable()
+    item = BaremeItem(edition=edicao, **payload.model_dump())
+    with transaction.atomic():
+        item.clean()
+        item.save()
+        audit.record(
+            "scholarships.bareme.add",
+            request=request,
+            target=item,
+            program=edicao.program,
+            edition_id=edicao.pk,
+            level=item.level,
+            code=item.code,
+        )
+    return Status(201, item)
+
+
+@router.patch(
+    "/editions/{int:edition_id}/bareme/{int:item_id}/", response=BaremeItemOut
+)
+def update_bareme_item(
+    request: HttpRequest, edition_id: int, item_id: int, payload: BaremeItemPatch
+):
+    """Retificação da linha do barema, só em rascunho."""
+    require_perm(request, "scholarships.change_baremeitem")
+    edicao = _edicao_do_programa(request, edition_id)
+    edicao.ensure_bareme_editable()
+    item = get_object_or_404(_itens_do_barema(edicao), pk=item_id)
+    campos = payload.model_dump(exclude_unset=True)
+    for campo, valor in campos.items():
+        setattr(item, campo, valor)
+    with transaction.atomic():
+        item.clean()
+        item.save(update_fields=[*campos, "updated_at"] if campos else None)
+        audit.record(
+            "scholarships.bareme.update",
+            request=request,
+            target=item,
+            program=edicao.program,
+            edition_id=edicao.pk,
+            fields=sorted(campos),
+        )
+    return item
+
+
+@router.delete("/editions/{int:edition_id}/bareme/{int:item_id}/", response={204: None})
+def remove_bareme_item(request: HttpRequest, edition_id: int, item_id: int):
+    """Tira uma linha do barema, só em rascunho.
+
+    A permissão exigida é `change_baremeitem`, e não `delete_`: nenhum
+    papel de domínio recebe `delete_*` (migration `0008_papeis_da_bolsa`,
+    com teste guardando) — mesmo precedente do `DELETE` da comissão. Em
+    rascunho ainda não existe lançamento contra o item, então remover não
+    apaga nota de ninguém.
+
+    A auditoria é gravada **antes** do `delete()`: depois dele a instância
+    perde o pk e o alvo do registro sairia vazio.
+    """
+    require_perm(request, "scholarships.change_baremeitem")
+    edicao = _edicao_do_programa(request, edition_id)
+    edicao.ensure_bareme_editable()
+    item = get_object_or_404(_itens_do_barema(edicao), pk=item_id)
+    with transaction.atomic():
+        audit.record(
+            "scholarships.bareme.remove",
+            request=request,
+            target=item,
+            program=edicao.program,
+            edition_id=edicao.pk,
+            level=item.level,
+            code=item.code,
+        )
+        item.delete()
+    return Status(204, None)
+
+
+@router.post("/editions/{int:edition_id}/bareme/clone", response=BaremeCloneOut)
+def clone_bareme_from_edition(
+    request: HttpRequest, edition_id: int, payload: BaremeCloneIn
+):
+    """Copia o barema de outra edição do programa para esta.
+
+    A edição da URL é o **destino** — é ela que precisa estar em rascunho.
+    A origem é buscada com o mesmo escopo: edição de outro programa é 404.
+
+    Cruza dois agregados, então o corpo é do service (ADR-002); aqui só
+    permissão, escopo e contrato.
+    """
+    require_perm(request, "scholarships.add_baremeitem")
+    destino = _edicao_do_programa(request, edition_id)
+    origem = _edicao_do_programa(request, payload.source_edition_id)
+    novos = clone_bareme(source=origem, target=destino, request=request)
+    return {
+        "source_edition_id": origem.pk,
+        "created": len(novos),
+        "items": list(_itens_do_barema(destino)),
+    }
 
 
 # ---------------------------------------------------------------------------

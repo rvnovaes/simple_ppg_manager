@@ -245,7 +245,7 @@
         "f9-api-edicao-e-comissao"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

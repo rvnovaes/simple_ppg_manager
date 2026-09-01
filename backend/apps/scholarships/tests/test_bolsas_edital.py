@@ -134,6 +134,25 @@ def test_bareme_editable_so_em_rascunho(estado):
 
 
 @pytest.mark.parametrize("estado", TODOS_OS_ESTADOS)
+def test_ensure_bareme_editable_e_a_versao_que_cobra(estado):
+    """A leitura desenha a tela; `ensure_` é a guarda de escrita (409).
+
+    O par existe porque o front precisa saber se mostra o botão, e o
+    backend não pode confiar nisso — quem recusa a escrita é o model.
+    """
+    edicao = _edicao(status=estado)
+
+    if edicao.bareme_editable():
+        assert edicao.ensure_bareme_editable() is None
+        return
+
+    with pytest.raises(InvalidStateTransition) as erro:
+        edicao.ensure_bareme_editable()
+    assert erro.value.code == "bareme_frozen"
+    assert erro.value.status_code == 409
+
+
+@pytest.mark.parametrize("estado", TODOS_OS_ESTADOS)
 def test_submission_open_so_com_inscricoes_abertas(estado):
     esperado = estado == ScholarshipEditionStatus.SUBMISSIONS_OPEN
 

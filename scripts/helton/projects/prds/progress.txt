@@ -57,6 +57,16 @@ Started: ter. 01 set 2026 11:06:15 -03
   chave de tenant.
 - Campo de schema Ninja com o mesmo nome de um método do model exige
   `resolve_<campo>` explícito — sem ele o método ligado é serializado.
+- Guarda de escrita é **método do model** (`ensure_<coisa>()` levantando
+  `InvalidStateTransition` com `code`), ao lado do predicado de leitura
+  (`<coisa>()` devolvendo bool) que o schema de saída expõe para a tela:
+  a tela desenha o botão pelo bool, o backend recusa pelo `ensure_`.
+- `bulk_create` **não roda `clean()`** — quem escreve em lote confere o
+  espelho da `UniqueConstraint` à mão antes, senão a violação vira
+  `IntegrityError` → 500 em vez do `code` do domínio.
+- Rota de ato com nome literal (`.../bareme/clone`) só convive com
+  `.../bareme/{item_id}/` porque o conversor é `int:`. Sem o conversor
+  tipado a ordem de registro decide, em silêncio.
 - Upload de teste cai em `tmp_path` pela fixture autouse `media_temporaria`
   (`backend/conftest.py`) — não montar `MEDIA_ROOT` local. E teste de "o
   arquivo antigo sumiu do storage" precisa de **nomes diferentes** nos dois
@@ -445,3 +455,56 @@ Started: ter. 01 set 2026 11:06:15 -03
   - Campo do schema com o **mesmo nome de um método do model**
     (`submission_open`) só funciona com `resolve_<campo>` explícito — sem ele o
     Ninja serializaria o método ligado.
+
+## 2026-09-01 - f10-api-barema-e-clonagem
+- CRUD do barema em `/api/v1/scholarships/editions/{id}/bareme/`: `GET`
+  (lista completa, filtro opcional `level`), `POST` (201), `PATCH {item_id}/`,
+  `DELETE {item_id}/` e `POST .../bareme/clone`.
+- **O congelamento virou método do model**: `ScholarshipEdition
+  .ensure_bareme_editable()` levanta `InvalidStateTransition` com
+  `code="bareme_frozen"` (409) fora do rascunho. O par leitura/cobrança é o
+  mesmo de `SelectionProcess.is_draft`/`ensure_editable`: `bareme_editable()`
+  desenha a tela, `ensure_` recusa a escrita. As três escritas e a clonagem
+  chamam a guarda; a **leitura fica aberta em qualquer estado** — o barema
+  publicado é o que o candidato lê para lançar.
+- `services.py` do app nasce com `clone_bareme(source=, target=, request=)`
+  (ADR-002: cruza dois agregados). Copia os dois níveis por
+  `CAMPOS_CLONADOS` explícito (não `model_to_dict` — campo novo no
+  `BaremeItem` deve exigir decisão consciente sobre viajar no clone),
+  confere as duplicatas `(level, code)` **antes** de escrever, usa
+  `bulk_create` e grava **um** `AuditLog` com `source_edition_id`/`created`.
+  Recusa origem igual ao destino (`same_edition`, 400).
+- O `DELETE` exige `change_baremeitem`, e não `delete_`: nenhum papel de
+  domínio recebe `delete_*` (migration `0008`, com teste guardando) — mesmo
+  precedente do `DELETE` da comissão.
+- Schemas: `BaremeItemIn/Patch/Out`, `BaremeCloneIn/Out`. O `Out` resolve os
+  três rótulos (`level_label`, `section_label`, `unit_label`) porque a tela
+  de lançamento agrupa por seção e o nome da seção é do edital.
+- Arquivos: `backend/apps/scholarships/{models,router,schemas}.py`,
+  `backend/apps/scholarships/services.py` (novo),
+  `backend/apps/scholarships/tests/test_bolsas_api_barema.py` (novo),
+  `backend/apps/scholarships/tests/test_bolsas_edital.py`.
+- `make ready` verde (1593 passed, 10 skipped). Sem migration (método novo
+  não altera schema).
+- **Learnings for future iterations:**
+  - **A rota `.../bareme/clone` convive com `.../bareme/{int:item_id}/`**
+    porque o conversor é `int:` e "clone" não casa. Rota de ato com nome
+    literal sob um prefixo que também tem id só é segura com o conversor
+    tipado — sem o `int:` a ordem de registro decidiria, em silêncio.
+  - `edicao.bareme_items.all()` devolve o `BaremeItemQuerySet` (o manager
+    reverso herda do manager padrão), então `for_level()` está disponível
+    ali — não é preciso um `BaremeItem.objects.for_edition(...)` para
+    filtrar dentro da edição já escopada.
+  - `bulk_create` **não roda `clean()`**: quem escreve em lote confere o
+    espelho da `UniqueConstraint` à mão antes. Foi o que permitiu o
+    "ou tudo ou nada" do clone com um `code` de domínio em vez de
+    `IntegrityError`.
+  - Rota que devolve schema composto pode retornar `dict` com os objetos do
+    ORM dentro (`{"created": n, "items": [<BaremeItem>]}`): o `Schema` do
+    Ninja resolve por atributo em cada nível.
+  - O teste de API foi de novo para arquivo próprio
+    (`test_bolsas_api_barema.py`), e não para o `test_bolsas_barema.py` que o
+    `prd.json` lista — aquele é nível (a) e continua sem `django_db`.
+    f11–f20 devem manter o par.
+  - `ESTADOS_CONGELADOS = todos menos DRAFT` parametriza as três escritas e
+    a clonagem de graça: 5 estados × 4 rotas, sem escrever caso a caso.

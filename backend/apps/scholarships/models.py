@@ -331,6 +331,21 @@ class ScholarshipEdition(models.Model):
         """
         return self.status == ScholarshipEditionStatus.DRAFT
 
+    def ensure_bareme_editable(self) -> None:
+        """Guarda de escrita do barema — 409 fora do rascunho.
+
+        A leitura (`bareme_editable`) desenha a tela; esta cobra. Mesmo par
+        de `SelectionProcess.ensure_editable` (`apps/selection/models.py`):
+        a regra de quando o barema muda é do model, e o router só a chama.
+        """
+        if not self.bareme_editable():
+            raise InvalidStateTransition(
+                "O barema só pode mudar com a edição em rascunho: depois de "
+                "abertas as inscrições o candidato lança contra os pontos "
+                "que leu.",
+                code="bareme_frozen",
+            )
+
     def submission_open(self) -> bool:
         """Estado, não relógio: a data do cronograma é informação."""
         return self.status == ScholarshipEditionStatus.SUBMISSIONS_OPEN
