@@ -43,6 +43,20 @@ Started: ter. 01 set 2026 11:06:15 -03
   `verbo_model` (`set_fump_level`, `override_band`) precisa de mapa explícito
   na migration, senão nasce num content type fantasma e `require_perm` nunca
   casa.
+- Teste de model e teste de API moram em **arquivos separados**:
+  `test_bolsas_<assunto>.py` é nível (a) (em memória, sem `django_db` no
+  módulo) e `test_bolsas_api_<assunto>.py` é nível (b) (`pytestmark =
+  pytest.mark.django_db`). Misturar torna o arquivo inteiro `django_db`.
+- Rota que transiciona estado: `require_perm` → `current_program` → busca já
+  escopada (404 para outro tenant, nunca 403) → método do model (409 com
+  `code`) → `save(update_fields=[..., "updated_at"])` + `audit.record`, tudo
+  no mesmo `transaction.atomic()`. Uma rota nomeada por transição, nunca um
+  `PATCH` de `status`.
+- `audit.record` infere `program` de `target.program`: filho de agregado (sem
+  FK `program`) precisa de `program=` explícito, senão o `AuditLog` nasce sem
+  chave de tenant.
+- Campo de schema Ninja com o mesmo nome de um método do model exige
+  `resolve_<campo>` explícito — sem ele o método ligado é serializado.
 - Upload de teste cai em `tmp_path` pela fixture autouse `media_temporaria`
   (`backend/conftest.py`) — não montar `MEDIA_ROOT` local. E teste de "o
   arquivo antigo sumiu do storage" precisa de **nomes diferentes** nos dois
@@ -373,3 +387,61 @@ Started: ter. 01 set 2026 11:06:15 -03
     data migration tem de estar **aplicado** antes do seed — daí `migrate` vir
     antes do `seed_demo` no `SEED_CMD`.
 ---
+
+## 2026-09-01 - f9-api-edicao-e-comissao
+- Borda HTTP da edição do edital de bolsas em `/api/v1/scholarships/editions/`:
+  `GET` (paginada, filtros `year`/`status`), `POST` (201), `GET {id}/`,
+  `PATCH {id}/`, as **cinco transições nomeadas**
+  (`open-submissions`, `start-review`, `publish-preliminary`, `open-appeals`,
+  `publish-final`) e a comissão (`GET`/`POST /editions/{id}/committee/`,
+  `DELETE /editions/{id}/committee/{member_id}/`).
+- Toda rota abre com `require_perm` e `current_program` logo depois; nenhuma
+  rota pública (o aluno já está logado). Escopo entra na **busca**
+  (`_edicao_do_programa`): edição de outro programa é 404, nunca 403.
+- As duas publicações exigem a permissão própria
+  `scholarships.publish_scholarshipedition`; as outras três,
+  `change_scholarshipedition`. O `DELETE` da comissão exige
+  `change_committeemember` (nenhum papel tem `delete_*` — mesmo precedente e
+  mesma justificativa do `delete_stage` de `selection/router.py:366`).
+- `_transicionar()` é o corpo comum das cinco: transiciona (o model levanta
+  409 com `code` próprio), salva com `update_fields` e grava o `AuditLog` no
+  mesmo `transaction.atomic()`.
+- Schemas explícitos: `ScholarshipEditionIn/Patch/Out`, `CommitteeMemberIn/Out`.
+  O `Out` da edição resolve as **cinco guardas de leitura** do model
+  (`bareme_editable`, `submission_open`, `committee_can_review`, `appeal_open`,
+  `results_visible_to_student`) — a tela desenha o que o servidor decidiu, e a
+  máquina de estados não é reimplementada no front.
+- Arquivos: `backend/apps/scholarships/{router,schemas}.py`,
+  `backend/apps/scholarships/tests/test_bolsas_api_edital.py` (novo).
+- `make ready` verde (1543 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - **O teste de API foi para um arquivo novo**, `test_bolsas_api_edital.py`, e
+    não para o `test_bolsas_edital.py` que o `prd.json` lista: aquele é nível
+    (a) da pirâmide (objeto em memória, sem `django_db` no módulo) e misturar
+    rota lá tornaria o `pytestmark` do arquivo inteiro `django_db`. É a mesma
+    divisão que `selection` faz (`test_models.py` × `test_api_editais.py`). As
+    stories f10–f20 devem seguir o par `test_bolsas_<assunto>.py` (model) +
+    `test_bolsas_api_<assunto>.py` (rota).
+  - O `PATCH` da edição **não** tem `ensure_editable`, de propósito: o
+    cronograma é informação divulgada e retificar data publicada é rotina do
+    edital. Quem congela o que muda nota já dada é `bareme_editable()`, na
+    story do barema — não repetir a guarda aqui.
+  - **`publish-preliminary` e `publish-final` ainda transicionam direto pelo
+    model.** f18 deve mover o corpo dessas duas rotas para o service de
+    publicação (snapshot de faixa/nota/posição + sorteio + `AuditLog` único)
+    **sem mudar o nome nem o contrato da rota** — o comentário na docstring de
+    `publish_preliminary` marca o ponto exato.
+  - **Nenhuma story cobre o upload do `notice_file` da edição** (nem esta, nem
+    f10–f21), e o model não tem `validate_notice_upload`. O `Out` já expõe
+    `notice_filename`/`notice_url`, mas hoje só o Admin preenche o campo. Se a
+    tela f21 precisar do PDF, é rota nova + validador no model, no molde de
+    `upload_notice_file` (`selection/router.py`) — fica registrado para o merge.
+  - `audit.record` infere `program` de `target.program`; filho de agregado
+    (`CommitteeMember`, que não tem FK `program`) precisa do `program=` explícito,
+    senão o `AuditLog` nasce sem chave de tenant.
+  - Matriz `transição × todos os estados` também vale no teste de API: um
+    `pytest.skip` quando o estado é o de origem cobre os 25 pares e pega de
+    graça "a transição não repete o próprio destino".
+  - Campo do schema com o **mesmo nome de um método do model**
+    (`submission_open`) só funciona com `resolve_<campo>` explícito — sem ele o
+    Ninja serializaria o método ligado.

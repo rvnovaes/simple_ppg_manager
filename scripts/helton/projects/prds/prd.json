@@ -221,7 +221,7 @@
         "f8-papeis-e-seed"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
