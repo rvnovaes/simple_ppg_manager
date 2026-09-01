@@ -85,3 +85,29 @@ Started: ter. 01 set 2026 11:06:15 -03
   - Teste de transição vale mais parametrizado pela matriz
     (transição × todos os estados) do que um caso por vez: pega de graça o
     "não repete o próprio destino".
+
+## 2026-09-01 - f3-barema-item
+- `BaremeItem`: `edition` CASCADE, `level`, `section`, `code`, `text`, `unit`,
+  `points_per_unit` `Decimal(6,2)`, `cap` `Decimal(7,2)`; unique
+  `(edition, level, code)` espelhado em `clean()` como `duplicate_bareme_item`.
+  Sem FK `program` — `for_program()` filtra por `edition__program`; `for_edition()`
+  e `for_level()` completam o QuerySet, porque o barema é por (edição, nível).
+- `raw_score(quantity)` e `apply_cap(total)` **separadas**, com o porquê
+  comentado no código: o teto é do item, aplicado sobre a soma dos lançamentos,
+  nunca sobre cada lançamento.
+- Migration `0002_baremeitem` gerada, lida (tabela nova, retrocompatível) e
+  aplicada no canteiro. Admin quebra-vidro com `AuditedModelAdmin`.
+- Arquivos: `backend/apps/scholarships/{models,admin}.py`,
+  `.../migrations/0002_baremeitem.py`, `.../tests/test_bolsas_barema.py`.
+- `make ready` verde (1318 passed, 5 skipped).
+- **Learnings for future iterations:**
+  - O congelamento do barema **não** está em `BaremeItem`: quem guarda é
+    `ScholarshipEdition.bareme_editable()`, chamado pelo router da story de
+    escrita. Não duplicar a guarda no `clean()` do item.
+  - `raw_score` devolve o Decimal com a escala do produto (2,50 × 0,50 =
+    1,250, três casas). O arredondamento para 2 casas é da nota final, não
+    do lançamento — se aparecer, é em `final_score()`/publicação.
+  - `pytest` neste canteiro imprime "Pytest: No tests collected" quando a
+    saída passa pelo filtro do shell; redirecione para arquivo
+    (`> /tmp/pt.log 2>&1`) para ver o resultado real.
+---

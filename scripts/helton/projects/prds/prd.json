@@ -77,7 +77,7 @@
         "f2-edicao-e-comissao"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

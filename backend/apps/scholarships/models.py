@@ -497,3 +497,112 @@ class CommitteeMember(models.Model):
                 "Este professor já compõe a comissão desta edição.",
                 code="duplicate_committee_member",
             )
+
+
+# ---------------------------------------------------------------------------
+# BaremeItem (a linha do barema de uma edição, por nível)
+# ---------------------------------------------------------------------------
+
+
+class BaremeItemQuerySet(models.QuerySet["BaremeItem"]):
+    def for_program(self, program: Any) -> "BaremeItemQuerySet":
+        """Chega ao programa pelo pai — este model não tem FK `program`."""
+        return self.filter(edition__program=program)
+
+    def for_edition(self, edition: Any) -> "BaremeItemQuerySet":
+        return self.filter(edition=edition)
+
+    def for_level(self, level: str) -> "BaremeItemQuerySet":
+        """O barema é por (edição, nível): mestrado e doutorado são listas
+        independentes, com códigos e pontos próprios."""
+        return self.filter(level=level)
+
+
+class BaremeItem(models.Model):
+    """Uma linha pontuável do barema de uma edição, para um nível.
+
+    O barema é por **(edição, nível)**: mestrado e doutorado têm itens
+    independentes, com códigos, pontuação e limites próprios. `code` é o
+    número que o edital publica ("1.3") e é o que o candidato enxerga na
+    tela de lançamento.
+
+    `points_per_unit` é quanto vale **uma** unidade de `unit` (um semestre,
+    um mês, uma hora, uma unidade), e `cap` é o limite do item.
+
+    Congelamento: quem guarda a escrita é `ScholarshipEdition.bareme_editable()`
+    — item só nasce, muda ou some com a edição em rascunho. `open_submissions()`
+    congela, porque a partir dali o candidato lança contra os pontos que leu.
+    """
+
+    edition = models.ForeignKey(
+        ScholarshipEdition,
+        on_delete=models.CASCADE,
+        related_name="bareme_items",
+        verbose_name="edição",
+    )
+    level = models.CharField("nível", max_length=20, choices=ScholarshipLevel)
+    section = models.CharField("seção", max_length=20, choices=BaremeSection)
+    code = models.CharField("código", max_length=10)
+    text = models.TextField("descrição")
+    unit = models.CharField("unidade", max_length=20, choices=BaremeUnit)
+    points_per_unit = models.DecimalField(
+        "pontos por unidade", max_digits=6, decimal_places=2
+    )
+    cap = models.DecimalField("limite do item", max_digits=7, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = BaremeItemQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "item do barema"
+        verbose_name_plural = "itens do barema"
+        ordering = ["edition", "level", "code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["edition", "level", "code"],
+                name="unique_item_do_barema_por_edicao_e_nivel",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.code} — {self.text[:60]}"
+
+    # -- invariantes -------------------------------------------------------
+
+    def clean(self) -> None:
+        """Um código por (edição, nível).
+
+        Espelho da `UniqueConstraint`, como nos demais models deste app.
+        """
+        super().clean()
+        if self.edition_id is None or not self.code or not self.level:
+            return
+        duplicatas = BaremeItem.objects.filter(
+            edition_id=self.edition_id, level=self.level, code=self.code
+        )
+        if self.pk is not None:
+            duplicatas = duplicatas.exclude(pk=self.pk)
+        if duplicatas.exists():
+            raise DomainError(
+                f"O item {self.code} já existe no barema deste nível nesta edição.",
+                code="duplicate_bareme_item",
+            )
+
+    # -- aritmética --------------------------------------------------------
+    #
+    # SÃO DUAS FUNÇÕES SEPARADAS DE PROPÓSITO, E ESSE É O PONTO SUTIL DO
+    # BAREMA: `raw_score` pontua UM lançamento, e `apply_cap` corta a SOMA
+    # dos lançamentos daquele item. O teto é do item, não do lançamento —
+    # dois lançamentos de 3,00 no item 1.8 somam 6,00 contra o limite de
+    # 18,00, e nenhum dos dois é cortado sozinho. Aplicar o teto dentro de
+    # `raw_score` daria a mesma resposta nos casos fáceis (um lançamento só)
+    # e a errada exatamente no caso que importa.
+
+    def raw_score(self, quantity: Decimal) -> Decimal:
+        """Pontuação bruta de **um** lançamento, sem teto."""
+        return quantity * self.points_per_unit
+
+    def apply_cap(self, total: Decimal) -> Decimal:
+        """Corta pelo limite do item a **soma** dos lançamentos dele."""
+        return min(total, self.cap)
