@@ -109,6 +109,18 @@ Started: ter. 01 set 2026 11:06:15 -03
 - **Snapshot de publicação é `bulk_update`, e `auto_now` não dispara nele**:
   `updated_at` entra na lista de campos com o instante da publicação
   atribuído à mão, senão a coluna fica mentindo a data da última alteração.
+- **Teste que procura texto em PDF do ReportLab precisa desfazer o escape
+  octal e a quebra de linha.** Acento vira `\351`/`\347` dentro do operador
+  de texto, e `Paragraph` parte a frase em `Tj` separados: substring longa
+  nunca casa. O helper que funciona (`texto_do_pdf` em
+  `test_bolsas_pdf.py`) junta os trechos `(...) Tj` com espaço e converte os
+  escapes de volta. Registrado no `CLAUDE.md`.
+- **Dinheiro no papel: `formats.number_format(..., force_grouping=True)`.**
+  Sem ele sai `3200,00` em vez de `3.200,00` — `USE_THOUSAND_SEPARATOR` é
+  falso por padrão. Registrado no `CLAUDE.md`.
+- **Regra de visibilidade compartilhada entre a rota JSON e a rota do PDF é
+  uma função só** (`_garantir_resultado_visivel`): duas cópias divergem, e a
+  que vaza é sempre a versão imprimível, que é a que circula.
 
 
 ## 2026-09-01 - f1-app-scholarships-esqueleto
@@ -985,4 +997,49 @@ Started: ter. 01 set 2026 11:06:15 -03
     com um caso a menos.
   - f19 (PDF) e f20 (schema) consomem `edition.result(level)`, e não
     `classify()`: o documento imprime o que foi publicado.
+---
+
+## 2026-09-01 - f19-pdf-do-resultado
+- **`apps/scholarships/pdf.py`**, espelhando `apps/selection/pdf.py`: uma
+  função pública `montar_resultado(edition, level, kind) -> bytes`, que não
+  toca banco nem disco. Ela lê `edition.result(level)` — o **snapshot**
+  publicado, ou a prévia antes dele — e nunca `classify()`: se o papel
+  recalculasse, o PDF baixado durante a fase de recursos discordaria da tela
+  ao lado a cada deferimento.
+- **As dez seções saem sempre, inclusive as vazias** (Q8), cada uma com o
+  título do inciso, o rótulo "Ordem de prioridade: N" e a **regra de
+  ordenação escrita** — os três vêm prontos do `BandResult`, que os leu da
+  mesma constante que ordenou a faixa. Texto e algoritmo saem do mesmo lugar
+  justamente para não divergirem.
+- **A coluna "Remuneração" só aparece nas duas faixas em que o rendimento
+  ordenou** (2.4-V e 2.4-VI/VII/VIII), pela mesma chave `shows_income`: nas
+  outras oito o rendimento não entrou na conta, e imprimi-lo sugeriria que
+  entrou. São duas composições de largura (`COLUNAS_*`), somando os 170 mm
+  úteis do A4 — coluna estreita demais quebra a linha em silêncio.
+- **`GET /editions/{id}/result.pdf?level=`** só embrulha os bytes num
+  `FileResponse`. A permissão e a visibilidade saíram para
+  `_garantir_resultado_visivel`, **compartilhada com a rota JSON**: candidato
+  antes do preliminar toma 403 `result_not_published`, edição de outro
+  programa é 404. O tipo do documento (preliminar/final) sai do carimbo de
+  publicação (`pdf.tipo_do_resultado`), não de parâmetro do chamador.
+- **`docs/adr/010-pdf-do-resultado-de-bolsas.md`**: curto, referenciando o
+  ADR-008 em vez de reabrir a escolha do motor. O `reportlab` já estava no
+  `pyproject.toml` — **nenhuma dependência foi adicionada e o `pyproject.toml`
+  não foi tocado**, como a story exigia.
+- Arquivos: `backend/apps/scholarships/{pdf,router}.py`,
+  `.../tests/test_bolsas_pdf.py` (novo, 13 casos),
+  `docs/adr/010-pdf-do-resultado-de-bolsas.md`, `CLAUDE.md`.
+- `make ready` verde (1874 passed, 10 skipped).
+- **Learnings for future iterations:**
+  - Este arquivo de teste é `django_db` inteiro, e não nível (a) como o
+    `test_pdf.py` da ata: o papel nasce de `result(level)`, que lê o banco.
+    A ata cabia em memória porque carrega o `content` congelado.
+  - Procurar texto no PDF do ReportLab: veja o helper `texto_do_pdf` — o
+    acento é escape octal e `Paragraph` parte a frase em `Tj` separados. Duas
+    asserções falharam por isso antes de o helper existir, com o documento
+    correto.
+  - `formats.number_format` precisa de `force_grouping=True` para o separador
+    de milhar; `use_l10n=True` sozinho não basta.
+  - A f20 é quem regenera `openapi.json`/`schema.d.ts` — a rota nova do PDF
+    entra no contrato publicado lá, não aqui.
 ---

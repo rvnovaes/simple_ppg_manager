@@ -568,3 +568,15 @@ As que já custaram iteração aqui:
   `Prefetch("<related>", queryset=Filho.objects.select_related(...))`, e o
   método cai no `.select_related()` só quando não há cache
   (`"<related>" in self._prefetched_objects_cache`).
+- **Procurar texto dentro de um PDF do ReportLab exige desfazer três camadas.**
+  O fluxo de página vem comprimido (Flate) e às vezes em ASCII85, e — a parte
+  que engana — dentro do operador de texto **o acento é escape octal**
+  (`\351` para "é", `\347` para "ç"): a asserção `"décima" in texto` falha com a
+  palavra impressa no papel. Pior, `Paragraph` **quebra a linha em `Tj`
+  separados**, então frase longa nunca casa como substring contínua. O helper
+  que funciona junta só os trechos `(...) Tj` com espaço e converte os escapes
+  octais de volta (`texto_do_pdf` em `apps/scholarships/tests/test_bolsas_pdf.py`).
+- **Valor em real no papel precisa de `force_grouping=True`.**
+  `USE_THOUSAND_SEPARATOR` é falso por padrão no Django, e
+  `formats.number_format(v, decimal_pos=2, use_l10n=True)` publica `3200,00` em
+  vez de `3.200,00` — sem erro nenhum, só um documento oficial mal escrito.

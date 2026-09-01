@@ -8,6 +8,7 @@ regra de negócio aqui. As rotas entram nas stories de API.
 seletivo, aqui até o candidato é aluno matriculado, e portanto logado.
 """
 
+from io import BytesIO
 from pathlib import Path
 
 from django.db import transaction
@@ -28,7 +29,7 @@ from apps.programs.models import Program
 # Módulo inteiro, e não `from .services import publish_preliminary`: as
 # rotas têm o nome do ato que chamam, e o `def` de baixo sombrearia o
 # import — a rota chamaria a si mesma, sem erro de importação.
-from . import services
+from . import pdf, services
 from .models import (
     PAPEIS_COM_VISAO_DA_FILA,
     AppealState,
@@ -287,12 +288,41 @@ def edition_result(request: HttpRequest, edition_id: int, level: ScholarshipLeve
     """
     require_perm(request, "scholarships.view_scholarshipedition")
     edicao = _edicao_do_programa(request, edition_id)
+    _garantir_resultado_visivel(request, edicao)
+    return edicao.result(level)
+
+
+@router.get("/editions/{int:edition_id}/result.pdf")
+def edition_result_pdf(request: HttpRequest, edition_id: int, level: ScholarshipLevel):
+    """O mesmo resultado, em papel — um documento por nível.
+
+    A rota não monta nada: a permissão e a regra de visibilidade são as
+    **mesmas** do JSON (`_garantir_resultado_visivel`, e é de propósito
+    que sejam uma função só — duas cópias divergiriam, e a que vazasse
+    seria justamente a imprimível), e o documento sai inteiro de
+    `pdf.montar_resultado`.
+    """
+    require_perm(request, "scholarships.view_scholarshipedition")
+    edicao = _edicao_do_programa(request, edition_id)
+    _garantir_resultado_visivel(request, edicao)
+    tipo = pdf.tipo_do_resultado(edicao)
+    return FileResponse(
+        BytesIO(pdf.montar_resultado(edicao, level, tipo)),
+        as_attachment=True,
+        filename=pdf.nome_do_arquivo(edicao, level, tipo),
+        content_type="application/pdf",
+    )
+
+
+def _garantir_resultado_visivel(
+    request: HttpRequest, edicao: ScholarshipEdition
+) -> None:
+    """Quem ainda não pode ver esta lista toma 403 `result_not_published`."""
     if not _ve_a_previa(request) and not edicao.results_visible_to_student():
         raise NotAllowed(
             "O resultado desta edição ainda não foi publicado.",
             code="result_not_published",
         )
-    return edicao.result(level)
 
 
 def _ve_a_previa(request: HttpRequest) -> bool:
