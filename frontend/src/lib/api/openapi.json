@@ -7958,6 +7958,13 @@
           "is_active": {
             "title": "Is Active",
             "type": "boolean"
+          },
+          "teacher_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Teacher Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -7965,7 +7972,8 @@
           "program_id",
           "research_line_id",
           "name",
-          "is_active"
+          "is_active",
+          "teacher_ids"
         ],
         "title": "CollectiveProjectOut",
         "type": "object"
@@ -8005,6 +8013,14 @@
             "default": true,
             "title": "Is Active",
             "type": "boolean"
+          },
+          "teacher_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Teacher Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -8049,6 +8065,20 @@
               }
             ],
             "title": "Is Active"
+          },
+          "teacher_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teacher Ids"
           }
         },
         "title": "CollectiveProjectPatch",

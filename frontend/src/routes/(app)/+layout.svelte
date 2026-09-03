@@ -97,11 +97,48 @@
 								</div>
 							</details>
 						{/if}
-						{#if sessao.pode('programs.view_researchline')}
-							<a class="item-menu" href={resolve('/estrutura')}>
-								<Icone nome="estrutura" tamanho={14} />
-								Estrutura
-							</a>
+						<!-- Estrutura: os cadastros que dão forma ao programa. O pai aparece
+						se qualquer item aparecer; cada item continua com a sua permissão de
+						leitura (`academic.0003_papeis_dos_cadastros`), e o submenu junta as
+						telas, não as permissões. -->
+						{#if sessao.pode('programs.view_researchline') || sessao.pode('programs.view_academicterm') || sessao.pode('programs.view_discipline')}
+							<details class="group relative">
+								<summary class="item-menu cursor-pointer list-none marker:content-['']">
+									<Icone nome="estrutura" tamanho={14} />
+									Estrutura
+									<span aria-hidden="true" class="text-cinza text-[0.625rem]">▾</span>
+								</summary>
+								<div
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-48 flex-col border py-1 shadow-sm"
+								>
+									{#if sessao.pode('programs.view_researchline')}
+										<a
+											class="item-submenu"
+											href={resolve('/estrutura/linhas')}
+											onclick={fecharSubmenu}
+										>
+											<Icone nome="estrutura" tamanho={14} />
+											Linhas de Pesquisa
+										</a>
+									{/if}
+									{#if sessao.pode('programs.view_academicterm')}
+										<a
+											class="item-submenu"
+											href={resolve('/estrutura/periodos')}
+											onclick={fecharSubmenu}
+										>
+											<Icone nome="edital" tamanho={14} />
+											Períodos Letivos
+										</a>
+									{/if}
+									{#if sessao.pode('programs.view_discipline')}
+										<a class="item-submenu" href={resolve('/disciplinas')} onclick={fecharSubmenu}>
+											<Icone nome="disciplinas" tamanho={14} />
+											Disciplinas
+										</a>
+									{/if}
+								</div>
+							</details>
 						{/if}
 						{#if sessao.pode('academic.add_isolatedenrollmentrequest')}
 							<a class="item-menu" href={resolve('/inscricao')}>
@@ -272,30 +309,67 @@
 								</div>
 							</details>
 						{/if}
-						<!-- Bolsas: por permissão, e não por papel. `view_committeemember`
-						é de quem opera o edital — Secretaria (monta) e Coordenação
-						(acompanha), por `scholarships.0008_papeis_da_bolsa`. O Discente e a
-						Comissão de Bolsas não a têm: os dois leem a edição e o barema, mas
-						a composição da portaria não é assunto deles, e as telas de cada um
-						são outras. -->
-						{#if sessao.pode('scholarships.view_committeemember')}
-							<a class="item-menu" href={resolve('/bolsas/edital')}>
-								<Icone nome="edital" tamanho={14} />
-								Bolsas
-							</a>
-						{/if}
-						<!-- A tela de quem analisa. `review_baremeentry` é exclusiva da
-						Comissão de Bolsas (`scholarships.0008_papeis_da_bolsa`) e é ela que
-						abre os formulários; Secretaria e Coordenação entram por papel,
-						porque acompanham a análise em leitura e não há permissão que as
-						reúna sem alcançar o Discente — ele lê a observação da própria
-						inscrição em "Minha bolsa", não aqui. O superusuário continua vendo
-						o item pela permissão. -->
-						{#if sessao.pode('scholarships.review_baremeentry') || sessao.temPapel('Secretaria', 'Coordenação')}
-							<a class="item-menu" href={resolve('/bolsas/analise')}>
-								<Icone nome="analise" tamanho={14} />
-								Análise de bolsas
-							</a>
+						<!-- Bolsas: um menu pai com as três telas de gestão do edital. O
+						pai aparece se qualquer item aparecer, e cada item continua com a
+						sua condição — o submenu junta as telas, não as permissões.
+
+						- Edital: `view_committeemember` é de quem opera o edital — Secretaria
+						  (monta) e Coordenação (acompanha), por
+						  `scholarships.0008_papeis_da_bolsa`. O Discente e a Comissão de
+						  Bolsas não a têm: leem a edição e o barema, mas a composição da
+						  portaria não é assunto deles.
+						- Análise: `review_baremeentry` é exclusiva da Comissão de Bolsas e é
+						  ela que abre os formulários; Secretaria e Coordenação entram por
+						  papel, porque acompanham em leitura e não há permissão que as reúna
+						  sem alcançar o Discente — ele lê a observação da própria inscrição
+						  em "Minha bolsa", não aqui.
+						- Resultado: a lista publicada é assunto dos quatro papéis, e
+						  `view_scholarshipedition` é justamente a permissão que todos
+						  receberam. Quem chega cedo não vê lista nenhuma — o servidor recusa
+						  a prévia ao candidato (403 `result_not_published`), e a tela
+						  transforma isso em espera. -->
+						{#if sessao.pode('scholarships.view_committeemember') || sessao.pode('scholarships.review_baremeentry') || sessao.pode('scholarships.view_scholarshipedition') || sessao.temPapel('Secretaria', 'Coordenação')}
+							<details class="group relative">
+								<summary class="item-menu cursor-pointer list-none marker:content-['']">
+									<Icone nome="edital" tamanho={14} />
+									Bolsas
+									<span aria-hidden="true" class="text-cinza text-[0.625rem]">▾</span>
+								</summary>
+								<div
+									class="border-borda bg-papel absolute top-full left-0 z-10 mt-2 flex min-w-48 flex-col border py-1 shadow-sm"
+								>
+									{#if sessao.pode('scholarships.view_committeemember')}
+										<a
+											class="item-submenu"
+											href={resolve('/bolsas/edital')}
+											onclick={fecharSubmenu}
+										>
+											<Icone nome="edital" tamanho={14} />
+											Edital
+										</a>
+									{/if}
+									{#if sessao.pode('scholarships.review_baremeentry') || sessao.temPapel('Secretaria', 'Coordenação')}
+										<a
+											class="item-submenu"
+											href={resolve('/bolsas/analise')}
+											onclick={fecharSubmenu}
+										>
+											<Icone nome="analise" tamanho={14} />
+											Análise
+										</a>
+									{/if}
+									{#if sessao.pode('scholarships.view_scholarshipedition')}
+										<a
+											class="item-submenu"
+											href={resolve('/bolsas/resultado')}
+											onclick={fecharSubmenu}
+										>
+											<Icone nome="classificacao" tamanho={14} />
+											Resultado
+										</a>
+									{/if}
+								</div>
+							</details>
 						{/if}
 						<!-- A outra ponta do mesmo edital: a tela do próprio candidato.
 						`add_scholarshipapplication` é exclusiva do Discente
@@ -309,17 +383,6 @@
 								Minha bolsa
 							</a>
 						{/if}
-						<!-- O resultado é a lista publicada, e ela é assunto dos quatro
-						papéis: `view_scholarshipedition` é justamente a permissão que todos
-						receberam em `scholarships.0008_papeis_da_bolsa`. Quem chega cedo
-						não vê lista nenhuma — é o servidor que recusa a prévia ao candidato
-						(403 `result_not_published`), e a tela transforma isso em espera. -->
-						{#if sessao.pode('scholarships.view_scholarshipedition')}
-							<a class="item-menu" href={resolve('/bolsas/resultado')}>
-								<Icone nome="classificacao" tamanho={14} />
-								Resultado da bolsa
-							</a>
-						{/if}
 						<!-- Recorrer é do candidato e de mais ninguém:
 						`add_scholarshipappeal` é exclusiva do Discente, e é a mesma
 						separação que faz "o aluno não julga o próprio recurso" ser 403 de
@@ -328,12 +391,6 @@
 							<a class="item-menu" href={resolve('/bolsas/recurso')}>
 								<Icone nome="acerto" tamanho={14} />
 								Recurso da bolsa
-							</a>
-						{/if}
-						{#if sessao.pode('programs.view_discipline')}
-							<a class="item-menu" href={resolve('/disciplinas')}>
-								<Icone nome="disciplinas" tamanho={14} />
-								Disciplinas
 							</a>
 						{/if}
 					</nav>

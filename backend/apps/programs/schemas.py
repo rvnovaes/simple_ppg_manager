@@ -8,7 +8,7 @@ import datetime
 
 from ninja import Schema
 
-from .models import AcademicTerm
+from .models import AcademicTerm, CollectiveProject
 
 
 class ProgramOut(Schema):
@@ -46,6 +46,10 @@ class CollectiveProjectIn(Schema):
     research_line_id: int
     name: str
     is_active: bool = True
+    # Professores do projeto (N-N). Vazio é válido: o projeto pode nascer
+    # antes de ter equipe. O mesmo vínculo também é editável pelo lado do
+    # professor (`TeacherIn.project_ids`); as duas telas gravam a mesma tabela.
+    teacher_ids: list[int] = []
 
 
 class CollectiveProjectPatch(Schema):
@@ -54,6 +58,7 @@ class CollectiveProjectPatch(Schema):
     research_line_id: int | None = None
     name: str | None = None
     is_active: bool | None = None
+    teacher_ids: list[int] | None = None
 
 
 class CollectiveProjectOut(Schema):
@@ -62,6 +67,14 @@ class CollectiveProjectOut(Schema):
     research_line_id: int
     name: str
     is_active: bool
+    teacher_ids: list[int]
+
+    @staticmethod
+    def resolve_teacher_ids(obj: CollectiveProject) -> list[int]:
+        # `.all()` e não `values_list`: a listagem faz prefetch_related
+        # ("teachers"), e qualquer outro método do gerente reverso ignora o
+        # cache e volta ao banco, uma vez por projeto.
+        return [teacher.id for teacher in obj.teachers.all()]
 
 
 class DisciplineIn(Schema):

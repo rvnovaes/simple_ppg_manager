@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Status
 from ninja.pagination import paginate
 
+from apps.academic.models import Teacher
 from apps.core import audit
 from apps.core.permissions import require_perm
 from apps.core.tenancy import current_program
@@ -103,7 +104,9 @@ def update_research_line(
 @paginate
 def list_collective_projects(request: HttpRequest, research_line_id: int | None = None):
     require_perm(request, "programs.view_collectiveproject")
-    projetos = CollectiveProject.objects.for_program(current_program(request))
+    projetos = CollectiveProject.objects.for_program(
+        current_program(request)
+    ).prefetch_related("teachers")
     if research_line_id is not None:
         # Filtro de conveniência da tela. Não é escopo de tenant — esse já
         # foi aplicado acima e não é opcional.
@@ -115,7 +118,7 @@ def list_collective_projects(request: HttpRequest, research_line_id: int | None 
 def create_collective_project(request: HttpRequest, payload: CollectiveProjectIn):
     require_perm(request, "programs.add_collectiveproject")
     program = current_program(request)
-    campos = payload.model_dump(exclude={"research_line_id"})
+    campos = payload.model_dump(exclude={"research_line_id", "teacher_ids"})
     projeto = CollectiveProject(
         program=program,
         # Resolver a linha aqui, e não deixar a FK crua, é o que faz id
@@ -124,15 +127,19 @@ def create_collective_project(request: HttpRequest, payload: CollectiveProjectIn
         research_line=get_object_or_404(ResearchLine, pk=payload.research_line_id),
         **campos,
     )
+    professores = _professores(payload.teacher_ids)
     with transaction.atomic():
         projeto.clean()
         projeto.save()
+        # Professor de outro programa é barrado em set_teachers (400).
+        projeto.set_teachers(professores)
         audit.record(
             "programs.collective_project.create",
             request=request,
             target=projeto,
             name=projeto.name,
             research_line_id=projeto.research_line_id,
+            teacher_ids=[professor.id for professor in professores],
         )
     return Status(201, projeto)
 
@@ -149,6 +156,7 @@ def update_collective_project(
         CollectiveProject.objects.for_program(program), pk=collective_project_id
     )
     campos = payload.model_dump(exclude_unset=True, exclude_none=True)
+    teacher_ids = campos.pop("teacher_ids", None)
     if "research_line_id" in campos:
         projeto.research_line = get_object_or_404(
             ResearchLine, pk=campos["research_line_id"]
@@ -157,14 +165,28 @@ def update_collective_project(
         setattr(projeto, campo, valor)
     with transaction.atomic():
         projeto.clean()
+        # update_fields=[] faria o Django pular o save; só com teacher_ids
+        # no corpo, gravamos tudo (que é o mesmo estado já carregado).
         projeto.save(update_fields=list(campos) or None)
+        if teacher_ids is not None:
+            projeto.set_teachers(_professores(teacher_ids))
         audit.record(
             "programs.collective_project.update",
             request=request,
             target=projeto,
-            fields=sorted(campos),
+            fields=sorted(
+                [*campos, *(["teacher_ids"] if teacher_ids is not None else [])]
+            ),
         )
     return projeto
+
+
+def _professores(ids: list[int]) -> list[Teacher]:
+    """Resolve os ids em objetos: id inexistente vira 404 aqui, em vez de
+    IntegrityError 500 lá na frente. Professor de outro programa passa e é
+    barrado pelo invariante de tenant, com 400 program_mismatch.
+    """
+    return [get_object_or_404(Teacher, pk=pk) for pk in ids]
 
 
 @router.get("/disciplines/", response=list[DisciplineOut])

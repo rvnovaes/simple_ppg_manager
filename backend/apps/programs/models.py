@@ -7,6 +7,9 @@ programa desde a primeira migração (Seção 1 do CLAUDE.md). Adicionar a
 chave depois, com dados em produção, é caro; adicionar agora é de graça.
 """
 
+from collections.abc import Sequence
+from typing import Any
+
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 
@@ -157,6 +160,22 @@ class CollectiveProject(models.Model):
                 "O programa do projeto precisa ser o mesmo da linha de pesquisa.",
                 code="program_mismatch",
             )
+
+    def set_teachers(self, teachers: Sequence[Any]) -> None:
+        """Define os professores do projeto (N-N, `Teacher.projects`).
+
+        Professor de outro programa é o mesmo erro de tenant que `clean()`
+        cobre na linha de pesquisa — mas M2M só é gravável depois do save,
+        então a checagem mora aqui e não lá. O tipo é `Any` de propósito:
+        `academic.Teacher` importa deste app, e o caminho inverso fecharia
+        um ciclo de import.
+        """
+        if any(teacher.program_id != self.program_id for teacher in teachers):
+            raise DomainError(
+                "O professor precisa ser do mesmo programa do projeto.",
+                code="program_mismatch",
+            )
+        self.teachers.set(teachers)
 
 
 class DisciplineQuerySet(models.QuerySet):

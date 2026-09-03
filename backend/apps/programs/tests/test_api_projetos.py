@@ -10,6 +10,7 @@ import json
 import pytest
 from django.test import Client
 
+from apps.academic.models import Teacher
 from apps.audit.models import AuditLog
 from apps.people.models import Person
 from apps.programs.models import CollectiveProject, Program, ResearchLine
@@ -290,3 +291,157 @@ def test_escrita_sem_token_csrf_e_recusada(secretaria, secretaria_no_programa, l
 
     assert resposta.status_code == 403
     assert not CollectiveProject.objects.exists()
+
+
+# ------------------------------------------------------------ professores
+
+
+@pytest.fixture
+def professor(program) -> Teacher:
+    return _professor(program, "Ana Matos", "ana@exemplo.br")
+
+
+@pytest.fixture
+def professor_de_outro_programa(outro_programa) -> Teacher:
+    return _professor(outro_programa, "Bento Sá", "bento@exemplo.br")
+
+
+def _professor(program: Program, nome: str, email: str) -> Teacher:
+    pessoa = Person.objects.create(program=program, full_name=nome, primary_email=email)
+    return Teacher.objects.create(
+        program=program,
+        person=pessoa,
+        category=Teacher.Category.PERMANENT,
+        accredited_since="2026-03-01",
+        academic_degree=Teacher.AcademicDegree.DOCTORATE,
+    )
+
+
+def test_criar_projeto_com_professores(
+    client_secretaria, secretaria_no_programa, linha, professor
+):
+    resposta = _post(
+        client_secretaria,
+        {
+            "research_line_id": linha.id,
+            "name": "Justiça",
+            "teacher_ids": [professor.id],
+        },
+    )
+
+    assert resposta.status_code == 201, resposta.content
+    assert resposta.json()["teacher_ids"] == [professor.id]
+    assert list(professor.projects.values_list("name", flat=True)) == ["Justiça"]
+    log = AuditLog.objects.get(event="programs.collective_project.create")
+    assert log.payload["teacher_ids"] == [professor.id]
+
+
+def test_criar_projeto_com_professor_de_outro_programa_e_recusado(
+    client_secretaria, secretaria_no_programa, linha, professor_de_outro_programa
+):
+    resposta = _post(
+        client_secretaria,
+        {
+            "research_line_id": linha.id,
+            "name": "Justiça",
+            "teacher_ids": [professor_de_outro_programa.id],
+        },
+    )
+
+    assert resposta.status_code == 400, resposta.content
+    assert resposta.json()["code"] == "program_mismatch"
+    # Atômico: a recusa do vínculo desfaz o projeto.
+    assert not CollectiveProject.objects.filter(name="Justiça").exists()
+
+
+def test_criar_projeto_com_professor_inexistente_devolve_404(
+    client_secretaria, secretaria_no_programa, linha
+):
+    resposta = _post(
+        client_secretaria,
+        {"research_line_id": linha.id, "name": "Justiça", "teacher_ids": [999_999]},
+    )
+
+    assert resposta.status_code == 404, resposta.content
+
+
+def test_alterar_projeto_define_e_esvazia_professores(
+    client_secretaria, secretaria_no_programa, program, linha, professor
+):
+    projeto = CollectiveProject.objects.create(
+        program=program, research_line=linha, name="Justiça"
+    )
+
+    resposta = _patch(client_secretaria, projeto.id, {"teacher_ids": [professor.id]})
+
+    assert resposta.status_code == 200, resposta.content
+    assert resposta.json()["teacher_ids"] == [professor.id]
+    log = AuditLog.objects.get(event="programs.collective_project.update")
+    assert log.payload["fields"] == ["teacher_ids"]
+
+    resposta = _patch(client_secretaria, projeto.id, {"teacher_ids": []})
+
+    assert resposta.status_code == 200, resposta.content
+    assert resposta.json()["teacher_ids"] == []
+    assert professor.projects.count() == 0
+
+
+def test_alterar_projeto_sem_teacher_ids_preserva_os_professores(
+    client_secretaria, secretaria_no_programa, program, linha, professor
+):
+    projeto = CollectiveProject.objects.create(
+        program=program, research_line=linha, name="Justiça"
+    )
+    projeto.teachers.set([professor])
+
+    resposta = _patch(client_secretaria, projeto.id, {"name": "Justiça e Trabalho"})
+
+    assert resposta.status_code == 200, resposta.content
+    assert resposta.json()["teacher_ids"] == [professor.id]
+
+
+def test_alterar_projeto_para_professor_de_outro_programa_e_recusado(
+    client_secretaria,
+    secretaria_no_programa,
+    program,
+    linha,
+    professor_de_outro_programa,
+):
+    projeto = CollectiveProject.objects.create(
+        program=program, research_line=linha, name="Justiça"
+    )
+
+    resposta = _patch(
+        client_secretaria, projeto.id, {"teacher_ids": [professor_de_outro_programa.id]}
+    )
+
+    assert resposta.status_code == 400, resposta.content
+    assert resposta.json()["code"] == "program_mismatch"
+    assert projeto.teachers.count() == 0
+
+
+def test_listar_projetos_traz_professores_numa_consulta_so(
+    client_secretaria,
+    secretaria_no_programa,
+    program,
+    linha,
+    professor,
+    django_assert_num_queries,
+):
+    for nome in ("A", "B", "C"):
+        projeto = CollectiveProject.objects.create(
+            program=program, research_line=linha, name=nome
+        )
+        projeto.teachers.set([professor])
+
+    # Sessão, usuário, permissões (2), person do tenant, programa, count da
+    # paginação, projetos e UMA consulta de professores para todos. O que
+    # importa é não crescer com o número de projetos: o resolver lê o cache
+    # do prefetch.
+    with django_assert_num_queries(9):
+        resposta = client_secretaria.get(URL)
+
+    assert resposta.status_code == 200, resposta.content
+    assert all(
+        item["teacher_ids"] == [professor.id] for item in resposta.json()["items"]
+    )

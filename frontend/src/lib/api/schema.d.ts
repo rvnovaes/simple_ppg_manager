@@ -3058,6 +3058,8 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /** Teacher Ids */
+            teacher_ids: number[];
         };
         /** PagedCollectiveProjectOut */
         PagedCollectiveProjectOut: {
@@ -3077,6 +3079,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Teacher Ids
+             * @default []
+             */
+            teacher_ids: number[];
         };
         /**
          * CollectiveProjectPatch
@@ -3089,6 +3096,8 @@ export interface components {
             name?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+            /** Teacher Ids */
+            teacher_ids?: number[] | null;
         };
         /** DisciplineOut */
         DisciplineOut: {

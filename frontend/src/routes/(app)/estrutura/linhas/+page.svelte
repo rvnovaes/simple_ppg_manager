@@ -2,14 +2,15 @@
 	import { api, mensagemDeErro } from '$lib/api/client';
 	import type { components } from '$lib/api/schema';
 	import { sessao } from '$lib/sessao.svelte';
+	import SeletorMultiplo from '$lib/SeletorMultiplo.svelte';
 
 	type Linha = components['schemas']['ResearchLineOut'];
 	type Projeto = components['schemas']['CollectiveProjectOut'];
-	type Periodo = components['schemas']['AcademicTermOut'];
+	type Professor = components['schemas']['TeacherOut'];
 
 	let linhas = $state<Linha[]>([]);
 	let projetos = $state<Projeto[]>([]);
-	let periodos = $state<Periodo[]>([]);
+	let professores = $state<Professor[]>([]);
 	let carregando = $state(true);
 	let erro = $state('');
 
@@ -19,8 +20,15 @@
 	const podeEditarLinha = $derived(sessao.pode('programs.change_researchline'));
 	const podeCriarProjeto = $derived(sessao.pode('programs.add_collectiveproject'));
 	const podeEditarProjeto = $derived(sessao.pode('programs.change_collectiveproject'));
-	const podeCriarPeriodo = $derived(sessao.pode('programs.add_academicterm'));
-	const podeEditarPeriodo = $derived(sessao.pode('programs.change_academicterm'));
+	// A lista de professores é de `academic`, com permissão própria: quem
+	// não a tem vê o projeto sem equipe, e o formulário sem o bloco.
+	const podeVerProfessores = $derived(sessao.pode('academic.view_teacher'));
+
+	const nomeDoProfessor = $derived.by(() => {
+		const nomes: Record<number, string> = {};
+		for (const professor of professores) nomes[professor.id] = professor.person.full_name;
+		return nomes;
+	});
 
 	// Linha 1 -> N projetos: o agrupamento é o desenho da tela, não um detalhe.
 	const projetosPorLinha = $derived.by(() => {
@@ -39,18 +47,18 @@
 	async function carregar() {
 		carregando = true;
 		erro = '';
-		const [respLinhas, respProjetos, respPeriodos] = await Promise.all([
+		const [respLinhas, respProjetos, respProfessores] = await Promise.all([
 			api.GET('/programs/research-lines/'),
 			api.GET('/programs/collective-projects/'),
-			api.GET('/programs/terms/')
+			podeVerProfessores ? api.GET('/academic/teachers/') : Promise.resolve(null)
 		]);
-		const falha = respLinhas.error ?? respProjetos.error ?? respPeriodos.error;
+		const falha = respLinhas.error ?? respProjetos.error ?? respProfessores?.error;
 		if (falha) {
-			erro = mensagemDeErro(falha, 'Não foi possível carregar a estrutura do programa.');
+			erro = mensagemDeErro(falha, 'Não foi possível carregar as linhas de pesquisa.');
 		} else {
 			linhas = respLinhas.data?.items ?? [];
 			projetos = respProjetos.data?.items ?? [];
-			periodos = respPeriodos.data?.items ?? [];
+			professores = respProfessores?.data?.items ?? [];
 		}
 		carregando = false;
 	}
@@ -112,6 +120,7 @@
 	let projetoNome = $state('');
 	let projetoLinhaId = $state<number | null>(null);
 	let projetoAtivo = $state(true);
+	let projetoProfessores = $state<number[]>([]);
 	let salvandoProjeto = $state(false);
 
 	function abrirNovoProjeto(linhaId: number | null = null) {
@@ -119,6 +128,7 @@
 		projetoNome = '';
 		projetoLinhaId = linhaId ?? linhas[0]?.id ?? null;
 		projetoAtivo = true;
+		projetoProfessores = [];
 		formProjetoAberto = true;
 	}
 
@@ -127,6 +137,7 @@
 		projetoNome = projeto.name;
 		projetoLinhaId = projeto.research_line_id;
 		projetoAtivo = projeto.is_active;
+		projetoProfessores = [...projeto.teacher_ids];
 		formProjetoAberto = true;
 	}
 
@@ -149,9 +160,13 @@
 		const { data, error } = alvo
 			? await api.PATCH('/programs/collective-projects/{collective_project_id}/', {
 					params: { path: { collective_project_id: alvo.id } },
-					body: corpo
+					// Quem não enxerga a lista não mexe no vínculo: sem o campo, o
+					// PATCH preserva os professores que já estavam.
+					body: { ...corpo, ...(podeVerProfessores ? { teacher_ids: projetoProfessores } : {}) }
 				})
-			: await api.POST('/programs/collective-projects/', { body: corpo });
+			: await api.POST('/programs/collective-projects/', {
+					body: { ...corpo, teacher_ids: projetoProfessores }
+				});
 		salvandoProjeto = false;
 		if (error || !data) {
 			erro = mensagemDeErro(error, 'Não foi possível salvar o projeto coletivo.');
@@ -163,87 +178,22 @@
 		fecharFormProjeto();
 	}
 
-	// ------------------------------------------------------- períodos letivos
-
-	let periodoEmEdicao = $state<Periodo | null>(null);
-	let formPeriodoAberto = $state(false);
-	let periodoAno = $state(new Date().getFullYear());
-	let periodoSemestre = $state<1 | 2>(1);
-	let periodoInicio = $state('');
-	let periodoFim = $state('');
-	let periodoAtivo = $state(true);
-	let salvandoPeriodo = $state(false);
-
-	function abrirNovoPeriodo() {
-		periodoEmEdicao = null;
-		periodoAno = new Date().getFullYear();
-		periodoSemestre = 1;
-		periodoInicio = '';
-		periodoFim = '';
-		periodoAtivo = true;
-		formPeriodoAberto = true;
-	}
-
-	function editarPeriodo(periodo: Periodo) {
-		periodoEmEdicao = periodo;
-		periodoAno = periodo.year;
-		periodoSemestre = periodo.half === 2 ? 2 : 1;
-		periodoInicio = periodo.starts_on;
-		periodoFim = periodo.ends_on;
-		periodoAtivo = periodo.is_active;
-		formPeriodoAberto = true;
-	}
-
-	function fecharFormPeriodo() {
-		formPeriodoAberto = false;
-		periodoEmEdicao = null;
-	}
-
-	async function salvarPeriodo(event: SubmitEvent) {
-		event.preventDefault();
-		erro = '';
-		salvandoPeriodo = true;
-		const corpo = {
-			year: periodoAno,
-			half: periodoSemestre,
-			starts_on: periodoInicio,
-			ends_on: periodoFim,
-			is_active: periodoAtivo
-		};
-		const alvo = periodoEmEdicao;
-		const { data, error } = alvo
-			? await api.PATCH('/programs/terms/{academic_term_id}/', {
-					params: { path: { academic_term_id: alvo.id } },
-					body: corpo
-				})
-			: await api.POST('/programs/terms/', { body: corpo });
-		salvandoPeriodo = false;
-		if (error || !data) {
-			erro = mensagemDeErro(error, 'Não foi possível salvar o período letivo.');
-			return;
-		}
-		periodos = alvo
-			? periodos.map((p) => (p.id === data.id ? data : p))
-			: [...periodos, data].sort((a, b) => b.year - a.year || b.half - a.half);
-		fecharFormPeriodo();
-	}
-
 	$effect(() => {
 		carregar();
 	});
 </script>
 
 <svelte:head>
-	<title>Estrutura · PPGD Manager</title>
+	<title>Linhas de pesquisa · PPGD Manager</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">
 	<div>
-		<p class="etiqueta">Cadastro</p>
-		<h1 class="text-grafite mt-1 text-2xl font-semibold tracking-tight">Estrutura do programa</h1>
+		<p class="etiqueta">Estrutura</p>
+		<h1 class="text-grafite mt-1 text-2xl font-semibold tracking-tight">Linhas de pesquisa</h1>
 	</div>
 	<p class="text-cinza font-mono text-sm">
-		{linhas.length} linhas · {projetos.length} projetos · {periodos.length} períodos
+		{linhas.length} linhas · {projetos.length} projetos
 	</p>
 </header>
 
@@ -252,8 +202,7 @@
 {/if}
 
 <section class="mt-10">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h2 class="text-grafite text-lg font-semibold tracking-tight">Linhas de pesquisa</h2>
+	<div class="flex flex-wrap items-center justify-end gap-3">
 		<div class="flex gap-2">
 			{#if podeCriarProjeto && linhas.length > 0}
 				<button class="botao-discreto" type="button" onclick={() => abrirNovoProjeto()}>
@@ -315,6 +264,22 @@
 					<button class="botao-discreto" type="button" onclick={fecharFormProjeto}>Cancelar</button>
 				</div>
 			</div>
+			{#if podeVerProfessores}
+				<fieldset class="mt-5">
+					<legend class="etiqueta mb-2">Professores</legend>
+					{#if professores.length === 0}
+						<p class="text-cinza text-sm">Nenhum professor credenciado ainda.</p>
+					{:else}
+						<SeletorMultiplo
+							id="projeto-professores"
+							opcoes={professores.map((p) => ({ id: p.id, rotulo: p.person.full_name }))}
+							bind:selecionados={projetoProfessores}
+							placeholder="Buscar professor pelo nome…"
+							vazio="Nenhum professor no projeto ainda."
+						/>
+					{/if}
+				</fieldset>
+			{/if}
 		</form>
 	{/if}
 
@@ -371,7 +336,16 @@
 									class="flex flex-wrap items-center justify-between gap-4 py-2"
 									class:opacity-55={!projeto.is_active}
 								>
-									<p class="text-grafite min-w-0 truncate text-sm">{projeto.name}</p>
+									<div class="min-w-0">
+										<p class="text-grafite truncate text-sm">{projeto.name}</p>
+										{#if projeto.teacher_ids.length > 0}
+											<p class="text-cinza mt-0.5 truncate text-[0.8125rem]">
+												{projeto.teacher_ids
+													.map((id) => nomeDoProfessor[id] ?? `#${id}`)
+													.join(' · ')}
+											</p>
+										{/if}
+									</div>
 									<div class="flex shrink-0 items-center gap-4">
 										<span class="etiqueta">{projeto.is_active ? 'Ativo' : 'Inativo'}</span>
 										{#if podeEditarProjeto}
@@ -388,109 +362,6 @@
 							{/each}
 						</ul>
 					{/if}
-				</li>
-			{/each}
-		</ul>
-	{/if}
-</section>
-
-<section class="mt-14">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<div>
-			<h2 class="text-grafite text-lg font-semibold tracking-tight">Períodos letivos</h2>
-			<p class="text-cinza mt-1 text-sm">
-				Calendário institucional: vale para todos os programas, não só para este.
-			</p>
-		</div>
-		{#if podeCriarPeriodo}
-			<button class="botao-discreto" type="button" onclick={abrirNovoPeriodo}>Novo período</button>
-		{/if}
-	</div>
-
-	{#if formPeriodoAberto}
-		<form class="border-borda bg-papel mt-5 border p-5" onsubmit={salvarPeriodo}>
-			<p class="etiqueta">{periodoEmEdicao ? 'Editar período' : 'Novo período letivo'}</p>
-			<div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-				<div>
-					<label class="etiqueta mb-2 block" for="periodo-ano">Ano</label>
-					<input
-						id="periodo-ano"
-						type="number"
-						class="campo font-mono"
-						bind:value={periodoAno}
-						required
-					/>
-				</div>
-				<div>
-					<label class="etiqueta mb-2 block" for="periodo-semestre">Semestre</label>
-					<select id="periodo-semestre" class="campo" bind:value={periodoSemestre}>
-						<option value={1}>1</option>
-						<option value={2}>2</option>
-					</select>
-				</div>
-				<div>
-					<label class="etiqueta mb-2 block" for="periodo-inicio">Início</label>
-					<input
-						id="periodo-inicio"
-						type="date"
-						class="campo font-mono"
-						bind:value={periodoInicio}
-						required
-					/>
-				</div>
-				<div>
-					<label class="etiqueta mb-2 block" for="periodo-fim">Fim</label>
-					<input
-						id="periodo-fim"
-						type="date"
-						class="campo font-mono"
-						bind:value={periodoFim}
-						required
-					/>
-				</div>
-				<label class="text-grafite flex items-end gap-2 pb-3 text-sm">
-					<input type="checkbox" bind:checked={periodoAtivo} />
-					Ativo
-				</label>
-				<div class="flex items-end gap-2">
-					<button class="botao" type="submit" disabled={salvandoPeriodo}>
-						{salvandoPeriodo ? 'Salvando…' : 'Salvar'}
-					</button>
-					<button class="botao-discreto" type="button" onclick={fecharFormPeriodo}>Cancelar</button>
-				</div>
-			</div>
-		</form>
-	{/if}
-
-	{#if carregando}
-		<p class="etiqueta mt-6">Carregando…</p>
-	{:else if periodos.length === 0}
-		<div class="border-borda bg-papel mt-6 border border-dashed p-10 text-center">
-			<p class="text-grafite text-[0.9375rem]">Nenhum período letivo cadastrado ainda.</p>
-		</div>
-	{:else}
-		<ul class="mt-6 space-y-px">
-			{#each periodos as periodo (periodo.id)}
-				<li
-					class="bg-papel regua-tinta flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-					class:opacity-55={!periodo.is_active}
-					style:border-left-color={periodo.is_active ? 'var(--color-tinta)' : 'var(--color-borda)'}
-				>
-					<div class="min-w-0">
-						<!-- O rótulo canônico "2026/1" é como o período é chamado no dia a dia. -->
-						<p class="text-grafite font-mono text-[0.9375rem] font-medium">{periodo.label}</p>
-						<p class="text-cinza mt-0.5 font-mono text-[0.8125rem]">
-							{periodo.starts_on} → {periodo.ends_on}
-						</p>
-					</div>
-					<div class="flex shrink-0 items-center gap-4">
-						<span class="etiqueta">{periodo.is_active ? 'Ativo' : 'Inativo'}</span>
-						{#if podeEditarPeriodo}
-							<button class="botao-discreto" type="button" onclick={() => editarPeriodo(periodo)}>
-								Editar
-							</button>
-						{/if}
-					</div>
 				</li>
 			{/each}
 		</ul>
