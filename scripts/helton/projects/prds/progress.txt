@@ -282,3 +282,37 @@ Started: qui. 03 set 2026 08:00:07 -03
     cadastra + o pendente que consulta). Reaproveitar a fixture `client` já logada faria
     o `force_login` sobrescrever a sessão em silêncio.
   - Rota pública sem barra final (`/access/signup`); as internas levam.
+
+## 2026-09-03 - f4-access-me
+- `GET /api/v1/access/me` no `access_router`: autenticada, SEM `require_perm` (comentário
+  no molde de `/auth/me`) e SEM `current_program` — o recusado tem a `Person` arquivada e
+  o helper daria 403 justamente para quem precisa ler o motivo.
+- `AccessStatusOut` (`apps/academic/schemas.py`): id, program_id, program_name, profile,
+  profile_label, status, status_label, decision_note, decided_at, created_at. Os rótulos
+  viajam prontos (padrão `RequestDocumentOut.kind_label`) porque a tela de espera é lida
+  por quem não tem permissão para nenhuma outra rota — uma chamada só.
+- `AccessRequestQuerySet.for_user(user)` (`models.py`): escopo por CONTA, sem `.active()`
+  na pessoa. A rota prefere a PENDENTE e só cai na mais recente quando não há — quem foi
+  recusado e pediu de novo lê o pedido vivo, não o encerrado.
+- 404 (`Http404`, padrão de `scholarships/router.py:650`) quando a conta não tem
+  solicitação — é assim que o front distingue candidato/servidor de pendente.
+- `apps/academic/tests/test_access_me.py` (6 testes): pendente vê a própria; recusado vê o
+  motivo com a Person arquivada; quem nunca pediu → 404; anônimo → 401; ninguém vê a
+  alheia; pendente nova vence a recusa antiga.
+- `make ready` verde: 1973 passed, 10 skipped em 186s. Verificado no canteiro
+  (http://localhost:8330): anônimo 401, `ana.doc@example.com` 200 com o corpo completo,
+  candidato `zeca.teste@example.com` 404.
+- Arquivos: backend/apps/academic/router.py, schemas.py, models.py,
+  backend/apps/academic/tests/test_access_me.py
+- **Learnings for future iterations:**
+  - **`django-stubs` recusa `filter(user=request.user)` quando o filtro sai do MANAGER**
+    (`User | AnonymousUser` × `User | int | None`), mas aceita o mesmo filtro dentro de um
+    QuerySet customizado. É por isso que `Person.objects.active().filter(user=request.user)`
+    passa em dezenas de rotas e a versão sem `.active()` não passa. Solução do projeto:
+    método nomeado no QuerySet (que a Seção 8 do CLAUDE.md já pede), nunca `cast` nem
+    `# type: ignore`.
+  - `manage.py shell` do canteiro com `django.test.Client` precisa de
+    `Client(SERVER_NAME="localhost")`: `testserver` não está em `ALLOWED_HOSTS` fora do
+    pytest, e o erro sai como `ValueError` de Content-Type, sem apontar a causa.
+  - A próxima story do front (`f4-front-pendente-e-tela-de-espera`) depende de
+    `f6-gen-api`: `AccessStatusOut` ainda não está no `schema.d.ts` versionado.

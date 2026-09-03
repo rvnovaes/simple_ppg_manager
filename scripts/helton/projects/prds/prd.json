@@ -220,7 +220,7 @@
         "f3-endpoint-signup-e-aposentadoria"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

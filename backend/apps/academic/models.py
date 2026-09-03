@@ -1801,6 +1801,16 @@ class AccessRequestQuerySet(models.QuerySet):
     def for_program(self, program) -> "AccessRequestQuerySet":
         return self.filter(program=program)
 
+    def for_user(self, user) -> "AccessRequestQuerySet":
+        """As solicitações desta conta, em qualquer programa e situação.
+
+        Escopo por CONTA, e não por tenant: é o que a tela de espera pode
+        ler sem `current_program`, que responderia 403 para o recusado
+        (a recusa arquiva a `Person`). Por isso também não há `.active()`
+        sobre a pessoa aqui.
+        """
+        return self.filter(person__user=user)
+
     def pending(self) -> "AccessRequestQuerySet":
         return self.filter(status=AccessRequestStatus.PENDING)
 

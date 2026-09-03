@@ -18,6 +18,7 @@ from apps.people.models import Person
 from .models import (
     MAX_ISOLATED_ITEMS,
     AccessProfile,
+    AccessRequest,
     DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
@@ -896,3 +897,43 @@ class AccessSignupOut(Schema):
 
     detail: str
     requires_confirmation: bool
+
+
+class AccessStatusOut(Schema):
+    """Estado do próprio cadastro, para a tela de espera.
+
+    É o único schema do app lido por quem ainda não tem permissão
+    nenhuma, e por isso carrega tudo que a tela precisa mostrar sem uma
+    segunda chamada: quem não é pendente não consegue ler `/programs/` nem
+    `/people/` para completar a informação.
+
+    Os rótulos viajam prontos (`profile_label`, `status_label`) pelo mesmo
+    motivo de `RequestDocumentOut.kind_label`: traduzir choice no front
+    duplicaria a tabela de valores em outro idioma de programação.
+    """
+
+    id: int
+    program_id: int
+    # A pessoa pode ter se cadastrado em mais de um programa; a tela diz de
+    # qual solicitação está falando.
+    program_name: str
+    profile: str
+    profile_label: str
+    status: str
+    status_label: str
+    # O motivo da recusa é o texto que a pessoa lê na tela dela.
+    decision_note: str
+    decided_at: datetime.datetime | None
+    created_at: datetime.datetime
+
+    @staticmethod
+    def resolve_program_name(obj: AccessRequest) -> str:
+        return obj.program.name
+
+    @staticmethod
+    def resolve_profile_label(obj: AccessRequest) -> str:
+        return obj.get_profile_display()
+
+    @staticmethod
+    def resolve_status_label(obj: AccessRequest) -> str:
+        return obj.get_status_display()

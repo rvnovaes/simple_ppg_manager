@@ -8,7 +8,7 @@ negócio aqui.
 from pathlib import Path
 
 from django.db import transaction
-from django.http import FileResponse, HttpRequest
+from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
@@ -32,6 +32,7 @@ from apps.programs.models import (
 
 from .models import (
     AccessProfile,
+    AccessRequest,
     AdjustmentStatus,
     DisciplineOffering,
     EnrollmentAdjustmentRequest,
@@ -47,6 +48,7 @@ from .models import (
 from .schemas import (
     AccessSignupIn,
     AccessSignupOut,
+    AccessStatusOut,
     DisciplineOfferingIn,
     DisciplineOfferingOut,
     DisciplineOfferingPatch,
@@ -1517,3 +1519,26 @@ def access_signup(request: HttpRequest, payload: AccessSignupIn):
         ),
         "requires_confirmation": True,
     }
+
+
+@access_router.get("/me", response={200: AccessStatusOut})
+def access_me(request: HttpRequest):
+    # Sem require_perm, no molde de `/auth/me` (accounts/router.py:88-91):
+    # devolve apenas o estado do próprio cadastro de quem chama, e quem
+    # chama é justamente quem ainda não tem permissão nenhuma.
+    #
+    # Sem current_program também, e isto é obrigatório: quem foi recusado
+    # tem a Person arquivada, e o helper responderia 403 — a tela de espera
+    # ficaria sem o motivo da recusa exatamente para quem precisa lê-lo. O
+    # escopo aqui é a própria conta (`for_user`), que é mais estreito que
+    # o tenant.
+    solicitacoes = AccessRequest.objects.for_user(request.user).select_related(
+        "program"
+    )
+    # A pendente vem primeiro: quem já foi recusado num programa e pediu de
+    # novo (ou pediu noutro) deve ver o pedido vivo, não o encerrado. Sem
+    # pendente, a decisão mais recente (ordering `-created_at` do model).
+    solicitacao = solicitacoes.pending().first() or solicitacoes.first()
+    if solicitacao is None:
+        raise Http404("Nenhuma solicitação de acesso para esta conta.")
+    return solicitacao
