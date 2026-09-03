@@ -491,3 +491,42 @@ Started: qui. 03 set 2026 08:00:07 -03
     caso de recusa para conferir na tela. O pendente vivo para a fila da f6 continua sendo
     `docente.externo.f6@example.com`.
 ---
+
+## 2026-09-03 - f5-testes-fila-secretaria
+- Novo `backend/apps/academic/tests/test_fila_de_acesso.py`, 24 testes (nível b da
+  pirâmide, sem mock de ORM), cobrindo o que a borda acrescenta ao model e ao service:
+  - **Fila**: as pendentes do programa com os campos declarados (`person_name`,
+    `teacher_category`, `academic_degree`); solicitação de OUTRO programa não aparece
+    (cenário com dois programas — com um só o vazamento não aparece nem em teste); o
+    default `pending` esconde o decidido e `?status=rejected` traz o histórico; situação
+    fora do enum é 422.
+  - **Aprovar**: docente vira `Teacher` com a categoria/titulação/Lattes DECLARADOS e o
+    `accredited_since` informado pela secretaria, ganha o Group "Docente" e perde o
+    marcador "Cadastro pendente", com `AuditLog` no programa certo; sem
+    `accredited_since` é 400 `accredited_since_required`; discente vira `Student` REGULAR
+    ativo com o `deadline` calculado sozinho (2 anos no mestrado: ingresso 2026-03-02 →
+    2028-03-02); sem nível/projeto/ingresso é 400 `incomplete_regular` e nenhum Student;
+    projeto de outro programa é 404 (o router resolve a FK escopada); aprovar duas vezes é
+    409 `already_decided` e continua com UM Teacher só.
+  - **Recusar**: `note` em branco é 400 `rejection_requires_note` com a pessoa ainda
+    ATIVA; com motivo, 200, `Person` ARQUIVADA, nenhum Teacher e `AuditLog`; recusar o
+    já decidido é 409.
+  - **Quem decide**: a secretária não aprova nem recusa o PRÓPRIO cadastro (403
+    `not_allowed`, solicitação intacta); Docente, Discente e Candidato (parametrizados)
+    tomam 403 na fila e nas duas decisões; anônimo toma 401; POST sem CSRF é 403.
+- `make ready` verde: 1997 passed, 10 skipped em 193s (eram 1973 antes — 24 a mais).
+- Arquivos: backend/apps/academic/tests/test_fila_de_acesso.py
+- **Learnings for future iterations:**
+  - **`Student.Level` é `MASTERS`/`DOCTORATE`, não `MASTER`.** O `AttributeError` só
+    aparece em runtime porque o valor entra num dict de payload; o mypy não pega.
+  - Papel que age no teste precisa de `Person` ATIVA no programa, senão o 403 vem de
+    `current_program` (sem tenant) e não de `require_perm` — o teste passaria pelo motivo
+    errado. O helper `_com_papel()` deste arquivo cria conta, Group e Person de uma vez e
+    devolve um `Client()` PRÓPRIO (a armadilha das duas fixtures disputando a sessão da
+    fixture `client`).
+  - `@pytest.mark.parametrize` sobre o nome do papel ("Docente", "Discente", "Candidato")
+    é mais barato que três testes irmãos e deixa o corte de permissão explícito na saída
+    do pytest.
+  - Testar 403 de decisão exige `refresh_from_db()` depois: o código de status sozinho não
+    prova que nada foi escrito.
+---
