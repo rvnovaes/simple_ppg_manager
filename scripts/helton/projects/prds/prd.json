@@ -197,7 +197,7 @@
         "f2-migration-papeis-autocadastro"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

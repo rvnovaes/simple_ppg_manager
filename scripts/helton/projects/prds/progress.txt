@@ -251,3 +251,34 @@ Started: qui. 03 set 2026 08:00:07 -03
     pendente (`ana.doc@example.com`) no PPGD — a fila da secretaria (f5) tem com que
     aparecer sem semear nada.
 ---
+
+## 2026-09-03 - f3-testes-autocadastro
+- `apps/academic/tests/test_autocadastro.py` (17 testes) sucede o
+  `test_isolada_signup.py`, removido na story anterior. Portados: papel/conta/pessoa
+  (agora `profile=candidate`), e-mail repetido byte a byte, conta existente sem troca de
+  senha, senha fraca, limite por IP (scope `access-signup`, 5/h), CSRF ausente → 403 e
+  "grupo Candidato sem acesso a negócio".
+- Convertidos: "fora da janela"/"sem edital" → `accepts_self_signup` desligado → 400
+  `signup_closed`; o desempate por `program_id` entre dois editais some e vira
+  `test_signup_closed_e_indistinguivel_entre_desligado_inativo_e_inexistente`, que compara
+  `.content` dos TRÊS casos.
+- Somados: docente pendente cria Person+User+AccessRequest, fica só em "Cadastro
+  pendente" e NÃO vira Teacher; discente que manda `teacher_category` sai com os quatro
+  campos de docente vazios; candidato não gera `AccessRequest`; o anti-enumeração é
+  `parametrize` sobre os três perfis; o pendente leva 403 em `/people/`,
+  `/academic/teachers/` e `/academic/students/`.
+- `make ready` verde: 1967 passed, 10 skipped em 183s.
+- Arquivos: backend/apps/academic/tests/test_autocadastro.py
+- **Learnings for future iterations:**
+  - O teste de anti-enumeração compara `resposta.content`, não `resposta.json()`: o
+    corpo tem de ser idêntico BYTE a byte, e dois dicts iguais podem sair serializados
+    diferentes. Mesma régua vale para o `signup_closed` dos três casos.
+  - A fixture `program` (PPGD da data migration) chega ao teste com
+    `accepts_self_signup=True` por causa do backfill da `programs/0007`, mas a suíte não
+    depende disso: a fixture `programa_aberto` liga o flag explicitamente. Story futura
+    que dependa do flag deve fazer o mesmo — o backfill é um detalhe da migration, não
+    contrato do fixture.
+  - `Client()` novo por ator quando o teste precisa de dois papéis (aqui: anônimo que se
+    cadastra + o pendente que consulta). Reaproveitar a fixture `client` já logada faria
+    o `force_login` sobrescrever a sessão em silêncio.
+  - Rota pública sem barra final (`/access/signup`); as internas levam.
