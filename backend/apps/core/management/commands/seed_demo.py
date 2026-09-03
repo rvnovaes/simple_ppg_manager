@@ -498,9 +498,16 @@ class Command(BaseCommand):
     def _programa(self, acronym: str, name: str) -> Program:
         programa, criado = Program.objects.get_or_create(
             acronym=acronym,
-            defaults={"name": name},
+            defaults={"name": name, "accepts_self_signup": True},
         )
         self._contar("programa", criado)
+        # O `defaults` só vale na criação: programa semeado antes do flag
+        # existir continuaria fora da lista pública, e a tela de cadastro
+        # nasceria vazia no canteiro. Ligar aqui também mantém a carga
+        # idempotente — na segunda passada o `if` já é falso.
+        if not programa.accepts_self_signup:
+            programa.accepts_self_signup = True
+            programa.save(update_fields=["accepts_self_signup"])
         return programa
 
     def _linhas(self, programa: Program) -> list[ResearchLine]:

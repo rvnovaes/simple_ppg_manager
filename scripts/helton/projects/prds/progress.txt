@@ -9,6 +9,7 @@ Started: qui. 03 set 2026 08:00:07 -03
 - Migration de data segue o padrão de `programs/0002`: funções `criar`/`desfazer` em português, `apps.get_model`, e `RunPython(criar, desfazer)`.
 - QuerySet customizado por model (`ProgramQuerySet.as_manager()`); query nova entra como método nomeado no `models.py` (Seção 8 do CLAUDE.md), nunca solta no router.
 - Ambiente deste canteiro: nginx em http://localhost:8330, Postgres do host em 5683 (ver `.env`). Não use a 8080 do checkout principal.
+- `make seed` do host não funciona no canteiro: `docker compose exec -T backend uv run python manage.py seed_demo --force` (com `uv run`, sempre).
 
 ## 2026-09-03 - f1-programa-flag-autocadastro
 - Adicionado `Program.accepts_self_signup` (BooleanField, default False) e
@@ -52,4 +53,29 @@ Started: qui. 03 set 2026 08:00:07 -03
   - O rate limit é testável direto: a fixture autouse `cache_limpo` (backend/conftest.py)
     zera o contador entre testes, então basta repetir a chamada `limit` vezes.
   - `client` do pytest-django sem login serve de cliente anônimo para rota `auth=None`.
+---
+
+## 2026-09-03 - f1-seed-liga-autocadastro
+- `_programa` do `seed_demo` grava `accepts_self_signup=True` no `defaults` do
+  `get_or_create` E religa o flag quando o programa já existe — o `defaults` só vale na
+  criação, e o PPGD já nasce da data migration `programs/0002`, então sem o segundo passo
+  a lista pública ficaria vazia justamente no canteiro já semeado.
+- Novo teste `test_carga_liga_o_autocadastro_nos_dois_programas` em
+  `apps/core/tests/test_seed_demo.py`: desliga o flag de propósito antes da carga, roda os
+  dois tenants e confere que `accepting_self_signup()` traz PPGD e PPGA; a terceira carga
+  não muda o resultado.
+- Verificado no canteiro: seed dos dois programas + `curl
+  http://localhost:8330/api/v1/programs/public` → `["PPGA", "PPGD"]`; repetir o seed
+  imprime "Nada a criar" e a lista continua igual.
+- Arquivos: backend/apps/core/management/commands/seed_demo.py,
+  backend/apps/core/tests/test_seed_demo.py
+- **Learnings for future iterations:**
+  - `make seed` do host não roda neste canteiro (o `uv` do host não tem o ambiente):
+    use `docker compose exec -T backend uv run python manage.py seed_demo --force`.
+    Sem o `uv run`, o `python` do container não acha o Django ("Rode `make install`").
+  - Segundo tenant do seed:
+    `--acronym PPGA --name "Pós-Graduação em Administração" --email-domain ppga.test`
+    (é a constante `SEGUNDO_PROGRAMA` do `test_seed_demo.py`).
+  - Story que muda `defaults` de `get_or_create` para um campo novo precisa SEMPRE do
+    religamento explícito: o banco do canteiro e o de produção já têm a linha criada.
 ---
