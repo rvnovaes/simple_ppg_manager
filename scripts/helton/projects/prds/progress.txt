@@ -10,6 +10,10 @@ Started: qui. 03 set 2026 08:00:07 -03
 - QuerySet customizado por model (`ProgramQuerySet.as_manager()`); query nova entra como método nomeado no `models.py` (Seção 8 do CLAUDE.md), nunca solta no router.
 - Ambiente deste canteiro: nginx em http://localhost:8330, Postgres do host em 5683 (ver `.env`). Não use a 8080 do checkout principal.
 - `make seed` do host não funciona no canteiro: `docker compose exec -T backend uv run python manage.py seed_demo --force` (com `uv run`, sempre).
+- Rota do backend aposentada só quebra o front quando alguém roda `make gen-api`: o
+  `schema.d.ts` é versionado. Removeu endpoint, `grep -rn "'/rota/antiga'" frontend/src`.
+- Path no client tipado vai SEM o prefixo `/api/v1` (o `scripts/normalizar-openapi.mjs`
+  o remove antes do `openapi-typescript`).
 - `save(update_fields=[...])` precisa citar `updated_at`: o `auto_now` só é gravado para os campos listados.
 - Service novo se exercita no canteiro sem sujar dado: `manage.py shell -c` com `transaction.atomic()` e um `raise` no fim para dar rollback.
 
@@ -397,4 +401,46 @@ Started: qui. 03 set 2026 08:00:07 -03
     porque quem a lê não tem permissão para mais nada.
   - O service `approve_access_request` MUTA a instância recebida (`approve()` no
     mesmo objeto), então a rota devolve `solicitacao` direto — sem `refresh_from_db`.
+---
+
+## 2026-09-03 - f6-gen-api
+- `make gen-api` regerou `frontend/src/lib/api/openapi.json` e `schema.d.ts`: entraram
+  `/programs/public`, `/access/signup`, `/access/me`, `/access/requests/` e os dois
+  `/access/requests/{request_id}/{approve,reject}`. Enums com nome próprio e sem colisão
+  (`AccessProfile`, `AccessRequestStatus`; nenhum schema saiu com sufixo numérico).
+- **O `make typecheck` quebrou na regeneração**, e não por erro do gerador: a tela
+  `(auth)/cadastro/+page.svelte` ainda chamava `/academic/isolated/signup`, aposentada na
+  f3. Enquanto o `schema.d.ts` versionado era o antigo, o `svelte-check` não via nada.
+  A tela foi apontada para `POST /access/signup` — o mínimo que a rota nova exige:
+  select de programa alimentado por `GET /programs/public` (com recado e botão desabilitado
+  quando a lista vem vazia), select de perfil e o bloco `{#if perfil === 'teacher'}` com
+  categoria, titulação, instituição e Lattes; instituição só é `required` quando a
+  categoria é `external`, espelhando o `campos_do_perfil` do `AccessSignupIn`.
+- **A f6-tela-cadastro continua tendo o que fazer**: extrair os rótulos (que aqui ficaram
+  inline, em constantes no topo do arquivo) para `frontend/src/lib/acesso.ts`, compartilhar
+  com as telas de espera e da fila, e trocar o texto do link em
+  `(auth)/login/+page.svelte:115`, que ainda cita disciplina isolada.
+- `make ready` verde: 1973 passed, 10 skipped em 184s.
+- Verificado no browser em http://localhost:8330/cadastro (rebuild do serviço `frontend`
+  antes): o select de programa lista PPGA e PPGD; candidato recebe "Use seu e-mail e sua
+  senha para entrar"; docente externo sem instituição é barrado pelo `reportValidity()` e,
+  com instituição, recebe "Este cadastro deve ser confirmado pela secretaria". Os dois
+  cadastros de teste (`teste.navegador.f6@` e `docente.externo.f6@example.com`) ficaram no
+  banco do canteiro — o segundo é mais um pendente para a fila da f6-tela-solicitacoes.
+- Arquivos: frontend/src/lib/api/openapi.json, frontend/src/lib/api/schema.d.ts,
+  frontend/src/routes/(auth)/cadastro/+page.svelte
+- **Learnings for future iterations:**
+  - **Story que aposenta rota do backend deixa uma bomba-relógio no front.** O
+    `schema.d.ts` é versionado, então a tela que consome a rota morta continua compilando
+    até alguém rodar `make gen-api` — e a conta chega para a story do gerador, não para
+    quem removeu. Ao remover endpoint, `grep -rn "'/rota/antiga'" frontend/src` na mesma
+    iteração.
+  - `make gen-api` roda do host sem backend de pé: `export_openapi_schema` é comando de
+    manage.py e não toca o banco. O `npm run gen:api` passa antes pelo
+    `scripts/normalizar-openapi.mjs`, que tira o prefixo `/api/v1` dos 121 caminhos — por
+    isso o path no `api.GET`/`api.POST` é `/access/signup`, sem o prefixo.
+  - Tela pública carrega lista com `$effect(() => { carregar(); })` no fim do `<script>`,
+    e não `onMount` — é o padrão de `(publico)/selecao/inscricao/+page.svelte`.
+  - Editar arquivo de rota JÁ EXISTENTE não dispara o `EACCES` de `.svelte-kit/`: o Vite do
+    container só regenera os artefatos como root quando a rota é NOVA.
 ---

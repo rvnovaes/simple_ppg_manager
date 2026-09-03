@@ -196,6 +196,32 @@
         ]
       }
     },
+    "/programs/public": {
+      "get": {
+        "operationId": "apps_programs_router_list_public_programs",
+        "summary": "List Public Programs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicProgramOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "programs"
+        ]
+      }
+    },
     "/programs/research-lines/": {
       "get": {
         "operationId": "apps_programs_router_list_research_lines",
@@ -2786,10 +2812,10 @@
         ]
       }
     },
-    "/academic/isolated/signup": {
+    "/access/signup": {
       "post": {
-        "operationId": "apps_academic_router_isolated_signup",
-        "summary": "Isolated Signup",
+        "operationId": "apps_academic_router_access_signup",
+        "summary": "Access Signup",
         "parameters": [],
         "responses": {
           "200": {
@@ -2797,25 +2823,219 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IsolatedSignupOut"
+                  "$ref": "#/components/schemas/AccessSignupOut"
                 }
               }
             }
           }
         },
         "tags": [
-          "academic"
+          "access"
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/IsolatedSignupIn"
+                "$ref": "#/components/schemas/AccessSignupIn"
               }
             }
           },
           "required": true
         }
+      }
+    },
+    "/access/me": {
+      "get": {
+        "operationId": "apps_academic_router_access_me",
+        "summary": "Access Me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "access"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/access/requests/": {
+      "get": {
+        "operationId": "apps_academic_router_list_access_requests",
+        "summary": "List Access Requests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "allOf": [
+                {
+                  "description": "Situação da solicitação de acesso.\n\nFora do model pelo mesmo motivo de colisão de nome no OpenAPI descrito\nem `AccessProfile`. `AccessRequest.Status` continua valendo pelo alias.",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected"
+                  ],
+                  "title": "AccessRequestStatus",
+                  "type": "string"
+                }
+              ],
+              "default": "pending"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedAccessRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A fila da secretaria: quem pediu acesso a este programa.\n\nO default é `pending` porque a fila existe para o que ainda falta\ndecidir; as outras duas situações são o histórico, pedido pela tela.\nSem valor default, abrir a tela mostraria de saída todo o histórico\njunto do que precisa de ação. Valor fora do enum é 422 na borda.\n\nO filtro é do SERVIDOR, e não da tela: a lista é paginada, e filtrar\ndepois de paginar mostraria \"3 de 40\" de uma página só.",
+        "tags": [
+          "access"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/access/requests/{request_id}/approve": {
+      "post": {
+        "operationId": "apps_academic_router_approve_access_request_endpoint",
+        "summary": "Approve Access Request Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Confirma o cadastro e monta o vínculo (Teacher ou Student).\n\nO router só resolve as FKs em objeto, ESCOPADAS no programa corrente:\nprojeto ou orientador de outro tenant vira 404 aqui, e não\n`IntegrityError` 500 lá no service. O que exigir cada perfil é do\ndomínio — `accredited_since_required` para o docente,\n`incomplete_regular` para o discente —, e volta como 4xx com `code`\nestável pelo handler central.",
+        "tags": [
+          "access"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessApproveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/access/requests/{request_id}/reject": {
+      "post": {
+        "operationId": "apps_academic_router_reject_access_request_endpoint",
+        "summary": "Reject Access Request Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Recusa o cadastro, com motivo obrigatório.\n\nO motivo é o que a pessoa lê na tela de espera — recusar sem explicar\né porta fechada sem aviso. A cobrança é do model\n(`rejection_requires_note`), e a recusa arquiva a `Person` dentro do\nservice.",
+        "tags": [
+          "access"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRejectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
       }
     },
     "/selection/processes/": {
@@ -7812,15 +8032,44 @@
           "is_active": {
             "title": "Is Active",
             "type": "boolean"
+          },
+          "accepts_self_signup": {
+            "title": "Accepts Self Signup",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
           "name",
           "acronym",
-          "is_active"
+          "is_active",
+          "accepts_self_signup"
         ],
         "title": "ProgramOut",
+        "type": "object"
+      },
+      "PublicProgramOut": {
+        "description": "Programa como a tela de cadastro sem sessão o vê.\n\nSchema separado de ProgramOut, e não reúso: a rota pública devolve o\nmínimo para preencher um <select>. `is_active` e `accepts_self_signup`\nficam de fora de propósito — são o critério do filtro, e publicá-los\ncontaria a quem não tem sessão o estado interno de cada programa.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "acronym": {
+            "title": "Acronym",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "acronym"
+        ],
+        "title": "PublicProgramOut",
         "type": "object"
       },
       "Input": {
@@ -10489,23 +10738,45 @@
         "title": "IsolatedCycleCloseOut",
         "type": "object"
       },
-      "IsolatedSignupOut": {
-        "description": "Resposta única do auto-registro.\n\nCorpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem\nexatamente isto, senão a rota vira um oráculo de quem tem conta.",
+      "AccessSignupOut": {
+        "description": "Resposta do autocadastro, que varia por PERFIL — nunca por conta.\n\nE-mail inédito e e-mail já cadastrado respondem exatamente a mesma\ncoisa, senão a rota vira um oráculo de quem tem conta neste programa.\nO que muda é o perfil declarado: o candidato já pode entrar, enquanto\ndocente e discente esperam o deferimento da secretaria, e é isso que\n`requires_confirmation` diz à tela.",
         "properties": {
           "detail": {
             "title": "Detail",
             "type": "string"
+          },
+          "requires_confirmation": {
+            "title": "Requires Confirmation",
+            "type": "boolean"
           }
         },
         "required": [
-          "detail"
+          "detail",
+          "requires_confirmation"
         ],
-        "title": "IsolatedSignupOut",
+        "title": "AccessSignupOut",
         "type": "object"
       },
-      "IsolatedSignupIn": {
-        "description": "Auto-registro do candidato a disciplina isolada.\n\nNão tem `program_id` obrigatório pela mesma razão dos demais schemas de\nentrada — o tenant não é escolha livre de quem chama. Aqui não há\nsessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;\no campo só existe (opcional) para desempatar quando mais de um programa\nestá com edital aberto no mesmo instante.",
+      "AccessProfile": {
+        "description": "O que a pessoa diz ser ao pedir acesso ao programa.\n\nMora fora do model, com nome único, pela mesma armadilha de\n`IsolatedRequestStatus`: o gerador de OpenAPI batiza o schema do enum\npelo `__name__` da classe, e dois `Profile` aninhados se sobrescrevem\nem silêncio.\n\n\"Colaborador externo\" NÃO é valor daqui: é `TEACHER` com\n`teacher_category=Teacher.Category.EXTERNAL`. Categoria é do docente,\nnão um quarto perfil — duplicá-la aqui criaria duas verdades sobre a\nmesma coisa.",
+        "enum": [
+          "teacher",
+          "student",
+          "candidate"
+        ],
+        "title": "AccessProfile",
+        "type": "string"
+      },
+      "AccessSignupIn": {
+        "description": "Autocadastro de quem ainda não tem acesso ao programa.\n\n`program_id` é OBRIGATÓRIO e continua não sendo escolha livre: ele só\nvale para programa com `accepts_self_signup` ligado, e é a lista\npública (`GET /api/v1/programs/public`) que alimenta o campo na tela.\nA trava mudou de lugar — saiu do edital aberto e virou interruptor do\nprograma —, não sumiu.\n\nOs quatro campos de docente são declaração da própria pessoa; a\nsecretaria confere na aprovação. Categoria e titulação são cobrados\naqui na borda porque no model são só CheckConstraint: sem este\nvalidador, docente sem eles viraria IntegrityError (500) em vez de 422.",
         "properties": {
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/AccessProfile"
+          },
           "full_name": {
             "title": "Full Name",
             "type": "string"
@@ -10524,7 +10795,265 @@
             "title": "Password",
             "type": "string"
           },
+          "teacher_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "academic_degree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcademicDegree"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home_institution": {
+            "default": "",
+            "title": "Home Institution",
+            "type": "string"
+          },
+          "lattes_url": {
+            "default": "",
+            "title": "Lattes Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "program_id",
+          "profile",
+          "full_name",
+          "email",
+          "password"
+        ],
+        "title": "AccessSignupIn",
+        "type": "object"
+      },
+      "AccessStatusOut": {
+        "description": "Estado do próprio cadastro, para a tela de espera.\n\nÉ o único schema do app lido por quem ainda não tem permissão\nnenhuma, e por isso carrega tudo que a tela precisa mostrar sem uma\nsegunda chamada: quem não é pendente não consegue ler `/programs/` nem\n`/people/` para completar a informação.\n\nOs rótulos viajam prontos (`profile_label`, `status_label`) pelo mesmo\nmotivo de `RequestDocumentOut.kind_label`: traduzir choice no front\nduplicaria a tabela de valores em outro idioma de programação.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
           "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "program_name": {
+            "title": "Program Name",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "profile_label": {
+            "title": "Profile Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "program_name",
+          "profile",
+          "profile_label",
+          "status",
+          "status_label",
+          "decision_note",
+          "decided_at",
+          "created_at"
+        ],
+        "title": "AccessStatusOut",
+        "type": "object"
+      },
+      "AccessRequestStatus": {
+        "description": "Situação da solicitação de acesso.\n\nFora do model pelo mesmo motivo de colisão de nome no OpenAPI descrito\nem `AccessProfile`. `AccessRequest.Status` continua valendo pelo alias.",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "title": "AccessRequestStatus",
+        "type": "string"
+      },
+      "AccessRequestOut": {
+        "description": "Uma solicitação na fila da secretaria.\n\nCarrega o DECLARADO pela pessoa (perfil, categoria, titulação,\ninstituição, Lattes) porque é isso que a secretaria confere antes de\nconfirmar — sem estes campos a tela faria uma segunda chamada por\nlinha só para saber o que está julgando.\n\nSem rótulo pronto, ao contrário de `AccessStatusOut`: a fila é lida\npor quem tem permissão e já carrega `lib/acesso.ts`, que traduz as\nchoices uma vez para as três telas do módulo.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "program_id": {
+            "title": "Program Id",
+            "type": "integer"
+          },
+          "person_id": {
+            "title": "Person Id",
+            "type": "integer"
+          },
+          "person_name": {
+            "title": "Person Name",
+            "type": "string"
+          },
+          "person_email": {
+            "title": "Person Email",
+            "type": "string"
+          },
+          "person_phone_number": {
+            "title": "Person Phone Number",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "teacher_category": {
+            "title": "Teacher Category",
+            "type": "string"
+          },
+          "academic_degree": {
+            "title": "Academic Degree",
+            "type": "string"
+          },
+          "home_institution": {
+            "title": "Home Institution",
+            "type": "string"
+          },
+          "lattes_url": {
+            "title": "Lattes Url",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "decision_note": {
+            "title": "Decision Note",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "program_id",
+          "person_id",
+          "person_name",
+          "person_email",
+          "person_phone_number",
+          "profile",
+          "teacher_category",
+          "academic_degree",
+          "home_institution",
+          "lattes_url",
+          "status",
+          "decision_note",
+          "decided_at",
+          "created_at"
+        ],
+        "title": "AccessRequestOut",
+        "type": "object"
+      },
+      "PagedAccessRequestOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccessRequestOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "PagedAccessRequestOut",
+        "type": "object"
+      },
+      "AccessApproveIn": {
+        "description": "O que a SECRETARIA informa ao confirmar o cadastro.\n\nTodos os campos são opcionais na borda de propósito: quais deles são\nexigidos depende do `profile` da solicitação, que está no banco e não\nno corpo. Quem cobra é o domínio, com `code` estável —\n`accredited_since_required` no service para o docente e\n`incomplete_regular` no `Student.clean()` para o discente. Repetir a\nregra aqui criaria uma segunda verdade sobre o mesmo invariante.\n\nO que a pessoa declarou (categoria, titulação, instituição, Lattes)\nNÃO entra aqui: sai de `solicitacao.campos_do_professor()`.\n\n`deadline` também não: o `Student.save()` calcula o prazo regimental a\npartir do nível e do ingresso.",
+        "properties": {
+          "accredited_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accredited Since"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Level"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -10533,15 +11062,47 @@
                 "type": "null"
               }
             ],
-            "title": "Program Id"
+            "title": "Project Id"
+          },
+          "advisor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisor Id"
+          },
+          "admission_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Date"
+          }
+        },
+        "title": "AccessApproveIn",
+        "type": "object"
+      },
+      "AccessRejectIn": {
+        "description": "Recusa: o motivo é o texto que a pessoa lê na tela de espera.\n\nComo em `IsolatedRejectIn`, a obrigatoriedade real é do model\n(`AccessRequest.reject` levanta `rejection_requires_note`): aqui o\ncampo é exigido na borda, mas string em branco só é barrada lá, com\n`code` estável.",
+        "properties": {
+          "note": {
+            "title": "Note",
+            "type": "string"
           }
         },
         "required": [
-          "full_name",
-          "email",
-          "password"
+          "note"
         ],
-        "title": "IsolatedSignupIn",
+        "title": "AccessRejectIn",
         "type": "object"
       },
       "SelectionKind": {

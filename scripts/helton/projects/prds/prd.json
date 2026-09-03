@@ -334,8 +334,8 @@
         "f5-fila-router"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Regenerado com make gen-api. O typecheck quebrou porque a tela /cadastro ainda chamava a rota aposentada /academic/isolated/signup: a tela foi apontada para /access/signup, com select de programa (GET /programs/public), select de perfil e o bloco de docente. Sobra para a f6-tela-cadastro extrair os rótulos para lib/acesso.ts e ajustar o texto do link no login."
     },
     {
       "id": "f6-tela-cadastro",

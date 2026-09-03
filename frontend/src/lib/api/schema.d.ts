@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/programs/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Public Programs */
+        get: operations["apps_programs_router_list_public_programs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/programs/research-lines/": {
         parameters: {
             query?: never;
@@ -994,7 +1011,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/academic/isolated/signup": {
+    "/access/signup": {
         parameters: {
             query?: never;
             header?: never;
@@ -1003,8 +1020,105 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Isolated Signup */
-        post: operations["apps_academic_router_isolated_signup"];
+        /** Access Signup */
+        post: operations["apps_academic_router_access_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Access Me */
+        get: operations["apps_academic_router_access_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access/requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Access Requests
+         * @description A fila da secretaria: quem pediu acesso a este programa.
+         *
+         *     O default é `pending` porque a fila existe para o que ainda falta
+         *     decidir; as outras duas situações são o histórico, pedido pela tela.
+         *     Sem valor default, abrir a tela mostraria de saída todo o histórico
+         *     junto do que precisa de ação. Valor fora do enum é 422 na borda.
+         *
+         *     O filtro é do SERVIDOR, e não da tela: a lista é paginada, e filtrar
+         *     depois de paginar mostraria "3 de 40" de uma página só.
+         */
+        get: operations["apps_academic_router_list_access_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access/requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Access Request Endpoint
+         * @description Confirma o cadastro e monta o vínculo (Teacher ou Student).
+         *
+         *     O router só resolve as FKs em objeto, ESCOPADAS no programa corrente:
+         *     projeto ou orientador de outro tenant vira 404 aqui, e não
+         *     `IntegrityError` 500 lá no service. O que exigir cada perfil é do
+         *     domínio — `accredited_since_required` para o docente,
+         *     `incomplete_regular` para o discente —, e volta como 4xx com `code`
+         *     estável pelo handler central.
+         */
+        post: operations["apps_academic_router_approve_access_request_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access/requests/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Access Request Endpoint
+         * @description Recusa o cadastro, com motivo obrigatório.
+         *
+         *     O motivo é o que a pessoa lê na tela de espera — recusar sem explicar
+         *     é porta fechada sem aviso. A cobrança é do model
+         *     (`rejection_requires_note`), e a recusa arquiva a `Person` dentro do
+         *     service.
+         */
+        post: operations["apps_academic_router_reject_access_request_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2994,6 +3108,25 @@ export interface components {
             acronym: string;
             /** Is Active */
             is_active: boolean;
+            /** Accepts Self Signup */
+            accepts_self_signup: boolean;
+        };
+        /**
+         * PublicProgramOut
+         * @description Programa como a tela de cadastro sem sessão o vê.
+         *
+         *     Schema separado de ProgramOut, e não reúso: a rota pública devolve o
+         *     mínimo para preencher um <select>. `is_active` e `accepts_self_signup`
+         *     ficam de fora de propósito — são o critério do filtro, e publicá-los
+         *     contaria a quem não tem sessão o estado interno de cada programa.
+         */
+        PublicProgramOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Acronym */
+            acronym: string;
         };
         /** Input */
         Input: {
@@ -4154,27 +4287,56 @@ export interface components {
             students_excluded: number;
         };
         /**
-         * IsolatedSignupOut
-         * @description Resposta única do auto-registro.
+         * AccessSignupOut
+         * @description Resposta do autocadastro, que varia por PERFIL — nunca por conta.
          *
-         *     Corpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem
-         *     exatamente isto, senão a rota vira um oráculo de quem tem conta.
+         *     E-mail inédito e e-mail já cadastrado respondem exatamente a mesma
+         *     coisa, senão a rota vira um oráculo de quem tem conta neste programa.
+         *     O que muda é o perfil declarado: o candidato já pode entrar, enquanto
+         *     docente e discente esperam o deferimento da secretaria, e é isso que
+         *     `requires_confirmation` diz à tela.
          */
-        IsolatedSignupOut: {
+        AccessSignupOut: {
             /** Detail */
             detail: string;
+            /** Requires Confirmation */
+            requires_confirmation: boolean;
         };
         /**
-         * IsolatedSignupIn
-         * @description Auto-registro do candidato a disciplina isolada.
+         * AccessProfile
+         * @description O que a pessoa diz ser ao pedir acesso ao programa.
          *
-         *     Não tem `program_id` obrigatório pela mesma razão dos demais schemas de
-         *     entrada — o tenant não é escolha livre de quem chama. Aqui não há
-         *     sessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;
-         *     o campo só existe (opcional) para desempatar quando mais de um programa
-         *     está com edital aberto no mesmo instante.
+         *     Mora fora do model, com nome único, pela mesma armadilha de
+         *     `IsolatedRequestStatus`: o gerador de OpenAPI batiza o schema do enum
+         *     pelo `__name__` da classe, e dois `Profile` aninhados se sobrescrevem
+         *     em silêncio.
+         *
+         *     "Colaborador externo" NÃO é valor daqui: é `TEACHER` com
+         *     `teacher_category=Teacher.Category.EXTERNAL`. Categoria é do docente,
+         *     não um quarto perfil — duplicá-la aqui criaria duas verdades sobre a
+         *     mesma coisa.
+         * @enum {string}
          */
-        IsolatedSignupIn: {
+        AccessProfile: "teacher" | "student" | "candidate";
+        /**
+         * AccessSignupIn
+         * @description Autocadastro de quem ainda não tem acesso ao programa.
+         *
+         *     `program_id` é OBRIGATÓRIO e continua não sendo escolha livre: ele só
+         *     vale para programa com `accepts_self_signup` ligado, e é a lista
+         *     pública (`GET /api/v1/programs/public`) que alimenta o campo na tela.
+         *     A trava mudou de lugar — saiu do edital aberto e virou interruptor do
+         *     programa —, não sumiu.
+         *
+         *     Os quatro campos de docente são declaração da própria pessoa; a
+         *     secretaria confere na aprovação. Categoria e titulação são cobrados
+         *     aqui na borda porque no model são só CheckConstraint: sem este
+         *     validador, docente sem eles viraria IntegrityError (500) em vez de 422.
+         */
+        AccessSignupIn: {
+            /** Program Id */
+            program_id: number;
+            profile: components["schemas"]["AccessProfile"];
             /** Full Name */
             full_name: string;
             /**
@@ -4189,8 +4351,161 @@ export interface components {
             phone_number: string;
             /** Password */
             password: string;
+            teacher_category?: components["schemas"]["Category"] | null;
+            academic_degree?: components["schemas"]["AcademicDegree"] | null;
+            /**
+             * Home Institution
+             * @default
+             */
+            home_institution: string;
+            /**
+             * Lattes Url
+             * @default
+             */
+            lattes_url: string;
+        };
+        /**
+         * AccessStatusOut
+         * @description Estado do próprio cadastro, para a tela de espera.
+         *
+         *     É o único schema do app lido por quem ainda não tem permissão
+         *     nenhuma, e por isso carrega tudo que a tela precisa mostrar sem uma
+         *     segunda chamada: quem não é pendente não consegue ler `/programs/` nem
+         *     `/people/` para completar a informação.
+         *
+         *     Os rótulos viajam prontos (`profile_label`, `status_label`) pelo mesmo
+         *     motivo de `RequestDocumentOut.kind_label`: traduzir choice no front
+         *     duplicaria a tabela de valores em outro idioma de programação.
+         */
+        AccessStatusOut: {
+            /** Id */
+            id: number;
             /** Program Id */
-            program_id?: number | null;
+            program_id: number;
+            /** Program Name */
+            program_name: string;
+            /** Profile */
+            profile: string;
+            /** Profile Label */
+            profile_label: string;
+            /** Status */
+            status: string;
+            /** Status Label */
+            status_label: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * AccessRequestStatus
+         * @description Situação da solicitação de acesso.
+         *
+         *     Fora do model pelo mesmo motivo de colisão de nome no OpenAPI descrito
+         *     em `AccessProfile`. `AccessRequest.Status` continua valendo pelo alias.
+         * @enum {string}
+         */
+        AccessRequestStatus: "pending" | "approved" | "rejected";
+        /**
+         * AccessRequestOut
+         * @description Uma solicitação na fila da secretaria.
+         *
+         *     Carrega o DECLARADO pela pessoa (perfil, categoria, titulação,
+         *     instituição, Lattes) porque é isso que a secretaria confere antes de
+         *     confirmar — sem estes campos a tela faria uma segunda chamada por
+         *     linha só para saber o que está julgando.
+         *
+         *     Sem rótulo pronto, ao contrário de `AccessStatusOut`: a fila é lida
+         *     por quem tem permissão e já carrega `lib/acesso.ts`, que traduz as
+         *     choices uma vez para as três telas do módulo.
+         */
+        AccessRequestOut: {
+            /** Id */
+            id: number;
+            /** Program Id */
+            program_id: number;
+            /** Person Id */
+            person_id: number;
+            /** Person Name */
+            person_name: string;
+            /** Person Email */
+            person_email: string;
+            /** Person Phone Number */
+            person_phone_number: string;
+            /** Profile */
+            profile: string;
+            /** Teacher Category */
+            teacher_category: string;
+            /** Academic Degree */
+            academic_degree: string;
+            /** Home Institution */
+            home_institution: string;
+            /** Lattes Url */
+            lattes_url: string;
+            /** Status */
+            status: string;
+            /** Decision Note */
+            decision_note: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** PagedAccessRequestOut */
+        PagedAccessRequestOut: {
+            /** Items */
+            items: components["schemas"]["AccessRequestOut"][];
+            /** Count */
+            count: number;
+        };
+        /**
+         * AccessApproveIn
+         * @description O que a SECRETARIA informa ao confirmar o cadastro.
+         *
+         *     Todos os campos são opcionais na borda de propósito: quais deles são
+         *     exigidos depende do `profile` da solicitação, que está no banco e não
+         *     no corpo. Quem cobra é o domínio, com `code` estável —
+         *     `accredited_since_required` no service para o docente e
+         *     `incomplete_regular` no `Student.clean()` para o discente. Repetir a
+         *     regra aqui criaria uma segunda verdade sobre o mesmo invariante.
+         *
+         *     O que a pessoa declarou (categoria, titulação, instituição, Lattes)
+         *     NÃO entra aqui: sai de `solicitacao.campos_do_professor()`.
+         *
+         *     `deadline` também não: o `Student.save()` calcula o prazo regimental a
+         *     partir do nível e do ingresso.
+         */
+        AccessApproveIn: {
+            /** Accredited Since */
+            accredited_since?: string | null;
+            level?: components["schemas"]["Level"] | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Advisor Id */
+            advisor_id?: number | null;
+            /** Admission Date */
+            admission_date?: string | null;
+        };
+        /**
+         * AccessRejectIn
+         * @description Recusa: o motivo é o texto que a pessoa lê na tela de espera.
+         *
+         *     Como em `IsolatedRejectIn`, a obrigatoriedade real é do model
+         *     (`AccessRequest.reject` levanta `rejection_requires_note`): aqui o
+         *     campo é exigido na borda, mas string em branco só é barrada lá, com
+         *     `code` estável.
+         */
+        AccessRejectIn: {
+            /** Note */
+            note: string;
         };
         /**
          * SelectionKind
@@ -6904,6 +7219,26 @@ export interface operations {
             };
         };
     };
+    apps_programs_router_list_public_programs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProgramOut"][];
+                };
+            };
+        };
+    };
     apps_programs_router_list_research_lines: {
         parameters: {
             query?: {
@@ -8219,7 +8554,7 @@ export interface operations {
             };
         };
     };
-    apps_academic_router_isolated_signup: {
+    apps_academic_router_access_signup: {
         parameters: {
             query?: never;
             header?: never;
@@ -8228,7 +8563,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["IsolatedSignupIn"];
+                "application/json": components["schemas"]["AccessSignupIn"];
             };
         };
         responses: {
@@ -8238,7 +8573,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IsolatedSignupOut"];
+                    "application/json": components["schemas"]["AccessSignupOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_access_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessStatusOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_list_access_requests: {
+        parameters: {
+            query?: {
+                status?: "pending" | "approved" | "rejected";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedAccessRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_approve_access_request_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessApproveIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequestOut"];
+                };
+            };
+        };
+    };
+    apps_academic_router_reject_access_request_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessRejectIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequestOut"];
                 };
             };
         };
