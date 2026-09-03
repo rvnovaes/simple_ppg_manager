@@ -405,6 +405,149 @@ def signup_access_request(
 
 
 @transaction.atomic
+def approve_access_request(
+    *,
+    solicitacao: AccessRequest,
+    campos: dict[str, Any],
+    request: HttpRequest | None = None,
+) -> Teacher | Student:
+    """Defere a solicitação e monta o vínculo — tudo ou nada.
+
+    Está aqui, e não no router, porque escreve em AccessRequest, no vínculo
+    (Teacher ou Student), nos Groups da conta e no AuditLog na mesma
+    transação (ADR-002). A ordem importa: `create_teacher`/`create_student`
+    já criam a ficha, chamam `clean()` e dão o papel de domínio dentro deste
+    mesmo atomic, então a ficha nasce ANTES do papel — não há janela em que
+    a conta tenha "Docente" sem Teacher correspondente.
+
+    `campos` é o que a SECRETARIA informa, já resolvido e escopado pelo
+    router; o que a pessoa declarou no cadastro sai da própria solicitação:
+
+    - docente: `accredited_since` (a data do credenciamento é decisão de
+      quem aprova). Categoria, titulação, instituição e Lattes vêm de
+      `solicitacao.campos_do_professor()`.
+    - discente: `level`, `project`, `advisor` e `admission_date`. O vínculo
+      nasce `modality=REGULAR` e `status=ACTIVE` — autocadastro só produz
+      aluno regular; isolada e eletiva entram por edital, não por esta fila.
+      O `deadline` sai sozinho do `Student.save()` a partir do nível e do
+      ingresso.
+
+    Assunções para conferir no merge: aluno aprovado nasce sem matrícula
+    (`registration_number` continua vazio até a matrícula sair) e o docente
+    entra sem linha de pesquisa nem projeto — os dois são edição posterior
+    da secretaria, não decisão do deferimento.
+    """
+    solicitacao.ensure_decidable()
+
+    person = solicitacao.person
+    program = solicitacao.program
+
+    if solicitacao.profile == AccessProfile.TEACHER:
+        accredited_since = campos.get("accredited_since")
+        if accredited_since is None:
+            raise DomainError(
+                "Informe a data de credenciamento do professor.",
+                code="accredited_since_required",
+            )
+        vinculo: Teacher | Student = create_teacher(
+            program=program,
+            person=person,
+            campos=solicitacao.campos_do_professor(accredited_since),
+            request=request,
+        )
+    elif solicitacao.profile == AccessProfile.STUDENT:
+        vinculo = create_student(
+            program=program,
+            person=person,
+            campos={
+                **campos,
+                "modality": Student.Modality.REGULAR,
+                "status": Student.Status.ACTIVE,
+            },
+            request=request,
+        )
+    else:
+        # Candidato não gera solicitação (`signup_access_request`); chegar
+        # aqui é dado corrompido, não fluxo de tela.
+        raise DomainError(
+            "Este perfil não passa pela fila da secretaria.",
+            code="profile_not_decidable",
+        )
+
+    # O marcador sai depois da ficha, e só dele: o papel de domínio já foi
+    # dado por `create_teacher`/`create_student`.
+    if person.user is not None:
+        revoke_role_group(person.user, group_name="Cadastro pendente", request=request)
+
+    # A regra mora no model; aqui só persistimos e auditamos.
+    solicitacao.approve()
+    # `updated_at` PRECISA estar na lista: `auto_now` só é gravado para os
+    # campos que o `update_fields` cita.
+    solicitacao.save(update_fields=["status", "decided_at", "updated_at"])
+
+    audit.record(
+        "academic.access_request.approve",
+        request=request,
+        target=solicitacao,
+        person_id=person.pk,
+        profile=solicitacao.profile,
+        vinculo_id=vinculo.pk,
+    )
+    return vinculo
+
+
+@transaction.atomic
+def reject_access_request(
+    *,
+    solicitacao: AccessRequest,
+    note: str,
+    request: HttpRequest | None = None,
+) -> AccessRequest:
+    """Indefere a solicitação e arquiva a pessoa — tudo ou nada.
+
+    Escreve em AccessRequest, Person e AuditLog (ADR-002). O arquivamento
+    não é enfeite: o marcador "Cadastro pendente" sozinho não tranca nada,
+    e é `current_program()` — que só enxerga pessoa ATIVA — quem passa a
+    recusar o recusado em toda rota de negócio.
+
+    **O recusado não se recadastra**: `unique_email_por_programa` barra a
+    segunda `Person` no mesmo programa, e `signup_access_request` devolve o
+    mesmo corpo silencioso do anti-enumeração — a pessoa não recebe erro
+    nenhum e também não recupera o acesso. A saída é a secretaria reativar
+    a pessoa; enquanto isso não acontece, a tela de espera mostra o motivo
+    gravado aqui.
+
+    Assunção para conferir no merge: a conta continua no Group "Cadastro
+    pendente". Tirar o marcador só trocaria "pendente sem acesso" por "sem
+    papel nenhum" — quem tranca é a pessoa arquivada, e manter o marcador
+    deixa visível que houve um pedido.
+    """
+    # A regra mora no model; aqui só persistimos e auditamos.
+    # `reject()` já chama `ensure_decidable()` e exige o motivo.
+    solicitacao.reject(note=note)
+    solicitacao.save(
+        update_fields=["status", "decision_note", "decided_at", "updated_at"]
+    )
+
+    person = solicitacao.person
+    # Pessoa já arquivada por outro caminho (a secretaria pode ter arquivado
+    # antes de decidir) não vira erro: `Person.archive()` recusaria a
+    # segunda chamada e deixaria a solicitação pendente para sempre.
+    if person.status != Person.Status.ARCHIVED:
+        person.archive()
+        person.save(update_fields=["status", "updated_at"])
+
+    audit.record(
+        "academic.access_request.reject",
+        request=request,
+        target=solicitacao,
+        person_id=person.pk,
+        profile=solicitacao.profile,
+    )
+    return solicitacao
+
+
+@transaction.atomic
 def close_isolated_cycle(
     *,
     ciclo: IsolatedEnrollmentCycle,

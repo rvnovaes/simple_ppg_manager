@@ -10,6 +10,8 @@ Started: qui. 03 set 2026 08:00:07 -03
 - QuerySet customizado por model (`ProgramQuerySet.as_manager()`); query nova entra como método nomeado no `models.py` (Seção 8 do CLAUDE.md), nunca solta no router.
 - Ambiente deste canteiro: nginx em http://localhost:8330, Postgres do host em 5683 (ver `.env`). Não use a 8080 do checkout principal.
 - `make seed` do host não funciona no canteiro: `docker compose exec -T backend uv run python manage.py seed_demo --force` (com `uv run`, sempre).
+- `save(update_fields=[...])` precisa citar `updated_at`: o `auto_now` só é gravado para os campos listados.
+- Service novo se exercita no canteiro sem sujar dado: `manage.py shell -c` com `transaction.atomic()` e um `raise` no fim para dar rollback.
 
 ## 2026-09-03 - f1-programa-flag-autocadastro
 - Adicionado `Program.accepts_self_signup` (BooleanField, default False) e
@@ -316,3 +318,35 @@ Started: qui. 03 set 2026 08:00:07 -03
     pytest, e o erro sai como `ValueError` de Content-Type, sem apontar a causa.
   - A próxima story do front (`f4-front-pendente-e-tela-de-espera`) depende de
     `f6-gen-api`: `AccessStatusOut` ainda não está no `schema.d.ts` versionado.
+
+## 2026-09-03 - f5-services-aprovacao-e-recusa
+- `approve_access_request(*, solicitacao, campos, request=None) -> Teacher | Student` em
+  `apps/academic/services.py`: `ensure_decidable()`, depois `create_teacher` (docente, com
+  `solicitacao.campos_do_professor(accredited_since)`) ou `create_student` (discente, com
+  `modality=REGULAR`/`status=ACTIVE` forçados sobre os `campos` da secretaria); os dois já
+  criam a ficha e dão o papel de domínio DENTRO do mesmo atomic, então a ficha nasce antes
+  do papel. Depois `revoke_role_group('Cadastro pendente')`, `approve()`,
+  `save(update_fields=[..., 'updated_at'])` e `audit.record('academic.access_request.approve')`.
+- Docente sem `accredited_since` levanta `DomainError` `accredited_since_required`; perfil
+  `candidate` (que nunca gera solicitação) levanta `profile_not_decidable`.
+- `reject_access_request(*, solicitacao, note, request=None)`: `reject()` (que já cobra
+  motivo e `ensure_decidable`), grava, arquiva a `Person` e audita. A docstring registra
+  as duas assunções para o merge: o recusado NÃO se recadastra (o
+  `unique_email_por_programa` barra e a resposta é o corpo silencioso do anti-enumeração —
+  a saída é a secretaria reativar a pessoa), e a conta continua no Group "Cadastro
+  pendente" porque quem tranca é a pessoa arquivada.
+- `make ready` verde: 1973 passed, 10 skipped em 185s. Exercitado no canteiro com
+  `manage.py shell -c` e rollback: aprovar `ana.doc@example.com` criou o Teacher e deixou a
+  conta só em `['Docente']`; recusar gravou o motivo e a Person saiu `archived`. O pendente
+  do canteiro continua intacto para a f5-fila-router.
+- Arquivos: backend/apps/academic/services.py
+- **Learnings for future iterations:**
+  - `Person.archive()` levanta se já arquivada, então a recusa só arquiva quando a pessoa
+    está ativa — sem a guarda, uma pessoa arquivada antes da decisão deixaria a solicitação
+    pendente para sempre.
+  - `campos` do service chega já RESOLVIDO e escopado (objeto `CollectiveProject`/`Teacher`,
+    não id): quem resolve dentro de `for_program(program)` é o router (f5-fila-router), para
+    que id de outro tenant vire 404 na borda e não `IntegrityError` aqui.
+  - Aluno aprovado nasce sem `registration_number` e docente sem linha de pesquisa/projeto —
+    edição posterior da secretaria, está escrito na docstring para o humano confirmar.
+---
