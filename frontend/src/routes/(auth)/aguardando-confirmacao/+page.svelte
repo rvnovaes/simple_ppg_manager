@@ -54,14 +54,14 @@
 </script>
 
 <svelte:head>
-	<title>Aguardando confirmação · PPGD Manager</title>
+	<title>Aguardando confirmação · PPGM</title>
 </svelte:head>
 
 <div class="grid min-h-screen lg:grid-cols-[minmax(0,42%)_1fr]">
 	<aside
 		class="bg-tinta text-papel flex flex-col justify-between gap-10 px-8 py-10 lg:px-14 lg:py-14"
 	>
-		<p class="etiqueta text-papel/55">PPGD · Acesso ao programa</p>
+		<p class="etiqueta text-papel/55">Acesso ao programa</p>
 
 		<div class="max-w-md">
 			<h1 class="text-3xl leading-[1.1] font-semibold tracking-tight lg:text-[2.75rem]">

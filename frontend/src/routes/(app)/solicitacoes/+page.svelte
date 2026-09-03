@@ -204,7 +204,7 @@
 </script>
 
 <svelte:head>
-	<title>Solicitações de acesso · PPGD Manager</title>
+	<title>Solicitações de acesso · PPGM</title>
 </svelte:head>
 
 <header>
