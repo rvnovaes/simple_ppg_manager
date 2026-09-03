@@ -175,7 +175,7 @@
         "f3-service-signup"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

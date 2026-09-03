@@ -31,6 +31,7 @@ from apps.programs.models import (
 )
 
 from .models import (
+    AccessProfile,
     AdjustmentStatus,
     DisciplineOffering,
     EnrollmentAdjustmentRequest,
@@ -44,6 +45,8 @@ from .models import (
     Teacher,
 )
 from .schemas import (
+    AccessSignupIn,
+    AccessSignupOut,
     DisciplineOfferingIn,
     DisciplineOfferingOut,
     DisciplineOfferingPatch,
@@ -65,8 +68,6 @@ from .schemas import (
     IsolatedRequestIn,
     IsolatedRequestOut,
     IsolatedRequestPatch,
-    IsolatedSignupIn,
-    IsolatedSignupOut,
     RequestDocumentOut,
     StudentIn,
     StudentOut,
@@ -87,11 +88,16 @@ from .services import (
     create_student,
     create_teacher,
     enroll_isolated_request,
-    programa_com_inscricao_aberta,
-    signup_isolated_candidate,
+    programa_que_aceita_autocadastro,
+    signup_access_request,
 )
 
 router = Router(tags=["academic"])
+# Segundo router do arquivo, montado noutro prefixo (/access/), como
+# accounts/router.py faz com `router` e `users_router`. O autocadastro não
+# é assunto de vida acadêmica: quem chama ainda não tem vínculo nenhum, e
+# a única rota pública de escrita do projeto merece prefixo próprio.
+access_router = Router(tags=["access"])
 
 
 def _linhas(ids: list[int]) -> list[ResearchLine]:
@@ -1459,41 +1465,55 @@ def close_isolated_cycle_endpoint(request: HttpRequest, cycle_id: int):
     }
 
 
-@router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})
+@access_router.post("/signup", auth=None, response={200: AccessSignupOut})
 @decorate_view(csrf_protect)
-def isolated_signup(request: HttpRequest, payload: IsolatedSignupIn):
+def access_signup(request: HttpRequest, payload: AccessSignupIn):
     # público: é o único endpoint de escrita sem sessão do projeto, e tem
-    # de ser — quem se inscreve em disciplina isolada não tem vínculo com a
-    # UFMG e portanto não tem conta para autenticar. Sem ele, a secretaria
-    # cadastraria à mão cada candidato do edital, que é exatamente o
-    # trabalho que este módulo existe para tirar dela.
+    # de ser — quem se cadastra ainda não tem acesso ao programa e
+    # portanto não tem conta para autenticar. Sem ele, a secretaria
+    # digitaria à mão cada docente, discente e candidato, que é
+    # exatamente o trabalho que este módulo existe para tirar dela.
     #
-    # As três travas que substituem a sessão: só funciona enquanto há
-    # edital aberto (programa_com_inscricao_aberta), limite de tentativas
+    # As três travas que substituem a sessão: só programa com o
+    # interruptor `accepts_self_signup` ligado aceita cadastro
+    # (programa_que_aceita_autocadastro — `program_id` é obrigatório, mas
+    # vem da lista pública e não é escolha livre), limite de tentativas
     # por IP e csrf_protect explícito — auth=None desliga junto a checagem
     # de CSRF que o SessionAuth faria, mesma armadilha do login.
     enforce_rate_limit(
         request,
-        scope="isolated-signup",
+        scope="access-signup",
         limit=LIMITE_DE_SIGNUP_POR_IP,
         window_seconds=JANELA_DE_SIGNUP_EM_SEGUNDOS,
     )
-    program = programa_com_inscricao_aberta(
-        at=timezone.now(), program_id=payload.program_id
-    )
-    signup_isolated_candidate(
+    program = programa_que_aceita_autocadastro(program_id=payload.program_id)
+    signup_access_request(
         program=program,
+        profile=payload.profile,
         full_name=payload.full_name,
         email=str(payload.email),
         password=payload.password,
         phone_number=payload.phone_number,
+        teacher_category=payload.teacher_category or "",
+        academic_degree=payload.academic_degree or "",
+        home_institution=payload.home_institution,
+        lattes_url=payload.lattes_url,
         request=request,
     )
-    # Corpo idêntico nos dois desfechos: dizer "e-mail já cadastrado" aqui
-    # transformaria a rota num verificador de contas para qualquer um.
+    # O corpo varia por PERFIL e só por ele: o valor devolvido pelo service
+    # (pessoa nova x pessoa que já existia) é ignorado de propósito, senão
+    # a rota vira um verificador de contas para qualquer um.
+    if payload.profile == AccessProfile.CANDIDATE:
+        return {
+            "detail": (
+                "Cadastro recebido. Use seu e-mail e sua senha para entrar e "
+                "concluir a inscrição."
+            ),
+            "requires_confirmation": False,
+        }
     return {
         "detail": (
-            "Cadastro recebido. Use seu e-mail e sua senha para entrar e "
-            "concluir a inscrição."
-        )
+            "Cadastro recebido. Este cadastro deve ser confirmado pela secretaria."
+        ),
+        "requires_confirmation": True,
     }

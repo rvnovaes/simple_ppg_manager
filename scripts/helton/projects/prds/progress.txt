@@ -204,3 +204,50 @@ Started: qui. 03 set 2026 08:00:07 -03
   - `audit.record(..., program=program)` é como se audita evento cujo alvo não existe
     (o desvio do e-mail repetido) — sem `target`, mas com a chave de tenant.
 ---
+
+## 2026-09-03 - f3-endpoint-signup-e-aposentadoria
+- `AccessSignupIn`/`AccessSignupOut` substituem `IsolatedSignupIn`/`Out` em
+  `apps/academic/schemas.py`. `program_id` é obrigatório (docstring reescrita: a trava
+  saiu do edital aberto e virou o flag do programa, alimentado pela lista pública) e
+  `AccessSignupOut` ganha `requires_confirmation` — o corpo varia por PERFIL, nunca por
+  existência de conta.
+- `campos_do_perfil` (model_validator) cobra `teacher_category` e `academic_degree` do
+  docente na BORDA: no model esses dois são só CheckConstraint, então sem o validador o
+  422 viraria IntegrityError 500. Também cobra `home_institution` do docente EXTERNAL,
+  antecipando o `clean()`.
+- `access_router = Router(tags=["access"])` no mesmo `apps/academic/router.py`
+  (precedente: `router`/`users_router` do accounts), com
+  `POST /signup`, `auth=None`, `@decorate_view(csrf_protect)`, bloco `# público:` e
+  `enforce_rate_limit(scope="access-signup", limit=5, window=3600)`. Montado em
+  `backend/api.py` como `api.add_router("/access/", academic_access_router)` — o import
+  precisa de alias, porque `access_router` sozinho colidiria com o padrão de nomes do
+  arquivo.
+- Aposentados no mesmo passo: `isolated_signup`, `IsolatedSignupIn/Out`,
+  `signup_isolated_candidate` e `programa_com_inscricao_aberta`. `ciclo_com_inscricao_aberta`
+  continua de pé (é outra coisa, serve à inscrição).
+- **`apps/academic/tests/test_isolada_signup.py` foi REMOVIDO**: os 11 testes batem numa
+  URL que não existe mais e importam símbolos aposentados. A story seguinte
+  (`f3-testes-autocadastro`) o porta para `test_autocadastro.py` — até lá, a rota pública
+  de escrita está sem cobertura, e é a única dívida deste commit.
+- `make ready` verde: 1950 passed, 10 skipped em 182s.
+- Verificado no canteiro (http://localhost:8330): candidato → `requires_confirmation:
+  false`; docente completo → `true`; docente sem categoria/titulação → 422 com
+  "Docente exige academic_degree, teacher_category."; `program_id` inexistente →
+  `signup_closed`; sem `X-CSRFToken` → 403; `POST /academic/isolated/signup` → 404.
+- Arquivos: backend/apps/academic/schemas.py, router.py, services.py, backend/api.py,
+  backend/apps/academic/tests/test_isolada_signup.py (removido)
+- **Learnings for future iterations:**
+  - O front (`frontend/src/routes/(auth)/cadastro/+page.svelte:31`) ainda chama
+    `/academic/isolated/signup`, que agora é 404. O `make typecheck` NÃO acusa isso: o
+    `schema.d.ts` versionado ainda descreve a rota velha. A tela só volta a funcionar em
+    `f6-gen-api` + `f6-tela-cadastro` — não se assuste com a tela quebrada no canteiro.
+  - Router novo no mesmo arquivo: o `api.py` importa duas vezes do mesmo módulo
+    (`from apps.academic.router import access_router as academic_access_router`), como já
+    faz com o accounts. O ruff não reclama do import duplicado com alias.
+  - Enum de `TextChoices` como tipo de campo Ninja (`profile: AccessProfile`,
+    `teacher_category: Teacher.Category | None`) já valida o valor na borda e vira enum no
+    OpenAPI; o service recebe a string porque `TextChoices` É `str`.
+  - Deixei no banco do canteiro um candidato (`zeca.teste@example.com`) e um docente
+    pendente (`ana.doc@example.com`) no PPGD — a fila da secretaria (f5) tem com que
+    aparecer sem semear nada.
+---

@@ -17,6 +17,7 @@ from apps.people.models import Person
 
 from .models import (
     MAX_ISOLATED_ITEMS,
+    AccessProfile,
     DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
@@ -837,28 +838,61 @@ class RequestDocumentOut(Schema):
             return 0
 
 
-class IsolatedSignupIn(Schema):
-    """Auto-registro do candidato a disciplina isolada.
+class AccessSignupIn(Schema):
+    """Autocadastro de quem ainda não tem acesso ao programa.
 
-    Não tem `program_id` obrigatório pela mesma razão dos demais schemas de
-    entrada — o tenant não é escolha livre de quem chama. Aqui não há
-    sessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;
-    o campo só existe (opcional) para desempatar quando mais de um programa
-    está com edital aberto no mesmo instante.
+    `program_id` é OBRIGATÓRIO e continua não sendo escolha livre: ele só
+    vale para programa com `accepts_self_signup` ligado, e é a lista
+    pública (`GET /api/v1/programs/public`) que alimenta o campo na tela.
+    A trava mudou de lugar — saiu do edital aberto e virou interruptor do
+    programa —, não sumiu.
+
+    Os quatro campos de docente são declaração da própria pessoa; a
+    secretaria confere na aprovação. Categoria e titulação são cobrados
+    aqui na borda porque no model são só CheckConstraint: sem este
+    validador, docente sem eles viraria IntegrityError (500) em vez de 422.
     """
 
+    program_id: int
+    profile: AccessProfile
     full_name: str
     email: EmailStr
     phone_number: str = ""
     password: str
-    program_id: int | None = None
+    # Só o docente preenche; o service zera estes campos nos demais perfis.
+    teacher_category: Teacher.Category | None = None
+    academic_degree: Teacher.AcademicDegree | None = None
+    home_institution: str = ""
+    lattes_url: str = ""
+
+    @model_validator(mode="after")
+    def campos_do_perfil(self) -> "AccessSignupIn":
+        if self.profile != AccessProfile.TEACHER:
+            return self
+        faltando = [
+            campo
+            for campo in ("teacher_category", "academic_degree")
+            if getattr(self, campo) is None
+        ]
+        if faltando:
+            raise ValueError("Docente exige " + ", ".join(sorted(faltando)) + ".")
+        if (
+            self.teacher_category == Teacher.Category.EXTERNAL
+            and not self.home_institution.strip()
+        ):
+            raise ValueError("Colaborador externo exige home_institution.")
+        return self
 
 
-class IsolatedSignupOut(Schema):
-    """Resposta única do auto-registro.
+class AccessSignupOut(Schema):
+    """Resposta do autocadastro, que varia por PERFIL — nunca por conta.
 
-    Corpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem
-    exatamente isto, senão a rota vira um oráculo de quem tem conta.
+    E-mail inédito e e-mail já cadastrado respondem exatamente a mesma
+    coisa, senão a rota vira um oráculo de quem tem conta neste programa.
+    O que muda é o perfil declarado: o candidato já pode entrar, enquanto
+    docente e discente esperam o deferimento da secretaria, e é isso que
+    `requires_confirmation` diz à tela.
     """
 
     detail: str
+    requires_confirmation: bool
