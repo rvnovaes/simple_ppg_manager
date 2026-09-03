@@ -13,10 +13,15 @@
 		(event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');
 	}
 
-	// Guarda das telas internas: sem sessão, volta para o login.
+	// Guarda das telas internas: sem sessão, volta para o login; com o
+	// cadastro ainda pendente de confirmação, vai para a tela de espera —
+	// nenhuma tela daqui é legível por quem não tem permissão alguma.
 	$effect(() => {
-		if (sessao.usuario === null && !sessao.carregando) {
+		if (sessao.carregando) return;
+		if (sessao.usuario === null) {
 			goto(resolve('/login'), { replaceState: true });
+		} else if (sessao.pendenteDeConfirmacao) {
+			goto(resolve('/aguardando-confirmacao'), { replaceState: true });
 		}
 	});
 
@@ -32,7 +37,10 @@
 
 {#if sessao.carregando}
 	<p class="etiqueta p-8">Carregando…</p>
-{:else if sessao.usuario}
+{:else if sessao.usuario && !sessao.pendenteDeConfirmacao}
+	<!-- O pendente não chega a ver o menu: o $effect acima já o está desviando,
+	e renderizá-lo no intervalo mostraria por um quadro um cabeçalho que ele
+	nunca vai poder usar. -->
 	<div class="min-h-screen">
 		<header class="border-borda bg-papel border-b">
 			<div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">

@@ -35,14 +35,33 @@ class Sessao {
 	}
 
 	/**
+	 * Se a conta está esperando a secretaria confirmar o cadastro.
+	 *
+	 * O papel sozinho não basta, e o furo é este: o Group "Cadastro pendente"
+	 * é do `User`, que é global, enquanto a `Person` e a solicitação são por
+	 * programa. Quem já trabalha num programa e pede acesso a outro carrega o
+	 * marcador sem estar pendente onde já atua — mandá-lo para a tela de
+	 * espera tiraria dele o sistema inteiro. A ausência de QUALQUER permissão
+	 * separa os dois casos: quem só tem o marcador ainda não recebeu papel de
+	 * domínio nenhum, aqui nem em lugar algum.
+	 */
+	get pendenteDeConfirmacao(): boolean {
+		return this.temPapel('Cadastro pendente') && (this.usuario?.permissions.length ?? 0) === 0;
+	}
+
+	/**
 	 * Para onde mandar a pessoa depois de entrar.
+	 *
+	 * O pendente vem antes de tudo: sem permissão nenhuma, qualquer tela de
+	 * (app) lhe daria 403 — a de espera é a única que ele consegue ler.
 	 *
 	 * O Candidato da isolada não tem `people.view_person` (ver
 	 * `academic.0011_papeis_da_isolada`): jogá-lo em /pessoas seria abrir a
 	 * sessão com um 403 na cara. A escolha é por permissão, e não por papel,
 	 * porque o que decide é o que a tela de destino exige.
 	 */
-	get rotaInicial(): '/pessoas/administrativo' | '/inscricao' {
+	get rotaInicial(): '/aguardando-confirmacao' | '/pessoas/administrativo' | '/inscricao' {
+		if (this.pendenteDeConfirmacao) return '/aguardando-confirmacao';
 		return this.pode('people.view_person') ? '/pessoas/administrativo' : '/inscricao';
 	}
 

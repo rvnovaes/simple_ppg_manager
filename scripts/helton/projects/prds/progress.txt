@@ -444,3 +444,50 @@ Started: qui. 03 set 2026 08:00:07 -03
   - Editar arquivo de rota JÁ EXISTENTE não dispara o `EACCES` de `.svelte-kit/`: o Vite do
     container só regenera os artefatos como root quando a rota é NOVA.
 ---
+
+## 2026-09-03 - f4-front-pendente-e-tela-de-espera
+- `sessao.svelte.ts`: getter `pendenteDeConfirmacao` = `temPapel('Cadastro pendente') &&
+  nenhuma permissão`, com o comentário do furo (o Group é do `User`, global; a `Person` é
+  por programa, então quem já atua noutro programa carrega o marcador sem estar pendente
+  lá — a ausência de QUALQUER permissão é o que separa os dois casos). `rotaInicial` ganhou
+  o primeiro ramo e o tipo passou a incluir `'/aguardando-confirmacao'`, o que conserta de
+  uma vez `routes/+page.svelte` e o `goto` do login sem tocar em nenhum dos dois.
+- Nova rota `(auth)/aguardando-confirmacao/+page.svelte` — em `(auth)`, não em `(app)`, para
+  que "sem menu, sem dados" seja estrutural: mostra programa, perfil declarado e situação
+  (rótulos prontos do `AccessStatusOut`), o motivo quando recusado, e o botão Sair. O 404 de
+  `/access/me` vira recado próprio ("nenhuma solicitação para esta conta"), lido de
+  `resposta.response.status` numa const ANTES do `if`.
+- `(app)/+layout.svelte`: a guarda desvia o pendente antes de tudo, e o `{:else if}` do
+  template também exige `!sessao.pendenteDeConfirmacao` — sem isso o cabeçalho piscava por
+  um quadro para quem nunca vai poder usá-lo.
+- `make ready` verde: 1973 passed, 10 skipped em 184s (com o EACCES da armadilha 6 na
+  primeira tentativa; ver learnings).
+- Verificado no browser em http://localhost:8330: `pendente.f4@example.com` (discente,
+  criado via `POST /access/signup`) cai em `/aguardando-confirmacao` ao entrar e volta para
+  lá ao tentar `/pessoas/administrativo` pela URL; depois de `reject_access_request` a
+  mesma tela passou a "Cadastro não confirmado", situação "Recusada" e o motivo; Sair leva
+  ao login; `secretaria@ppgd.test` entra normalmente em `/pessoas/administrativo` com o
+  menu inteiro.
+- Arquivos: frontend/src/lib/sessao.svelte.ts,
+  frontend/src/routes/(auth)/aguardando-confirmacao/+page.svelte,
+  frontend/src/routes/(app)/+layout.svelte
+- **Learnings for future iterations:**
+  - A armadilha 6 é real e o conserto é o do plano, mas o EACCES aparece em DOIS lugares:
+    `.svelte-kit/types/src/routes/<rota>/$types.d.ts` E
+    `.svelte-kit/generated/client/nodes/NN.js` (o nó novo do manifesto do cliente). Apagar
+    só o primeiro deixa o `make typecheck` quebrado com outra mensagem. Apague os dois de
+    dentro do container: `docker compose exec -T frontend sh -c 'rm -rf
+    "/app/.svelte-kit/types/src/routes/(auth)/<rota>" /app/.svelte-kit/generated/client/nodes/NN.js'`.
+  - Grupo de rota entra no caminho do `.svelte-kit/types` LITERALMENTE, com parênteses
+    (`types/src/routes/(auth)/aguardando-confirmacao`), mas some da URL. Cite os parênteses
+    no `rm -rf`, entre aspas.
+  - Não escreva o tipo da resposta com `Awaited<ReturnType<typeof api.GET<...>>>`: o padrão
+    do projeto é `components['schemas']['NomeDoSchema']`, e é ele que o `prettier` e o
+    `svelte-check` aceitam sem contorção.
+  - Tela de espera não precisa de `lib/acesso.ts`: o `AccessStatusOut` já traz
+    `profile_label` e `status_label` prontos. A f6-tela-solicitacoes é que vai precisar do
+    módulo de rótulos, porque o `AccessRequestOut` da fila não os carrega.
+  - Estado do canteiro: `pendente.f4@example.com` ficou RECUSADO (Person arquivada) — é o
+    caso de recusa para conferir na tela. O pendente vivo para a fila da f6 continua sendo
+    `docente.externo.f6@example.com`.
+---
