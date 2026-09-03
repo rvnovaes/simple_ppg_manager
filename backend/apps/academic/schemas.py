@@ -937,3 +937,86 @@ class AccessStatusOut(Schema):
     @staticmethod
     def resolve_status_label(obj: AccessRequest) -> str:
         return obj.get_status_display()
+
+
+class AccessRequestOut(Schema):
+    """Uma solicitação na fila da secretaria.
+
+    Carrega o DECLARADO pela pessoa (perfil, categoria, titulação,
+    instituição, Lattes) porque é isso que a secretaria confere antes de
+    confirmar — sem estes campos a tela faria uma segunda chamada por
+    linha só para saber o que está julgando.
+
+    Sem rótulo pronto, ao contrário de `AccessStatusOut`: a fila é lida
+    por quem tem permissão e já carrega `lib/acesso.ts`, que traduz as
+    choices uma vez para as três telas do módulo.
+    """
+
+    id: int
+    program_id: int
+    person_id: int
+    # Nome e e-mail viajam juntos pela razão de `IsolatedRequestOut`: a
+    # fila lista muitos pedidos e não deve buscar cada pessoa.
+    person_name: str
+    person_email: str
+    person_phone_number: str
+    profile: str
+    teacher_category: str
+    academic_degree: str
+    home_institution: str
+    lattes_url: str
+    status: str
+    decision_note: str
+    decided_at: datetime.datetime | None
+    created_at: datetime.datetime
+
+    @staticmethod
+    def resolve_person_name(obj: AccessRequest) -> str:
+        return obj.person.full_name
+
+    @staticmethod
+    def resolve_person_email(obj: AccessRequest) -> str:
+        return obj.person.primary_email
+
+    @staticmethod
+    def resolve_person_phone_number(obj: AccessRequest) -> str:
+        return obj.person.phone_number
+
+
+class AccessApproveIn(Schema):
+    """O que a SECRETARIA informa ao confirmar o cadastro.
+
+    Todos os campos são opcionais na borda de propósito: quais deles são
+    exigidos depende do `profile` da solicitação, que está no banco e não
+    no corpo. Quem cobra é o domínio, com `code` estável —
+    `accredited_since_required` no service para o docente e
+    `incomplete_regular` no `Student.clean()` para o discente. Repetir a
+    regra aqui criaria uma segunda verdade sobre o mesmo invariante.
+
+    O que a pessoa declarou (categoria, titulação, instituição, Lattes)
+    NÃO entra aqui: sai de `solicitacao.campos_do_professor()`.
+
+    `deadline` também não: o `Student.save()` calcula o prazo regimental a
+    partir do nível e do ingresso.
+    """
+
+    # Docente: a data do credenciamento é decisão de quem aprova.
+    accredited_since: datetime.date | None = None
+    # Discente regular: nível, projeto e ingresso são obrigatórios no
+    # model; o orientador pode entrar depois.
+    level: Student.Level | None = None
+    project_id: int | None = None
+    advisor_id: int | None = None
+    admission_date: datetime.date | None = None
+
+
+class AccessRejectIn(Schema):
+    """Recusa: o motivo é o texto que a pessoa lê na tela de espera.
+
+    Como em `IsolatedRejectIn`, a obrigatoriedade real é do model
+    (`AccessRequest.reject` levanta `rejection_requires_note`): aqui o
+    campo é exigido na borda, mas string em branco só é barrada lá, com
+    `code` estável.
+    """
+
+    note: str

@@ -33,6 +33,7 @@ from apps.programs.models import (
 from .models import (
     AccessProfile,
     AccessRequest,
+    AccessRequestStatus,
     AdjustmentStatus,
     DisciplineOffering,
     EnrollmentAdjustmentRequest,
@@ -46,6 +47,9 @@ from .models import (
     Teacher,
 )
 from .schemas import (
+    AccessApproveIn,
+    AccessRejectIn,
+    AccessRequestOut,
     AccessSignupIn,
     AccessSignupOut,
     AccessStatusOut,
@@ -82,6 +86,7 @@ from .schemas import (
 from .services import (
     JANELA_DE_SIGNUP_EM_SEGUNDOS,
     LIMITE_DE_SIGNUP_POR_IP,
+    approve_access_request,
     ciclo_com_inscricao_aberta,
     close_isolated_cycle,
     conferir_programa,
@@ -91,6 +96,7 @@ from .services import (
     create_teacher,
     enroll_isolated_request,
     programa_que_aceita_autocadastro,
+    reject_access_request,
     signup_access_request,
 )
 
@@ -1542,3 +1548,107 @@ def access_me(request: HttpRequest):
     if solicitacao is None:
         raise Http404("Nenhuma solicitação de acesso para esta conta.")
     return solicitacao
+
+
+@access_router.get("/requests/", response=list[AccessRequestOut])
+@paginate
+def list_access_requests(
+    request: HttpRequest,
+    status: AccessRequestStatus = AccessRequestStatus.PENDING,
+):
+    """A fila da secretaria: quem pediu acesso a este programa.
+
+    O default é `pending` porque a fila existe para o que ainda falta
+    decidir; as outras duas situações são o histórico, pedido pela tela.
+    Sem valor default, abrir a tela mostraria de saída todo o histórico
+    junto do que precisa de ação. Valor fora do enum é 422 na borda.
+
+    O filtro é do SERVIDOR, e não da tela: a lista é paginada, e filtrar
+    depois de paginar mostraria "3 de 40" de uma página só.
+    """
+    require_perm(request, "academic.view_accessrequest")
+    program: Program = current_program(request)
+    return (
+        AccessRequest.objects.for_program(program)
+        # `person` porque AccessRequestOut publica nome, e-mail e telefone:
+        # sem isto a fila faz uma consulta por linha.
+        .select_related("person")
+        # Filtro de conveniência da tela. Não é escopo de tenant — esse já
+        # foi aplicado acima e não é opcional.
+        .filter(status=status)
+    )
+
+
+def _cadastro_para_decidir(
+    request: HttpRequest, program: Program, request_id: int
+) -> AccessRequest:
+    """A solicitação que esta sessão pode confirmar — nunca a própria.
+
+    Espelho exato de `_requerimento_para_decidir`. Sem esta trava, uma
+    secretária que se cadastrasse como docente confirmaria a si mesma: ela
+    já tem `change_accessrequest`, e o cadastro pendente não retira
+    permissão nenhuma (o marcador "Cadastro pendente" não concede nem
+    remove nada — quem tranca o recusado é a `Person` arquivada).
+
+    A busca já entra escopada: solicitação de outro programa simplesmente
+    não existe para esta requisição (404, nunca 403 — 403 revelaria que o
+    id existe).
+    """
+    solicitacao = get_object_or_404(
+        AccessRequest.objects.for_program(program).select_related("person", "program"),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if pessoas.filter(pk=solicitacao.person_id).exists():
+        raise NotAllowed("Ninguém confirma o próprio cadastro.")
+    return solicitacao
+
+
+@access_router.post("/requests/{int:request_id}/approve", response=AccessRequestOut)
+def approve_access_request_endpoint(
+    request: HttpRequest, request_id: int, payload: AccessApproveIn
+):
+    """Confirma o cadastro e monta o vínculo (Teacher ou Student).
+
+    O router só resolve as FKs em objeto, ESCOPADAS no programa corrente:
+    projeto ou orientador de outro tenant vira 404 aqui, e não
+    `IntegrityError` 500 lá no service. O que exigir cada perfil é do
+    domínio — `accredited_since_required` para o docente,
+    `incomplete_regular` para o discente —, e volta como 4xx com `code`
+    estável pelo handler central.
+    """
+    require_perm(request, "academic.change_accessrequest")
+    program: Program = current_program(request)
+    solicitacao = _cadastro_para_decidir(request, program, request_id)
+    if solicitacao.profile == AccessProfile.STUDENT:
+        campos: dict = {
+            "level": payload.level,
+            "project": _projeto(program, payload.project_id),
+            "advisor": _orientador(program, payload.advisor_id),
+            "admission_date": payload.admission_date,
+        }
+    else:
+        campos = {"accredited_since": payload.accredited_since}
+    # O service é quem abre a transação: a ficha, o papel, a solicitação e
+    # o AuditLog são tudo ou nada (ADR-002).
+    approve_access_request(solicitacao=solicitacao, campos=campos, request=request)
+    return solicitacao
+
+
+@access_router.post("/requests/{int:request_id}/reject", response=AccessRequestOut)
+def reject_access_request_endpoint(
+    request: HttpRequest, request_id: int, payload: AccessRejectIn
+):
+    """Recusa o cadastro, com motivo obrigatório.
+
+    O motivo é o que a pessoa lê na tela de espera — recusar sem explicar
+    é porta fechada sem aviso. A cobrança é do model
+    (`rejection_requires_note`), e a recusa arquiva a `Person` dentro do
+    service.
+    """
+    require_perm(request, "academic.change_accessrequest")
+    program: Program = current_program(request)
+    solicitacao = _cadastro_para_decidir(request, program, request_id)
+    return reject_access_request(
+        solicitacao=solicitacao, note=payload.note, request=request
+    )

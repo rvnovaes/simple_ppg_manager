@@ -350,3 +350,51 @@ Started: qui. 03 set 2026 08:00:07 -03
   - Aluno aprovado nasce sem `registration_number` e docente sem linha de pesquisa/projeto —
     edição posterior da secretaria, está escrito na docstring para o humano confirmar.
 ---
+
+## 2026-09-03 - f5-fila-router
+- Três rotas no `access_router` (`apps/academic/router.py`, fim do arquivo):
+  `GET /api/v1/access/requests/` (`view_accessrequest`, `@paginate`,
+  `for_program(current_program)` + `select_related("person")`, filtro de `status`
+  com **default `pending`** — a fila existe para o que falta decidir, e as outras
+  duas situações são o histórico que a tela pede), `POST .../{id}/approve` e
+  `POST .../{id}/reject` (ambas `change_accessrequest`). Ordem sempre
+  `require_perm` → `current_program`.
+- `_cadastro_para_decidir(...)` — espelho de `_requerimento_para_decidir`, com
+  `raise NotAllowed("Ninguém confirma o próprio cadastro.")`. **O nome NÃO é
+  `_solicitacao_para_decidir`**: esse já existe no mesmo arquivo (`:545`) para
+  `EnrollmentAdjustmentRequest`, e o `mypy` pegou o `no-redef` — mas só depois de
+  três erros em cascata que apontavam para o helper errado.
+- O router resolve `project`/`advisor` com os `_projeto`/`_orientador` já
+  existentes, escopados em `for_program(program)`: id de outro tenant vira 404 na
+  borda, não `IntegrityError` no service.
+- Schemas em `apps/academic/schemas.py`: `AccessRequestOut` (o **declarado** —
+  categoria, titulação, instituição, Lattes — mais nome/e-mail/telefone da pessoa
+  resolvidos, para a fila não fazer uma consulta por linha), `AccessApproveIn`
+  (todos os campos opcionais na borda de propósito: o que cada perfil exige
+  depende do `profile` que está no banco, e quem cobra é o domínio) e
+  `AccessRejectIn { note }`.
+- `make ready` verde: 1973 passed, 10 skipped em 184s. Exercitado no canteiro com
+  `manage.py shell` + `transaction.atomic()` e rollback: fila lista só a pendente
+  do programa; `?status=approved` vazio; `?status=banana` 422; aprovar criou o
+  `Teacher` e deixou a conta só em `['Docente']`; aprovar de novo 409
+  `already_decided`; recusar em branco 400 `rejection_requires_note`; recusar com
+  motivo arquivou a `Person`; Discente 403; id inexistente 404; secretária
+  aprovando o próprio cadastro 403 `Ninguém confirma o próprio cadastro.`. O
+  pendente do canteiro segue intacto.
+- Arquivos: backend/apps/academic/router.py, backend/apps/academic/schemas.py
+- **Learnings for future iterations:**
+  - **`apps/academic/router.py` tem 1600+ linhas e nomes de helper se repetem por
+    domínio.** Antes de criar `_algo_para_decidir`/`_meu_algo`, rode
+    `grep -n "^def _" apps/academic/router.py` — o `mypy` avisa, mas com erro de
+    tipo em cascata que aponta para a assinatura do homônimo, não para a colisão.
+  - Rota de fila com filtro de enum e default: `status: AccessRequestStatus =
+    AccessRequestStatus.PENDING` (sem `| None`). Não existe "ver tudo", e é
+    intencional — o `| None` que os outros filtros usam é para conveniência, não
+    para fila de trabalho.
+  - `AccessRequestOut` **não** carrega `*_label`, ao contrário de
+    `AccessStatusOut`: a fila é lida por quem tem permissão e vai usar o
+    `lib/acesso.ts` da f6. Só a tela de espera precisa dos rótulos prontos,
+    porque quem a lê não tem permissão para mais nada.
+  - O service `approve_access_request` MUTA a instância recebida (`approve()` no
+    mesmo objeto), então a rota devolve `solicitacao` direto — sem `refresh_from_db`.
+---
