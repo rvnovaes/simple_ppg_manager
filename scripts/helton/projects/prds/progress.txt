@@ -112,3 +112,27 @@ Started: qui. 03 set 2026 08:00:07 -03
   - A migration NÃO cria os Groups: isso é a `0014_papeis_do_autocadastro`, story
     `f2-migration-papeis-autocadastro`, no molde de `0011_papeis_da_isolada.py`.
 ---
+
+## 2026-09-03 - f2-migration-papeis-autocadastro
+- Data migration `academic/0014_papeis_do_autocadastro.py`, no molde exato de
+  `0011_papeis_da_isolada.py` (constantes `NOVAS_PERMISSOES`/`GRUPOS_NOVOS`, funções
+  `criar`/`desfazer`, `RunPython`). Dependências: academic 0013, auth 0012, contenttypes 0002.
+- Três entradas: `"Cadastro pendente": []` (Group novo, ZERO permissões — o laço
+  `for perm in perms` já aceita lista vazia porque o `get_or_create` do Group vem antes
+  dele), `Secretaria` com `view`+`change_accessrequest`, `Coordenação` só com `view`.
+  Secretaria NÃO recebe `add_accessrequest`: quem abre a solicitação é a própria pessoa.
+- Docstring registra que "Cadastro pendente" é marcador de estado (viaja em
+  `UserOut.groups`, `apps/accounts/schemas.py`) e não concede nada, mais o trade-off
+  Group-global × Person-por-programa e a mitigação no front (`permissions.length === 0`).
+- Verificado no banco do canteiro após `make migrate`: "Cadastro pendente" com
+  `permissions.count() == 0`, Secretaria com view+change, Coordenação só view. Nenhum
+  `delete_*`, nenhum `is_staff`/`is_superuser`.
+- Arquivos: backend/apps/academic/migrations/0014_papeis_do_autocadastro.py
+- **Learnings for future iterations:**
+  - O molde de migration de papéis suporta Group sem permissão sem alteração nenhuma —
+    entrada com lista vazia só cria o Group. Nada a adaptar em migrations futuras.
+  - "Cadastro pendente" está em `GRUPOS_NOVOS`, então o `desfazer` o apaga inteiro; os
+    grupos preexistentes só perdem o que ganharam aqui.
+  - `f2-testes-accessrequest` (próxima) já pode assertar os três grupos: eles existem no
+    banco de teste, porque data migration roda na criação do banco do pytest.
+---
