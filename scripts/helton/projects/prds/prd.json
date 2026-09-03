@@ -380,7 +380,7 @@
         "f6-tela-cadastro"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

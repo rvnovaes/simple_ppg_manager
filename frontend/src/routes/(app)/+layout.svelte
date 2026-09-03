@@ -102,6 +102,15 @@
 										<Icone nome="administrativo" tamanho={14} />
 										Administrativo
 									</a>
+									<!-- Por permissão, e não por papel: `view_accessrequest` é de
+									Secretaria e Coordenação (academic.0014) e de mais ninguém — ela
+									distingue o público sozinha. -->
+									{#if sessao.pode('academic.view_accessrequest')}
+										<a class="item-submenu" href={resolve('/solicitacoes')} onclick={fecharSubmenu}>
+											<Icone nome="analise" tamanho={14} />
+											Solicitações de acesso
+										</a>
+									{/if}
 								</div>
 							</details>
 						{/if}

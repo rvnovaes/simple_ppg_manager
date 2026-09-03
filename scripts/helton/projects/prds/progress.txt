@@ -19,6 +19,11 @@ Started: qui. 03 set 2026 08:00:07 -03
   projeto com `'value' is not defined  no-undef`; escreva `value={valor}` por extenso.
 - Rótulo de enum do domínio mora em `frontend/src/lib/<assunto>.ts` (`isolada.ts`,
   `acesso.ts`), com um `ROTULO_DO_*` e a `ORDEM_*` correspondente — nunca inline na tela.
+- `eslint-disable-next-line svelte/no-navigation-without-resolve` NÃO cobre `<a>` que o
+  prettier quebra em várias linhas; use o par `eslint-disable`/`eslint-enable` em volta
+  do elemento (padrão de `(app)/analise`).
+- Rota nova gera artefato root em `.svelte-kit/types/` E em `.svelte-kit/generated/`;
+  apague os DOIS de dentro do container quando o `make typecheck` der EACCES.
 - Service novo se exercita no canteiro sem sujar dado: `manage.py shell -c` com `transaction.atomic()` e um `raise` no fim para dar rollback.
 
 ## 2026-09-03 - f1-programa-flag-autocadastro
@@ -579,4 +584,64 @@ Started: qui. 03 set 2026 08:00:07 -03
     estado velho. Para `<select>`, o evento que importa é o `change`.
   - Deixei no banco do canteiro mais um docente pendente (`docente.rotulos.f6@example.com`,
     PPGD) — a fila da f6-tela-solicitacoes tem três pendentes para exibir.
+---
+
+## 2026-09-03 - f6-tela-solicitacoes
+- Nova rota `(app)/solicitacoes/+page.svelte`, decalque de `(app)/analise`: filtro de
+  situação NO SERVIDOR (`?status=`, default `pending` do próprio endpoint), `abertoId`
+  com uma solicitação aberta por vez e painel com o que a pessoa declarou (perfil,
+  categoria, titulação, instituição de origem, Lattes) — tudo já vem no
+  `AccessRequestOut`, sem segunda chamada por linha.
+- Confirmar abre os campos que a secretaria preenche na hora: `accredited_since` para o
+  docente; nível, data de ingresso, projeto coletivo e orientador (opcional) para o
+  discente. Campo em branco vai como `null` e quem cobra é o domínio
+  (`accredited_since_required`, `incomplete_regular`) — a tela NÃO repete a regra.
+- Professores e projetos (`/academic/teachers/`, `/programs/collective-projects/`) só
+  são buscados na primeira vez que um DISCENTE é aberto: a fila costuma ser de docentes,
+  e duas listas inteiras por abertura seriam duas consultas que ninguém leu. Secretaria
+  e Coordenação já têm `view_teacher`/`view_collectiveproject` por `academic.0003`.
+- Recusar exige motivo na tela (a cobrança que vale é `rejection_requires_note`) e o
+  aviso diz o que a armadilha 8 impõe: o recusado NÃO se recadastra, a saída é reativar
+  a pessoa em Pessoas.
+- `retirar()` tira da lista a solicitação decidida quando ela deixa de casar com o
+  filtro (o caso normal, porque o filtro parte de "pendente"); deixá-la na tela com a
+  situação nova daria a impressão de que a fila do servidor ainda a contém.
+- `(app)/+layout.svelte`: "Solicitações de acesso" no submenu Pessoas, condicionado por
+  `sessao.pode('academic.view_accessrequest')` — permissão exclusiva de Secretaria e
+  Coordenação (`academic.0014`), que distingue o público sozinha.
+- `make ready` verde: 1997 passed, 10 skipped em 192s.
+- Conferido no browser (http://localhost:8330/solicitacoes):
+  - Secretaria do PPGD vê a fila; confirmar docente sem data devolve "Informe a data de
+    credenciamento do professor." (o `code` do domínio chegando à tela), e com a data
+    sai "Cadastro de Ana Doc confirmado — a pessoa já enxerga o sistema como docente." e
+    a linha some da fila pendente. Ana Doc passou a aparecer no select de orientador.
+  - Recusar sem motivo é barrado na tela; com motivo, some da fila e reaparece em
+    "Não confirmado" com "Decisão: …" e sem controles de decisão (só a data).
+  - Discente pendente abre nível/ingresso/projeto/orientador e confirma.
+  - **Tenant**: `secretaria@ppga.test` vê só a solicitação do PPGA; a do PPGD não
+    aparece.
+  - Menu: `coordenacao@ppgd.test` vê o item; `ana.matos@ppgd.test` (Docente) não tem
+    nem o menu Pessoas, porque lhe falta `people.view_person`.
+- Arquivos: frontend/src/routes/(app)/solicitacoes/+page.svelte,
+  frontend/src/routes/(app)/+layout.svelte
+- **Learnings for future iterations:**
+  - **`<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->` não cobre
+    `<a>` multilinha**: o prettier quebra o elemento e o `href` cai duas ou três linhas
+    abaixo do comentário, então a regra reprova mesmo assim. Use o par
+    `<!-- eslint-disable ... -->` / `<!-- eslint-enable ... -->` em volta do elemento,
+    que é o padrão já usado em `(app)/analise`.
+  - A armadilha 6 (EACCES no `.svelte-kit`) apareceu inteira: a rota nova fez o Vite do
+    container gerar `types/src/routes/(app)/solicitacoes/` **e**
+    `generated/client/nodes/NN.js` como root. Apagar SÓ o diretório de types não basta —
+    o `generated/` também precisa ir:
+    `docker compose exec -T frontend sh -c 'rm -rf "/app/.svelte-kit/types/src/routes/(app)/<rota>" /app/.svelte-kit/generated'`.
+  - Rota nova em SPA com Vite dev no Compose **não pede rebuild do front**: o serviço
+    serve o código do bind mount e a rota responde 200 assim que o arquivo aparece.
+  - Semear um pendente para conferir a tela sai barato pelo próprio service:
+    `manage.py shell -c` chamando `signup_access_request(program=..., profile='student', ...)`.
+    `Program.objects.filter(accepts_self_signup=True).first()` cai no PPGA — filtre por
+    `name__icontains='Direito'` quando quiser o PPGD.
+  - Deixei no banco do canteiro: Ana Doc confirmada como docente (credenciada em
+    01/03/2026), "Docente Externo Rotulos" recusado, "Discente Fila PPGD F6" confirmado
+    como discente do PPGD e "Discente Fila F6" pendente no PPGA.
 ---

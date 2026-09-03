@@ -588,9 +588,11 @@ As que já custaram iteração aqui:
   reescrevê-los. A mensagem aponta um `$types.d.ts` ou um `nodes/NN.js` e não
   diz nada sobre Docker. Conserto: apagar os artefatos de dentro do container,
   que é quem tem o dono
-  (`docker compose exec -T frontend sh -c 'rm -rf "/app/.svelte-kit/types/src/routes/<rota>"'`),
-  e rodar o `make typecheck` de novo. `find frontend/.svelte-kit -user root`
-  lista o que ficou.
+  (`docker compose exec -T frontend sh -c 'rm -rf "/app/.svelte-kit/types/src/routes/<rota>" /app/.svelte-kit/generated'`),
+  e rodar o `make typecheck` de novo. **Apagar só o diretório de `types/` não
+  basta**: o `generated/client/nodes/NN.js` da rota nova nasce root junto, e o
+  `svelte-kit sync` falha nele logo depois, com outra mensagem.
+  `find frontend/.svelte-kit -user root` lista o que ficou.
 - **Desestruturar a resposta do `openapi-fetch` no `const` estreita o objeto
   inteiro para `never` dentro do `if (error)`.** `const { data, error,
   response } = await api.GET(...)`, e dentro do ramo de falha o
