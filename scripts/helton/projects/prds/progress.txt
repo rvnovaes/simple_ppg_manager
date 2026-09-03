@@ -1,0 +1,32 @@
+# Helton Progress Log
+Started: qui. 03 set 2026 08:00:07 -03
+---
+
+## Codebase Patterns
+- `make ready` (lint+typecheck+test) roda da raiz e leva ~4 min; termina com "==> make ready verde: pode commitar".
+- `ruff format` (dentro do `make lint`) reformata o que você acabou de escrever — rode `make ready` antes de conferir o diff final.
+- Teste com `@pytest.mark.django_db` NÃO parte de banco vazio: a data migration `programs/0002` semeia o programa PPGD e os Groups de papel. Asserção de queryset global precisa filtrar pelos objetos criados no próprio teste.
+- Migration de data segue o padrão de `programs/0002`: funções `criar`/`desfazer` em português, `apps.get_model`, e `RunPython(criar, desfazer)`.
+- QuerySet customizado por model (`ProgramQuerySet.as_manager()`); query nova entra como método nomeado no `models.py` (Seção 8 do CLAUDE.md), nunca solta no router.
+- Ambiente deste canteiro: nginx em http://localhost:8330, Postgres do host em 5683 (ver `.env`). Não use a 8080 do checkout principal.
+
+## 2026-09-03 - f1-programa-flag-autocadastro
+- Adicionado `Program.accepts_self_signup` (BooleanField, default False) e
+  `ProgramQuerySet.accepting_self_signup()` = `active().filter(accepts_self_signup=True)`.
+- Migration `programs/0007_program_aceita_autocadastro.py`: AddField + RunPython que liga
+  o flag em todo programa `is_active=True` (backfill preserva o autocadastro que já
+  funcionava por edital); o desfazer é no-op documentado.
+- `ProgramAdmin`: flag em `list_display` e em `list_filter`; o form já o exibe porque o
+  ModelAdmin não declara `fields`.
+- Teste de queryset em `apps/programs/tests/test_models.py`.
+- Arquivos: backend/apps/programs/models.py, migrations/0007_program_aceita_autocadastro.py,
+  admin.py, tests/test_models.py
+- **Learnings for future iterations:**
+  - `make migrate` aplicou limpo no banco do canteiro com o PPGD pré-existente, que saiu
+    com `accepts_self_signup=True` — o backfill está verificado em banco com dado, não só
+    em teste.
+  - A próxima story (`f1-programs-public-endpoint`) precisa de um `PublicProgramOut`
+    SEPARADO: a rota pública não pode devolver `is_active` nem o próprio flag.
+  - `docker compose ps` mostra 5 serviços nesta stack (inclusive `mailpit`), apesar de o
+    comentário do `.env` afirmar que não há captura de e-mail no projeto.
+---
