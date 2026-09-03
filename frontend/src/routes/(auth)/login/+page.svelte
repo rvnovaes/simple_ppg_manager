@@ -37,7 +37,7 @@
 
 		<div class="max-w-md">
 			<h1 class="text-3xl leading-[1.1] font-semibold tracking-tight lg:text-[2.75rem]">PPGM</h1>
-			<p class="text-papel/70 mt-4 text-[0.9375rem] leading-relaxed">Pós Graduação Manager</p>
+			<p class="text-papel/70 mt-4 text-[0.9375rem] leading-relaxed">Pós-Graduação Manager</p>
 		</div>
 
 		<footer class="space-y-5">
