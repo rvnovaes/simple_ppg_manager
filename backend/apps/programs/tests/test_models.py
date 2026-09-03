@@ -87,3 +87,22 @@ def test_clean_rejeita_periodo_de_um_dia_so():
     """Fim igual ao início não é intervalo — o critério é ends_on > starts_on."""
     with pytest.raises(DomainError):
         _periodo(ends_on=date(2026, 3, 2)).clean()
+
+
+@pytest.mark.django_db
+def test_accepting_self_signup_so_traz_ativo_com_o_flag_ligado():
+    """As duas condições valem juntas: o interruptor abre o autocadastro,
+    não ressuscita tenant desativado."""
+    aberto = Program.objects.create(
+        acronym="AB", name="Aberto", accepts_self_signup=True
+    )
+    Program.objects.create(acronym="FE", name="Fechado", accepts_self_signup=False)
+    Program.objects.create(
+        acronym="IN", name="Inativo", is_active=False, accepts_self_signup=True
+    )
+
+    resultado = Program.objects.accepting_self_signup()
+
+    # Filtrado pelos três criados aqui: a migration 0002 semeia o PPGD, que
+    # o backfill da 0007 deixa ligado e que também aparece no queryset.
+    assert list(resultado.filter(acronym__in=["AB", "FE", "IN"])) == [aberto]

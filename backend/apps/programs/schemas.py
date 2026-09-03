@@ -16,6 +16,23 @@ class ProgramOut(Schema):
     name: str
     acronym: str
     is_active: bool
+    # Estado do interruptor de autocadastro: quem tem permissão de ver
+    # programa precisa enxergar se a porta pública está aberta.
+    accepts_self_signup: bool
+
+
+class PublicProgramOut(Schema):
+    """Programa como a tela de cadastro sem sessão o vê.
+
+    Schema separado de ProgramOut, e não reúso: a rota pública devolve o
+    mínimo para preencher um <select>. `is_active` e `accepts_self_signup`
+    ficam de fora de propósito — são o critério do filtro, e publicá-los
+    contaria a quem não tem sessão o estado interno de cada programa.
+    """
+
+    id: int
+    name: str
+    acronym: str
 
 
 class ResearchLineIn(Schema):

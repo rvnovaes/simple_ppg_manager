@@ -1,0 +1,647 @@
+# Helton Progress Log
+Started: qui. 03 set 2026 08:00:07 -03
+---
+
+## Codebase Patterns
+- `make ready` (lint+typecheck+test) roda da raiz e leva ~4 min; termina com "==> make ready verde: pode commitar".
+- `ruff format` (dentro do `make lint`) reformata o que você acabou de escrever — rode `make ready` antes de conferir o diff final.
+- Teste com `@pytest.mark.django_db` NÃO parte de banco vazio: a data migration `programs/0002` semeia o programa PPGD e os Groups de papel. Asserção de queryset global precisa filtrar pelos objetos criados no próprio teste.
+- Migration de data segue o padrão de `programs/0002`: funções `criar`/`desfazer` em português, `apps.get_model`, e `RunPython(criar, desfazer)`.
+- QuerySet customizado por model (`ProgramQuerySet.as_manager()`); query nova entra como método nomeado no `models.py` (Seção 8 do CLAUDE.md), nunca solta no router.
+- Ambiente deste canteiro: nginx em http://localhost:8330, Postgres do host em 5683 (ver `.env`). Não use a 8080 do checkout principal.
+- `make seed` do host não funciona no canteiro: `docker compose exec -T backend uv run python manage.py seed_demo --force` (com `uv run`, sempre).
+- Rota do backend aposentada só quebra o front quando alguém roda `make gen-api`: o
+  `schema.d.ts` é versionado. Removeu endpoint, `grep -rn "'/rota/antiga'" frontend/src`.
+- Path no client tipado vai SEM o prefixo `/api/v1` (o `scripts/normalizar-openapi.mjs`
+  o remove antes do `openapi-typescript`).
+- `save(update_fields=[...])` precisa citar `updated_at`: o `auto_now` só é gravado para os campos listados.
+- Atributo abreviado do Svelte em template (`<option {value}>`) reprova no `eslint` do
+  projeto com `'value' is not defined  no-undef`; escreva `value={valor}` por extenso.
+- Rótulo de enum do domínio mora em `frontend/src/lib/<assunto>.ts` (`isolada.ts`,
+  `acesso.ts`), com um `ROTULO_DO_*` e a `ORDEM_*` correspondente — nunca inline na tela.
+- `eslint-disable-next-line svelte/no-navigation-without-resolve` NÃO cobre `<a>` que o
+  prettier quebra em várias linhas; use o par `eslint-disable`/`eslint-enable` em volta
+  do elemento (padrão de `(app)/analise`).
+- Rota nova gera artefato root em `.svelte-kit/types/` E em `.svelte-kit/generated/`;
+  apague os DOIS de dentro do container quando o `make typecheck` der EACCES.
+- Service novo se exercita no canteiro sem sujar dado: `manage.py shell -c` com `transaction.atomic()` e um `raise` no fim para dar rollback.
+
+## 2026-09-03 - f1-programa-flag-autocadastro
+- Adicionado `Program.accepts_self_signup` (BooleanField, default False) e
+  `ProgramQuerySet.accepting_self_signup()` = `active().filter(accepts_self_signup=True)`.
+- Migration `programs/0007_program_aceita_autocadastro.py`: AddField + RunPython que liga
+  o flag em todo programa `is_active=True` (backfill preserva o autocadastro que já
+  funcionava por edital); o desfazer é no-op documentado.
+- `ProgramAdmin`: flag em `list_display` e em `list_filter`; o form já o exibe porque o
+  ModelAdmin não declara `fields`.
+- Teste de queryset em `apps/programs/tests/test_models.py`.
+- Arquivos: backend/apps/programs/models.py, migrations/0007_program_aceita_autocadastro.py,
+  admin.py, tests/test_models.py
+- **Learnings for future iterations:**
+  - `make migrate` aplicou limpo no banco do canteiro com o PPGD pré-existente, que saiu
+    com `accepts_self_signup=True` — o backfill está verificado em banco com dado, não só
+    em teste.
+  - A próxima story (`f1-programs-public-endpoint`) precisa de um `PublicProgramOut`
+    SEPARADO: a rota pública não pode devolver `is_active` nem o próprio flag.
+  - `docker compose ps` mostra 5 serviços nesta stack (inclusive `mailpit`), apesar de o
+    comentário do `.env` afirmar que não há captura de e-mail no projeto.
+---
+
+## 2026-09-03 - f1-programs-public-endpoint
+- `GET /api/v1/programs/public` (`auth=None`) devolve `PublicProgramOut` (id, name,
+  acronym) para `Program.objects.accepting_self_signup()`, com
+  `enforce_rate_limit(scope="programs-public-read", limit=60, window_seconds=3600)`.
+  Constantes no topo do router, ao lado do `Router(...)`.
+- `ProgramOut` ganhou `accepts_self_signup` (quem tem `programs.view_program` enxerga o
+  interruptor); `GET /programs/` continua intacta e exigindo a permissão.
+- Novo `apps/programs/tests/test_programs_api.py`: responde sem sessão, omite programa
+  com flag desligado e programa inativo, corpo sem `is_active`/`accepts_self_signup`,
+  429 no 61º acesso, rota interna ainda barra anônimo e mostra o flag.
+- Verificado no canteiro: `curl http://localhost:8330/api/v1/programs/public` → 200 com
+  só o PPGD.
+- Arquivos: backend/apps/programs/schemas.py, router.py, tests/test_programs_api.py
+- **Learnings for future iterations:**
+  - `pytest` chamado pela ferramenta Bash sai filtrado ("No tests collected") por causa do
+    proxy rtk; use `rtk proxy "uv run pytest ..."` para ver a saída de verdade.
+  - Rota pública do projeto não leva barra final (`/isolated/signup`, `/public`) — as
+    internas levam. Repita o padrão em vez de uniformizar.
+  - O rate limit é testável direto: a fixture autouse `cache_limpo` (backend/conftest.py)
+    zera o contador entre testes, então basta repetir a chamada `limit` vezes.
+  - `client` do pytest-django sem login serve de cliente anônimo para rota `auth=None`.
+---
+
+## 2026-09-03 - f1-seed-liga-autocadastro
+- `_programa` do `seed_demo` grava `accepts_self_signup=True` no `defaults` do
+  `get_or_create` E religa o flag quando o programa já existe — o `defaults` só vale na
+  criação, e o PPGD já nasce da data migration `programs/0002`, então sem o segundo passo
+  a lista pública ficaria vazia justamente no canteiro já semeado.
+- Novo teste `test_carga_liga_o_autocadastro_nos_dois_programas` em
+  `apps/core/tests/test_seed_demo.py`: desliga o flag de propósito antes da carga, roda os
+  dois tenants e confere que `accepting_self_signup()` traz PPGD e PPGA; a terceira carga
+  não muda o resultado.
+- Verificado no canteiro: seed dos dois programas + `curl
+  http://localhost:8330/api/v1/programs/public` → `["PPGA", "PPGD"]`; repetir o seed
+  imprime "Nada a criar" e a lista continua igual.
+- Arquivos: backend/apps/core/management/commands/seed_demo.py,
+  backend/apps/core/tests/test_seed_demo.py
+- **Learnings for future iterations:**
+  - `make seed` do host não roda neste canteiro (o `uv` do host não tem o ambiente):
+    use `docker compose exec -T backend uv run python manage.py seed_demo --force`.
+    Sem o `uv run`, o `python` do container não acha o Django ("Rode `make install`").
+  - Segundo tenant do seed:
+    `--acronym PPGA --name "Pós-Graduação em Administração" --email-domain ppga.test`
+    (é a constante `SEGUNDO_PROGRAMA` do `test_seed_demo.py`).
+  - Story que muda `defaults` de `get_or_create` para um campo novo precisa SEMPRE do
+    religamento explícito: o banco do canteiro e o de produção já têm a linha criada.
+---
+
+## 2026-09-03 - f2-accessrequest-model
+- `AccessRequest` no fim de `apps/academic/models.py`, com os enums `AccessProfile`
+  (TEACHER/STUDENT/CANDIDATE) e `AccessRequestStatus` (PENDING/APPROVED/REJECTED) FORA do
+  model e com nome único, mais os aliases `AccessRequest.Profile`/`.Status`.
+- Campos conforme o plano; sem `decided_by` (quem decidiu é o `actor` do AuditLog).
+  `program` é FK direta (ADR-007 dec. 5) e `person` é FK, não OneToOne.
+- Quatro constraints: `unique_solicitacao_pendente_por_pessoa` (UniqueConstraint parcial
+  com `condition=Q(status='pending')`), `access_teacher_requires_category_and_degree`,
+  `access_external_requires_home_institution`, `access_non_teacher_has_no_teacher_fields`.
+- Métodos sem salvar: `clean()` (`home_institution_required`, `program_mismatch`),
+  `ensure_decidable()` (`already_decided`), `approve()`, `reject(*, note)`
+  (`rejection_requires_note`), `campos_do_professor(accredited_since)`.
+  `AccessRequestQuerySet.for_program()/.pending()`.
+- Migration `academic/0013_accessrequest.py` lida antes do commit: só o CreateModel, com
+  as quatro constraints nas `options`; dependências corretas (academic 0012, people 0003,
+  programs 0007).
+- Verificado no banco do canteiro (`make migrate` + shell com `transaction.atomic` e
+  rollback): os quatro constraints levantam `IntegrityError` nos casos previstos.
+- Arquivos: backend/apps/academic/models.py,
+  backend/apps/academic/migrations/0013_accessrequest.py
+- **Learnings for future iterations:**
+  - `make migrate` do HOST funciona neste canteiro (usa o `DB_PORT` do `.env`) — ao
+    contrário do `make seed`, que precisa do `docker compose exec`.
+  - Conferir CheckConstraint de verdade é barato: `manage.py shell` com
+    `with transaction.atomic():` por caso e captura de `IntegrityError` — cada bloco faz
+    rollback sozinho e o banco do canteiro não fica sujo.
+  - `campos_do_professor()` devolve exatamente o dict `campos` de
+    `create_teacher(program=..., person=..., campos=...)` (services.py:59) — a chamada da
+    aprovação (f5) não deve remontá-lo.
+  - A migration NÃO cria os Groups: isso é a `0014_papeis_do_autocadastro`, story
+    `f2-migration-papeis-autocadastro`, no molde de `0011_papeis_da_isolada.py`.
+---
+
+## 2026-09-03 - f2-migration-papeis-autocadastro
+- Data migration `academic/0014_papeis_do_autocadastro.py`, no molde exato de
+  `0011_papeis_da_isolada.py` (constantes `NOVAS_PERMISSOES`/`GRUPOS_NOVOS`, funções
+  `criar`/`desfazer`, `RunPython`). Dependências: academic 0013, auth 0012, contenttypes 0002.
+- Três entradas: `"Cadastro pendente": []` (Group novo, ZERO permissões — o laço
+  `for perm in perms` já aceita lista vazia porque o `get_or_create` do Group vem antes
+  dele), `Secretaria` com `view`+`change_accessrequest`, `Coordenação` só com `view`.
+  Secretaria NÃO recebe `add_accessrequest`: quem abre a solicitação é a própria pessoa.
+- Docstring registra que "Cadastro pendente" é marcador de estado (viaja em
+  `UserOut.groups`, `apps/accounts/schemas.py`) e não concede nada, mais o trade-off
+  Group-global × Person-por-programa e a mitigação no front (`permissions.length === 0`).
+- Verificado no banco do canteiro após `make migrate`: "Cadastro pendente" com
+  `permissions.count() == 0`, Secretaria com view+change, Coordenação só view. Nenhum
+  `delete_*`, nenhum `is_staff`/`is_superuser`.
+- Arquivos: backend/apps/academic/migrations/0014_papeis_do_autocadastro.py
+- **Learnings for future iterations:**
+  - O molde de migration de papéis suporta Group sem permissão sem alteração nenhuma —
+    entrada com lista vazia só cria o Group. Nada a adaptar em migrations futuras.
+  - "Cadastro pendente" está em `GRUPOS_NOVOS`, então o `desfazer` o apaga inteiro; os
+    grupos preexistentes só perdem o que ganharam aqui.
+  - `f2-testes-accessrequest` (próxima) já pode assertar os três grupos: eles existem no
+    banco de teste, porque data migration roda na criação do banco do pytest.
+---
+
+## 2026-09-03 - f2-testes-accessrequest
+- `apps/academic/tests/test_access_request_model.py` (7 testes em memória, sem banco):
+  dupla decisão → `already_decided` (e o status APROVADO permanece), `approve()` carimba
+  `decided_at`, `reject(note="   ")` → `rejection_requires_note` com o status intacto em
+  PENDING, `reject()` com motivo guarda o texto, `clean()` com `program` divergente do da
+  pessoa → `program_mismatch`, externo com `home_institution` em branco →
+  `home_institution_required`, e o caso feliz do externo com instituição.
+- `apps/academic/tests/test_access_request_constraints.py` (8 testes com banco, no molde
+  de `test_student_constraints.py`): duas pendentes da mesma pessoa → `IntegrityError`;
+  pendente DEPOIS de uma recusada passa (o índice é parcial) e
+  `pessoa.access_requests.pending().count() == 1`; docente sem categoria e docente sem
+  titulação → `IntegrityError`; externo sem instituição → `IntegrityError`; não-docente
+  com `academic_degree` preenchido → `IntegrityError`; docente permanente completo é
+  aceito; e o Group "Cadastro pendente" com `permissions.count() == 0`.
+- `make ready` verde: 1961 passed, 10 skipped em 184s.
+- Arquivos: backend/apps/academic/tests/test_access_request_model.py,
+  backend/apps/academic/tests/test_access_request_constraints.py
+- **Learnings for future iterations:**
+  - O gerente reverso `pessoa.access_requests` herda os métodos de
+    `AccessRequestQuerySet` (`.pending()`, `.for_program()`): o Django monta o related
+    manager a partir da classe do manager padrão do model. Vale para todo QuerySet
+    customizado do projeto — não precisa reescrever o filtro no teste.
+  - Constraint que deve PASSAR merece teste tanto quanto a que deve falhar: o índice
+    parcial `unique_solicitacao_pendente_por_pessoa` só está certo se a recusada anterior
+    não atrapalhar, e nenhum teste de `IntegrityError` mostra isso.
+  - Fixture `program` (conftest da raiz) é `Program.objects.get(acronym="PPGD")`, vinda da
+    data migration; para testar `program_mismatch` em memória basta um
+    `Program(pk=2, acronym="PPGA")` não salvo.
+  - `make ready` neste canteiro leva ~4 min só no pytest e o `rtk proxy` segura a saída
+    até o fim — rodar em background e esperar o PID do `make` é o caminho.
+---
+
+## 2026-09-03 - f3-service-signup
+- `programa_que_aceita_autocadastro(*, program_id)` em `apps/academic/services.py`:
+  uma linha de query (`Program.objects.accepting_self_signup().filter(pk=...).first()`)
+  e o MESMO `signup_closed` para inexistente, inativo e flag desligado.
+- `signup_access_request(...)`, `@transaction.atomic`, adaptado de
+  `signup_isolated_candidate` preservando a ordem: `validar_senha` antes de qualquer
+  consulta de e-mail, `email.strip().lower()`, retorno silencioso (`False` + audit
+  `created=False`) quando a Person já existe no programa, `create_person_with_user`,
+  `set_initial_password` só `if not user.has_usable_password()`, ramo por perfil e
+  `audit.record("academic.access.signup", profile=..., created=True)`.
+- Perfil CANDIDATE: Group "Candidato" e ZERO linhas de `AccessRequest`. TEACHER/STUDENT:
+  `AccessRequest` com `clean()` antes do `save()` e Group "Cadastro pendente".
+- Os quatro campos de docente são zerados quando o perfil não é TEACHER — a
+  CheckConstraint `access_non_teacher_has_no_teacher_fields` os proíbe, e confiar no
+  chamador transformaria um payload sujo em `IntegrityError`.
+- `programa_com_inscricao_aberta` e `signup_isolated_candidate` continuam de pé: o router
+  ainda os chama, e a remoção é da story `f3-endpoint-signup-e-aposentadoria`. Remover
+  aqui quebraria o `make ready` desta iteração.
+- Verificado no canteiro (shell com `transaction.atomic` + rollback): os três
+  `signup_closed`, candidato só com Group e sem `AccessRequest`, e-mail repetido → `False`,
+  docente externo com `home_institution` gravado, discente que mandou `teacher_category`
+  sai com o campo vazio. `make ready` verde: 1961 passed, 10 skipped em 183s.
+- Arquivos: backend/apps/academic/services.py
+- **Learnings for future iterations:**
+  - Story que "substitui" um símbolo cujo removedor é a story seguinte deve ADICIONAR e
+    deixar o antigo vivo: o `make ready` da iteração roda com o router ainda antigo.
+  - `Program.objects.accepting_self_signup().filter(pk=...).first()` é o jeito de dar o
+    mesmo `code` a "não existe" e "não pode": um `get()` com `try/except` tenderia a
+    separar os casos e vazar quais ids existem.
+  - `AccessRequest.clean()` só cobra `home_institution` do EXTERNAL e o `program_mismatch`;
+    a obrigatoriedade de categoria/titulação do docente é só CheckConstraint. O schema
+    Ninja da próxima story precisa cobrar esses dois na borda, senão o 400 vira 500.
+  - `audit.record(..., program=program)` é como se audita evento cujo alvo não existe
+    (o desvio do e-mail repetido) — sem `target`, mas com a chave de tenant.
+---
+
+## 2026-09-03 - f3-endpoint-signup-e-aposentadoria
+- `AccessSignupIn`/`AccessSignupOut` substituem `IsolatedSignupIn`/`Out` em
+  `apps/academic/schemas.py`. `program_id` é obrigatório (docstring reescrita: a trava
+  saiu do edital aberto e virou o flag do programa, alimentado pela lista pública) e
+  `AccessSignupOut` ganha `requires_confirmation` — o corpo varia por PERFIL, nunca por
+  existência de conta.
+- `campos_do_perfil` (model_validator) cobra `teacher_category` e `academic_degree` do
+  docente na BORDA: no model esses dois são só CheckConstraint, então sem o validador o
+  422 viraria IntegrityError 500. Também cobra `home_institution` do docente EXTERNAL,
+  antecipando o `clean()`.
+- `access_router = Router(tags=["access"])` no mesmo `apps/academic/router.py`
+  (precedente: `router`/`users_router` do accounts), com
+  `POST /signup`, `auth=None`, `@decorate_view(csrf_protect)`, bloco `# público:` e
+  `enforce_rate_limit(scope="access-signup", limit=5, window=3600)`. Montado em
+  `backend/api.py` como `api.add_router("/access/", academic_access_router)` — o import
+  precisa de alias, porque `access_router` sozinho colidiria com o padrão de nomes do
+  arquivo.
+- Aposentados no mesmo passo: `isolated_signup`, `IsolatedSignupIn/Out`,
+  `signup_isolated_candidate` e `programa_com_inscricao_aberta`. `ciclo_com_inscricao_aberta`
+  continua de pé (é outra coisa, serve à inscrição).
+- **`apps/academic/tests/test_isolada_signup.py` foi REMOVIDO**: os 11 testes batem numa
+  URL que não existe mais e importam símbolos aposentados. A story seguinte
+  (`f3-testes-autocadastro`) o porta para `test_autocadastro.py` — até lá, a rota pública
+  de escrita está sem cobertura, e é a única dívida deste commit.
+- `make ready` verde: 1950 passed, 10 skipped em 182s.
+- Verificado no canteiro (http://localhost:8330): candidato → `requires_confirmation:
+  false`; docente completo → `true`; docente sem categoria/titulação → 422 com
+  "Docente exige academic_degree, teacher_category."; `program_id` inexistente →
+  `signup_closed`; sem `X-CSRFToken` → 403; `POST /academic/isolated/signup` → 404.
+- Arquivos: backend/apps/academic/schemas.py, router.py, services.py, backend/api.py,
+  backend/apps/academic/tests/test_isolada_signup.py (removido)
+- **Learnings for future iterations:**
+  - O front (`frontend/src/routes/(auth)/cadastro/+page.svelte:31`) ainda chama
+    `/academic/isolated/signup`, que agora é 404. O `make typecheck` NÃO acusa isso: o
+    `schema.d.ts` versionado ainda descreve a rota velha. A tela só volta a funcionar em
+    `f6-gen-api` + `f6-tela-cadastro` — não se assuste com a tela quebrada no canteiro.
+  - Router novo no mesmo arquivo: o `api.py` importa duas vezes do mesmo módulo
+    (`from apps.academic.router import access_router as academic_access_router`), como já
+    faz com o accounts. O ruff não reclama do import duplicado com alias.
+  - Enum de `TextChoices` como tipo de campo Ninja (`profile: AccessProfile`,
+    `teacher_category: Teacher.Category | None`) já valida o valor na borda e vira enum no
+    OpenAPI; o service recebe a string porque `TextChoices` É `str`.
+  - Deixei no banco do canteiro um candidato (`zeca.teste@example.com`) e um docente
+    pendente (`ana.doc@example.com`) no PPGD — a fila da secretaria (f5) tem com que
+    aparecer sem semear nada.
+---
+
+## 2026-09-03 - f3-testes-autocadastro
+- `apps/academic/tests/test_autocadastro.py` (17 testes) sucede o
+  `test_isolada_signup.py`, removido na story anterior. Portados: papel/conta/pessoa
+  (agora `profile=candidate`), e-mail repetido byte a byte, conta existente sem troca de
+  senha, senha fraca, limite por IP (scope `access-signup`, 5/h), CSRF ausente → 403 e
+  "grupo Candidato sem acesso a negócio".
+- Convertidos: "fora da janela"/"sem edital" → `accepts_self_signup` desligado → 400
+  `signup_closed`; o desempate por `program_id` entre dois editais some e vira
+  `test_signup_closed_e_indistinguivel_entre_desligado_inativo_e_inexistente`, que compara
+  `.content` dos TRÊS casos.
+- Somados: docente pendente cria Person+User+AccessRequest, fica só em "Cadastro
+  pendente" e NÃO vira Teacher; discente que manda `teacher_category` sai com os quatro
+  campos de docente vazios; candidato não gera `AccessRequest`; o anti-enumeração é
+  `parametrize` sobre os três perfis; o pendente leva 403 em `/people/`,
+  `/academic/teachers/` e `/academic/students/`.
+- `make ready` verde: 1967 passed, 10 skipped em 183s.
+- Arquivos: backend/apps/academic/tests/test_autocadastro.py
+- **Learnings for future iterations:**
+  - O teste de anti-enumeração compara `resposta.content`, não `resposta.json()`: o
+    corpo tem de ser idêntico BYTE a byte, e dois dicts iguais podem sair serializados
+    diferentes. Mesma régua vale para o `signup_closed` dos três casos.
+  - A fixture `program` (PPGD da data migration) chega ao teste com
+    `accepts_self_signup=True` por causa do backfill da `programs/0007`, mas a suíte não
+    depende disso: a fixture `programa_aberto` liga o flag explicitamente. Story futura
+    que dependa do flag deve fazer o mesmo — o backfill é um detalhe da migration, não
+    contrato do fixture.
+  - `Client()` novo por ator quando o teste precisa de dois papéis (aqui: anônimo que se
+    cadastra + o pendente que consulta). Reaproveitar a fixture `client` já logada faria
+    o `force_login` sobrescrever a sessão em silêncio.
+  - Rota pública sem barra final (`/access/signup`); as internas levam.
+
+## 2026-09-03 - f4-access-me
+- `GET /api/v1/access/me` no `access_router`: autenticada, SEM `require_perm` (comentário
+  no molde de `/auth/me`) e SEM `current_program` — o recusado tem a `Person` arquivada e
+  o helper daria 403 justamente para quem precisa ler o motivo.
+- `AccessStatusOut` (`apps/academic/schemas.py`): id, program_id, program_name, profile,
+  profile_label, status, status_label, decision_note, decided_at, created_at. Os rótulos
+  viajam prontos (padrão `RequestDocumentOut.kind_label`) porque a tela de espera é lida
+  por quem não tem permissão para nenhuma outra rota — uma chamada só.
+- `AccessRequestQuerySet.for_user(user)` (`models.py`): escopo por CONTA, sem `.active()`
+  na pessoa. A rota prefere a PENDENTE e só cai na mais recente quando não há — quem foi
+  recusado e pediu de novo lê o pedido vivo, não o encerrado.
+- 404 (`Http404`, padrão de `scholarships/router.py:650`) quando a conta não tem
+  solicitação — é assim que o front distingue candidato/servidor de pendente.
+- `apps/academic/tests/test_access_me.py` (6 testes): pendente vê a própria; recusado vê o
+  motivo com a Person arquivada; quem nunca pediu → 404; anônimo → 401; ninguém vê a
+  alheia; pendente nova vence a recusa antiga.
+- `make ready` verde: 1973 passed, 10 skipped em 186s. Verificado no canteiro
+  (http://localhost:8330): anônimo 401, `ana.doc@example.com` 200 com o corpo completo,
+  candidato `zeca.teste@example.com` 404.
+- Arquivos: backend/apps/academic/router.py, schemas.py, models.py,
+  backend/apps/academic/tests/test_access_me.py
+- **Learnings for future iterations:**
+  - **`django-stubs` recusa `filter(user=request.user)` quando o filtro sai do MANAGER**
+    (`User | AnonymousUser` × `User | int | None`), mas aceita o mesmo filtro dentro de um
+    QuerySet customizado. É por isso que `Person.objects.active().filter(user=request.user)`
+    passa em dezenas de rotas e a versão sem `.active()` não passa. Solução do projeto:
+    método nomeado no QuerySet (que a Seção 8 do CLAUDE.md já pede), nunca `cast` nem
+    `# type: ignore`.
+  - `manage.py shell` do canteiro com `django.test.Client` precisa de
+    `Client(SERVER_NAME="localhost")`: `testserver` não está em `ALLOWED_HOSTS` fora do
+    pytest, e o erro sai como `ValueError` de Content-Type, sem apontar a causa.
+  - A próxima story do front (`f4-front-pendente-e-tela-de-espera`) depende de
+    `f6-gen-api`: `AccessStatusOut` ainda não está no `schema.d.ts` versionado.
+
+## 2026-09-03 - f5-services-aprovacao-e-recusa
+- `approve_access_request(*, solicitacao, campos, request=None) -> Teacher | Student` em
+  `apps/academic/services.py`: `ensure_decidable()`, depois `create_teacher` (docente, com
+  `solicitacao.campos_do_professor(accredited_since)`) ou `create_student` (discente, com
+  `modality=REGULAR`/`status=ACTIVE` forçados sobre os `campos` da secretaria); os dois já
+  criam a ficha e dão o papel de domínio DENTRO do mesmo atomic, então a ficha nasce antes
+  do papel. Depois `revoke_role_group('Cadastro pendente')`, `approve()`,
+  `save(update_fields=[..., 'updated_at'])` e `audit.record('academic.access_request.approve')`.
+- Docente sem `accredited_since` levanta `DomainError` `accredited_since_required`; perfil
+  `candidate` (que nunca gera solicitação) levanta `profile_not_decidable`.
+- `reject_access_request(*, solicitacao, note, request=None)`: `reject()` (que já cobra
+  motivo e `ensure_decidable`), grava, arquiva a `Person` e audita. A docstring registra
+  as duas assunções para o merge: o recusado NÃO se recadastra (o
+  `unique_email_por_programa` barra e a resposta é o corpo silencioso do anti-enumeração —
+  a saída é a secretaria reativar a pessoa), e a conta continua no Group "Cadastro
+  pendente" porque quem tranca é a pessoa arquivada.
+- `make ready` verde: 1973 passed, 10 skipped em 185s. Exercitado no canteiro com
+  `manage.py shell -c` e rollback: aprovar `ana.doc@example.com` criou o Teacher e deixou a
+  conta só em `['Docente']`; recusar gravou o motivo e a Person saiu `archived`. O pendente
+  do canteiro continua intacto para a f5-fila-router.
+- Arquivos: backend/apps/academic/services.py
+- **Learnings for future iterations:**
+  - `Person.archive()` levanta se já arquivada, então a recusa só arquiva quando a pessoa
+    está ativa — sem a guarda, uma pessoa arquivada antes da decisão deixaria a solicitação
+    pendente para sempre.
+  - `campos` do service chega já RESOLVIDO e escopado (objeto `CollectiveProject`/`Teacher`,
+    não id): quem resolve dentro de `for_program(program)` é o router (f5-fila-router), para
+    que id de outro tenant vire 404 na borda e não `IntegrityError` aqui.
+  - Aluno aprovado nasce sem `registration_number` e docente sem linha de pesquisa/projeto —
+    edição posterior da secretaria, está escrito na docstring para o humano confirmar.
+---
+
+## 2026-09-03 - f5-fila-router
+- Três rotas no `access_router` (`apps/academic/router.py`, fim do arquivo):
+  `GET /api/v1/access/requests/` (`view_accessrequest`, `@paginate`,
+  `for_program(current_program)` + `select_related("person")`, filtro de `status`
+  com **default `pending`** — a fila existe para o que falta decidir, e as outras
+  duas situações são o histórico que a tela pede), `POST .../{id}/approve` e
+  `POST .../{id}/reject` (ambas `change_accessrequest`). Ordem sempre
+  `require_perm` → `current_program`.
+- `_cadastro_para_decidir(...)` — espelho de `_requerimento_para_decidir`, com
+  `raise NotAllowed("Ninguém confirma o próprio cadastro.")`. **O nome NÃO é
+  `_solicitacao_para_decidir`**: esse já existe no mesmo arquivo (`:545`) para
+  `EnrollmentAdjustmentRequest`, e o `mypy` pegou o `no-redef` — mas só depois de
+  três erros em cascata que apontavam para o helper errado.
+- O router resolve `project`/`advisor` com os `_projeto`/`_orientador` já
+  existentes, escopados em `for_program(program)`: id de outro tenant vira 404 na
+  borda, não `IntegrityError` no service.
+- Schemas em `apps/academic/schemas.py`: `AccessRequestOut` (o **declarado** —
+  categoria, titulação, instituição, Lattes — mais nome/e-mail/telefone da pessoa
+  resolvidos, para a fila não fazer uma consulta por linha), `AccessApproveIn`
+  (todos os campos opcionais na borda de propósito: o que cada perfil exige
+  depende do `profile` que está no banco, e quem cobra é o domínio) e
+  `AccessRejectIn { note }`.
+- `make ready` verde: 1973 passed, 10 skipped em 184s. Exercitado no canteiro com
+  `manage.py shell` + `transaction.atomic()` e rollback: fila lista só a pendente
+  do programa; `?status=approved` vazio; `?status=banana` 422; aprovar criou o
+  `Teacher` e deixou a conta só em `['Docente']`; aprovar de novo 409
+  `already_decided`; recusar em branco 400 `rejection_requires_note`; recusar com
+  motivo arquivou a `Person`; Discente 403; id inexistente 404; secretária
+  aprovando o próprio cadastro 403 `Ninguém confirma o próprio cadastro.`. O
+  pendente do canteiro segue intacto.
+- Arquivos: backend/apps/academic/router.py, backend/apps/academic/schemas.py
+- **Learnings for future iterations:**
+  - **`apps/academic/router.py` tem 1600+ linhas e nomes de helper se repetem por
+    domínio.** Antes de criar `_algo_para_decidir`/`_meu_algo`, rode
+    `grep -n "^def _" apps/academic/router.py` — o `mypy` avisa, mas com erro de
+    tipo em cascata que aponta para a assinatura do homônimo, não para a colisão.
+  - Rota de fila com filtro de enum e default: `status: AccessRequestStatus =
+    AccessRequestStatus.PENDING` (sem `| None`). Não existe "ver tudo", e é
+    intencional — o `| None` que os outros filtros usam é para conveniência, não
+    para fila de trabalho.
+  - `AccessRequestOut` **não** carrega `*_label`, ao contrário de
+    `AccessStatusOut`: a fila é lida por quem tem permissão e vai usar o
+    `lib/acesso.ts` da f6. Só a tela de espera precisa dos rótulos prontos,
+    porque quem a lê não tem permissão para mais nada.
+  - O service `approve_access_request` MUTA a instância recebida (`approve()` no
+    mesmo objeto), então a rota devolve `solicitacao` direto — sem `refresh_from_db`.
+---
+
+## 2026-09-03 - f6-gen-api
+- `make gen-api` regerou `frontend/src/lib/api/openapi.json` e `schema.d.ts`: entraram
+  `/programs/public`, `/access/signup`, `/access/me`, `/access/requests/` e os dois
+  `/access/requests/{request_id}/{approve,reject}`. Enums com nome próprio e sem colisão
+  (`AccessProfile`, `AccessRequestStatus`; nenhum schema saiu com sufixo numérico).
+- **O `make typecheck` quebrou na regeneração**, e não por erro do gerador: a tela
+  `(auth)/cadastro/+page.svelte` ainda chamava `/academic/isolated/signup`, aposentada na
+  f3. Enquanto o `schema.d.ts` versionado era o antigo, o `svelte-check` não via nada.
+  A tela foi apontada para `POST /access/signup` — o mínimo que a rota nova exige:
+  select de programa alimentado por `GET /programs/public` (com recado e botão desabilitado
+  quando a lista vem vazia), select de perfil e o bloco `{#if perfil === 'teacher'}` com
+  categoria, titulação, instituição e Lattes; instituição só é `required` quando a
+  categoria é `external`, espelhando o `campos_do_perfil` do `AccessSignupIn`.
+- **A f6-tela-cadastro continua tendo o que fazer**: extrair os rótulos (que aqui ficaram
+  inline, em constantes no topo do arquivo) para `frontend/src/lib/acesso.ts`, compartilhar
+  com as telas de espera e da fila, e trocar o texto do link em
+  `(auth)/login/+page.svelte:115`, que ainda cita disciplina isolada.
+- `make ready` verde: 1973 passed, 10 skipped em 184s.
+- Verificado no browser em http://localhost:8330/cadastro (rebuild do serviço `frontend`
+  antes): o select de programa lista PPGA e PPGD; candidato recebe "Use seu e-mail e sua
+  senha para entrar"; docente externo sem instituição é barrado pelo `reportValidity()` e,
+  com instituição, recebe "Este cadastro deve ser confirmado pela secretaria". Os dois
+  cadastros de teste (`teste.navegador.f6@` e `docente.externo.f6@example.com`) ficaram no
+  banco do canteiro — o segundo é mais um pendente para a fila da f6-tela-solicitacoes.
+- Arquivos: frontend/src/lib/api/openapi.json, frontend/src/lib/api/schema.d.ts,
+  frontend/src/routes/(auth)/cadastro/+page.svelte
+- **Learnings for future iterations:**
+  - **Story que aposenta rota do backend deixa uma bomba-relógio no front.** O
+    `schema.d.ts` é versionado, então a tela que consome a rota morta continua compilando
+    até alguém rodar `make gen-api` — e a conta chega para a story do gerador, não para
+    quem removeu. Ao remover endpoint, `grep -rn "'/rota/antiga'" frontend/src` na mesma
+    iteração.
+  - `make gen-api` roda do host sem backend de pé: `export_openapi_schema` é comando de
+    manage.py e não toca o banco. O `npm run gen:api` passa antes pelo
+    `scripts/normalizar-openapi.mjs`, que tira o prefixo `/api/v1` dos 121 caminhos — por
+    isso o path no `api.GET`/`api.POST` é `/access/signup`, sem o prefixo.
+  - Tela pública carrega lista com `$effect(() => { carregar(); })` no fim do `<script>`,
+    e não `onMount` — é o padrão de `(publico)/selecao/inscricao/+page.svelte`.
+  - Editar arquivo de rota JÁ EXISTENTE não dispara o `EACCES` de `.svelte-kit/`: o Vite do
+    container só regenera os artefatos como root quando a rota é NOVA.
+---
+
+## 2026-09-03 - f4-front-pendente-e-tela-de-espera
+- `sessao.svelte.ts`: getter `pendenteDeConfirmacao` = `temPapel('Cadastro pendente') &&
+  nenhuma permissão`, com o comentário do furo (o Group é do `User`, global; a `Person` é
+  por programa, então quem já atua noutro programa carrega o marcador sem estar pendente
+  lá — a ausência de QUALQUER permissão é o que separa os dois casos). `rotaInicial` ganhou
+  o primeiro ramo e o tipo passou a incluir `'/aguardando-confirmacao'`, o que conserta de
+  uma vez `routes/+page.svelte` e o `goto` do login sem tocar em nenhum dos dois.
+- Nova rota `(auth)/aguardando-confirmacao/+page.svelte` — em `(auth)`, não em `(app)`, para
+  que "sem menu, sem dados" seja estrutural: mostra programa, perfil declarado e situação
+  (rótulos prontos do `AccessStatusOut`), o motivo quando recusado, e o botão Sair. O 404 de
+  `/access/me` vira recado próprio ("nenhuma solicitação para esta conta"), lido de
+  `resposta.response.status` numa const ANTES do `if`.
+- `(app)/+layout.svelte`: a guarda desvia o pendente antes de tudo, e o `{:else if}` do
+  template também exige `!sessao.pendenteDeConfirmacao` — sem isso o cabeçalho piscava por
+  um quadro para quem nunca vai poder usá-lo.
+- `make ready` verde: 1973 passed, 10 skipped em 184s (com o EACCES da armadilha 6 na
+  primeira tentativa; ver learnings).
+- Verificado no browser em http://localhost:8330: `pendente.f4@example.com` (discente,
+  criado via `POST /access/signup`) cai em `/aguardando-confirmacao` ao entrar e volta para
+  lá ao tentar `/pessoas/administrativo` pela URL; depois de `reject_access_request` a
+  mesma tela passou a "Cadastro não confirmado", situação "Recusada" e o motivo; Sair leva
+  ao login; `secretaria@ppgd.test` entra normalmente em `/pessoas/administrativo` com o
+  menu inteiro.
+- Arquivos: frontend/src/lib/sessao.svelte.ts,
+  frontend/src/routes/(auth)/aguardando-confirmacao/+page.svelte,
+  frontend/src/routes/(app)/+layout.svelte
+- **Learnings for future iterations:**
+  - A armadilha 6 é real e o conserto é o do plano, mas o EACCES aparece em DOIS lugares:
+    `.svelte-kit/types/src/routes/<rota>/$types.d.ts` E
+    `.svelte-kit/generated/client/nodes/NN.js` (o nó novo do manifesto do cliente). Apagar
+    só o primeiro deixa o `make typecheck` quebrado com outra mensagem. Apague os dois de
+    dentro do container: `docker compose exec -T frontend sh -c 'rm -rf
+    "/app/.svelte-kit/types/src/routes/(auth)/<rota>" /app/.svelte-kit/generated/client/nodes/NN.js'`.
+  - Grupo de rota entra no caminho do `.svelte-kit/types` LITERALMENTE, com parênteses
+    (`types/src/routes/(auth)/aguardando-confirmacao`), mas some da URL. Cite os parênteses
+    no `rm -rf`, entre aspas.
+  - Não escreva o tipo da resposta com `Awaited<ReturnType<typeof api.GET<...>>>`: o padrão
+    do projeto é `components['schemas']['NomeDoSchema']`, e é ele que o `prettier` e o
+    `svelte-check` aceitam sem contorção.
+  - Tela de espera não precisa de `lib/acesso.ts`: o `AccessStatusOut` já traz
+    `profile_label` e `status_label` prontos. A f6-tela-solicitacoes é que vai precisar do
+    módulo de rótulos, porque o `AccessRequestOut` da fila não os carrega.
+  - Estado do canteiro: `pendente.f4@example.com` ficou RECUSADO (Person arquivada) — é o
+    caso de recusa para conferir na tela. O pendente vivo para a fila da f6 continua sendo
+    `docente.externo.f6@example.com`.
+---
+
+## 2026-09-03 - f5-testes-fila-secretaria
+- Novo `backend/apps/academic/tests/test_fila_de_acesso.py`, 24 testes (nível b da
+  pirâmide, sem mock de ORM), cobrindo o que a borda acrescenta ao model e ao service:
+  - **Fila**: as pendentes do programa com os campos declarados (`person_name`,
+    `teacher_category`, `academic_degree`); solicitação de OUTRO programa não aparece
+    (cenário com dois programas — com um só o vazamento não aparece nem em teste); o
+    default `pending` esconde o decidido e `?status=rejected` traz o histórico; situação
+    fora do enum é 422.
+  - **Aprovar**: docente vira `Teacher` com a categoria/titulação/Lattes DECLARADOS e o
+    `accredited_since` informado pela secretaria, ganha o Group "Docente" e perde o
+    marcador "Cadastro pendente", com `AuditLog` no programa certo; sem
+    `accredited_since` é 400 `accredited_since_required`; discente vira `Student` REGULAR
+    ativo com o `deadline` calculado sozinho (2 anos no mestrado: ingresso 2026-03-02 →
+    2028-03-02); sem nível/projeto/ingresso é 400 `incomplete_regular` e nenhum Student;
+    projeto de outro programa é 404 (o router resolve a FK escopada); aprovar duas vezes é
+    409 `already_decided` e continua com UM Teacher só.
+  - **Recusar**: `note` em branco é 400 `rejection_requires_note` com a pessoa ainda
+    ATIVA; com motivo, 200, `Person` ARQUIVADA, nenhum Teacher e `AuditLog`; recusar o
+    já decidido é 409.
+  - **Quem decide**: a secretária não aprova nem recusa o PRÓPRIO cadastro (403
+    `not_allowed`, solicitação intacta); Docente, Discente e Candidato (parametrizados)
+    tomam 403 na fila e nas duas decisões; anônimo toma 401; POST sem CSRF é 403.
+- `make ready` verde: 1997 passed, 10 skipped em 193s (eram 1973 antes — 24 a mais).
+- Arquivos: backend/apps/academic/tests/test_fila_de_acesso.py
+- **Learnings for future iterations:**
+  - **`Student.Level` é `MASTERS`/`DOCTORATE`, não `MASTER`.** O `AttributeError` só
+    aparece em runtime porque o valor entra num dict de payload; o mypy não pega.
+  - Papel que age no teste precisa de `Person` ATIVA no programa, senão o 403 vem de
+    `current_program` (sem tenant) e não de `require_perm` — o teste passaria pelo motivo
+    errado. O helper `_com_papel()` deste arquivo cria conta, Group e Person de uma vez e
+    devolve um `Client()` PRÓPRIO (a armadilha das duas fixtures disputando a sessão da
+    fixture `client`).
+  - `@pytest.mark.parametrize` sobre o nome do papel ("Docente", "Discente", "Candidato")
+    é mais barato que três testes irmãos e deixa o corte de permissão explícito na saída
+    do pytest.
+  - Testar 403 de decisão exige `refresh_from_db()` depois: o código de status sozinho não
+    prova que nada foi escrito.
+---
+
+## 2026-09-03 - f6-tela-cadastro
+- Novo `frontend/src/lib/acesso.ts`, espelho de `lib/isolada.ts`: `ROTULO_DO_PERFIL`,
+  `ROTULO_DA_CATEGORIA`, `ROTULO_DA_TITULACAO` e `ROTULO_DA_SITUACAO` (com a `ORDEM_*` de
+  cada um, porque `Record` não define ordem de exibição) mais
+  `exigeInstituicaoDeOrigem(categoria)`, que é a regra do `campos_do_perfil` do
+  `AccessSignupIn` escrita uma vez só. Tipos reexportados do `schema.d.ts`
+  (`Perfil`, `CategoriaDocente`, `Titulacao`, `SituacaoDoCadastro`) para as três telas.
+- `ROTULO_DA_SITUACAO` usa as palavras da secretaria — "Aguardando confirmação",
+  "Confirmado", "Não confirmado" —, não "aprovado/recusado". A f6-tela-solicitacoes
+  consome daqui.
+- `(auth)/cadastro/+page.svelte`: as três tabelas inline que a f6-gen-api deixou saíram
+  para o `acesso.ts`; o resto da tela (split screen, `garantirCsrf()`, `mensagemDeErro`,
+  `senhasDiferem`, caixa de sucesso com `data.detail` + link para `/login`, select de
+  programa com formulário desabilitado quando a lista vem vazia, bloco `{#if ehDocente}`)
+  ficou como estava — reescrita NO LUGAR, sem rota nova, sem mexer no `.svelte-kit`.
+- `(auth)/login/+page.svelte`: "Vai cursar disciplina isolada e ainda não tem conta?" →
+  "Ainda não tem conta no programa?". O cadastro deixou de ser só da isolada na f3.
+- `make ready` verde: 1997 passed, 10 skipped em 192s.
+- Conferido no browser (http://localhost:8330/cadastro, front rebuildado): select lista
+  PPGA e PPGD; perfis Candidato/Discente/Docente com a nota do colaborador externo;
+  Docente abre Categoria (Permanente/Colaborador/Visitante/Colaborador externo) e
+  Titulação (Doutorado/Pós-doutorado/Livre-docência); "Instituição de origem (opcional)"
+  vira "Instituição de origem" com `required` ao escolher Colaborador externo. Docente
+  externo (`docente.rotulos.f6@example.com`) → "deve ser confirmado pela secretaria";
+  candidata (`candidata.rotulos.f6@example.com`) → "Use seu e-mail e sua senha para
+  entrar". Link do login conferido na tela.
+- Arquivos: frontend/src/lib/acesso.ts, frontend/src/routes/(auth)/cadastro/+page.svelte,
+  frontend/src/routes/(auth)/login/+page.svelte
+- **Learnings for future iterations:**
+  - **`<option {value}>` (atributo abreviado do Svelte) quebra o `eslint` do projeto com
+    `'value' is not defined  no-undef`**, mesmo com a variável vindo do `{#each ... as
+    valor}` — o parser não liga o shorthand ao escopo do bloco. Escreva
+    `<option value={valor}>` por extenso. O `svelte-check` e o `prettier` passam; só o
+    `eslint` reprova, então o erro só aparece no fim do `make lint`.
+  - `rtk proxy "make ready"` para ver a saída de verdade: com o filtro, o resumo do pytest
+    e a linha "make ready verde" somem no truncamento, e o log em
+    `~/.local/share/rtk/tee/` não é regravado a cada execução — dá para ler o log da
+    rodada ANTERIOR achando que é o da atual.
+  - Formulário Svelte 5 se exercita pelo browser-use com
+    `el.dispatchEvent(new Event('input'/'change', {bubbles:true}))` depois de atribuir
+    `el.value` — só atribuir não aciona a runa, e o `requestSubmit()` do form manda o
+    estado velho. Para `<select>`, o evento que importa é o `change`.
+  - Deixei no banco do canteiro mais um docente pendente (`docente.rotulos.f6@example.com`,
+    PPGD) — a fila da f6-tela-solicitacoes tem três pendentes para exibir.
+---
+
+## 2026-09-03 - f6-tela-solicitacoes
+- Nova rota `(app)/solicitacoes/+page.svelte`, decalque de `(app)/analise`: filtro de
+  situação NO SERVIDOR (`?status=`, default `pending` do próprio endpoint), `abertoId`
+  com uma solicitação aberta por vez e painel com o que a pessoa declarou (perfil,
+  categoria, titulação, instituição de origem, Lattes) — tudo já vem no
+  `AccessRequestOut`, sem segunda chamada por linha.
+- Confirmar abre os campos que a secretaria preenche na hora: `accredited_since` para o
+  docente; nível, data de ingresso, projeto coletivo e orientador (opcional) para o
+  discente. Campo em branco vai como `null` e quem cobra é o domínio
+  (`accredited_since_required`, `incomplete_regular`) — a tela NÃO repete a regra.
+- Professores e projetos (`/academic/teachers/`, `/programs/collective-projects/`) só
+  são buscados na primeira vez que um DISCENTE é aberto: a fila costuma ser de docentes,
+  e duas listas inteiras por abertura seriam duas consultas que ninguém leu. Secretaria
+  e Coordenação já têm `view_teacher`/`view_collectiveproject` por `academic.0003`.
+- Recusar exige motivo na tela (a cobrança que vale é `rejection_requires_note`) e o
+  aviso diz o que a armadilha 8 impõe: o recusado NÃO se recadastra, a saída é reativar
+  a pessoa em Pessoas.
+- `retirar()` tira da lista a solicitação decidida quando ela deixa de casar com o
+  filtro (o caso normal, porque o filtro parte de "pendente"); deixá-la na tela com a
+  situação nova daria a impressão de que a fila do servidor ainda a contém.
+- `(app)/+layout.svelte`: "Solicitações de acesso" no submenu Pessoas, condicionado por
+  `sessao.pode('academic.view_accessrequest')` — permissão exclusiva de Secretaria e
+  Coordenação (`academic.0014`), que distingue o público sozinha.
+- `make ready` verde: 1997 passed, 10 skipped em 192s.
+- Conferido no browser (http://localhost:8330/solicitacoes):
+  - Secretaria do PPGD vê a fila; confirmar docente sem data devolve "Informe a data de
+    credenciamento do professor." (o `code` do domínio chegando à tela), e com a data
+    sai "Cadastro de Ana Doc confirmado — a pessoa já enxerga o sistema como docente." e
+    a linha some da fila pendente. Ana Doc passou a aparecer no select de orientador.
+  - Recusar sem motivo é barrado na tela; com motivo, some da fila e reaparece em
+    "Não confirmado" com "Decisão: …" e sem controles de decisão (só a data).
+  - Discente pendente abre nível/ingresso/projeto/orientador e confirma.
+  - **Tenant**: `secretaria@ppga.test` vê só a solicitação do PPGA; a do PPGD não
+    aparece.
+  - Menu: `coordenacao@ppgd.test` vê o item; `ana.matos@ppgd.test` (Docente) não tem
+    nem o menu Pessoas, porque lhe falta `people.view_person`.
+- Arquivos: frontend/src/routes/(app)/solicitacoes/+page.svelte,
+  frontend/src/routes/(app)/+layout.svelte
+- **Learnings for future iterations:**
+  - **`<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->` não cobre
+    `<a>` multilinha**: o prettier quebra o elemento e o `href` cai duas ou três linhas
+    abaixo do comentário, então a regra reprova mesmo assim. Use o par
+    `<!-- eslint-disable ... -->` / `<!-- eslint-enable ... -->` em volta do elemento,
+    que é o padrão já usado em `(app)/analise`.
+  - A armadilha 6 (EACCES no `.svelte-kit`) apareceu inteira: a rota nova fez o Vite do
+    container gerar `types/src/routes/(app)/solicitacoes/` **e**
+    `generated/client/nodes/NN.js` como root. Apagar SÓ o diretório de types não basta —
+    o `generated/` também precisa ir:
+    `docker compose exec -T frontend sh -c 'rm -rf "/app/.svelte-kit/types/src/routes/(app)/<rota>" /app/.svelte-kit/generated'`.
+  - Rota nova em SPA com Vite dev no Compose **não pede rebuild do front**: o serviço
+    serve o código do bind mount e a rota responde 200 assim que o arquivo aparece.
+  - Semear um pendente para conferir a tela sai barato pelo próprio service:
+    `manage.py shell -c` chamando `signup_access_request(program=..., profile='student', ...)`.
+    `Program.objects.filter(accepts_self_signup=True).first()` cai no PPGA — filtre por
+    `name__icontains='Direito'` quando quiser o PPGD.
+  - Deixei no banco do canteiro: Ana Doc confirmada como docente (credenciada em
+    01/03/2026), "Docente Externo Rotulos" recusado, "Discente Fila PPGD F6" confirmado
+    como discente do PPGD e "Discente Fila F6" pendente no PPGA.
+---

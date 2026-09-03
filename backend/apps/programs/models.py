@@ -20,11 +20,20 @@ class ProgramQuerySet(models.QuerySet):
     def active(self) -> "ProgramQuerySet":
         return self.filter(is_active=True)
 
+    def accepting_self_signup(self) -> "ProgramQuerySet":
+        """Programas que a tela pública de cadastro pode oferecer.
+
+        Programa inativo nunca aparece, mesmo com o flag ligado: o
+        interruptor abre o autocadastro, não ressuscita o tenant.
+        """
+        return self.active().filter(accepts_self_signup=True)
+
 
 class Program(models.Model):
     name = models.CharField("nome", max_length=200)
     acronym = models.CharField("sigla", max_length=20, unique=True)
     is_active = models.BooleanField("ativo", default=True)
+    accepts_self_signup = models.BooleanField("aceita autocadastro", default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = ProgramQuerySet.as_manager()

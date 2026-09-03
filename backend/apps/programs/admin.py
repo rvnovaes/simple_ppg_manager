@@ -9,8 +9,8 @@ from .models import AcademicTerm, CollectiveProject, Discipline, Program, Resear
 class ProgramAdmin(AuditedModelAdmin):
     """Criar tenant é operação de plataforma — é para isto que o Admin existe."""
 
-    list_display = ("acronym", "name", "is_active", "created_at")
-    list_filter = ("is_active",)
+    list_display = ("acronym", "name", "is_active", "accepts_self_signup", "created_at")
+    list_filter = ("is_active", "accepts_self_signup")
     search_fields = ("acronym", "name")
 
 

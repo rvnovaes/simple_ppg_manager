@@ -114,3 +114,27 @@ def test_contas_demo_guarda_um_bloco_por_programa(raiz_temporaria):
 
     carregar()
     assert arquivo.read_text(encoding="utf-8").count("## PPGA ") == 1
+
+
+@pytest.mark.django_db
+def test_carga_liga_o_autocadastro_nos_dois_programas(raiz_temporaria):
+    """A lista pública nasce com os dois tenants da carga.
+
+    O PPGD já existe antes da carga (data migration `programs/0002`), e
+    `get_or_create` não toca em `defaults` quando o objeto é encontrado —
+    por isso o flag é desligado de propósito aqui: o que se cobra é que a
+    carga o ligue de novo, e não só na criação.
+    """
+    Program.objects.update(accepts_self_signup=False)
+
+    carregar()
+    carregar(*SEGUNDO_PROGRAMA)
+
+    semeados = Program.objects.filter(acronym__in=["PPGD", "PPGA"])
+    assert semeados.count() == 2
+    assert set(
+        Program.objects.accepting_self_signup().values_list("acronym", flat=True)
+    ) >= {"PPGD", "PPGA"}
+
+    carregar()
+    assert Program.objects.accepting_self_signup().count() == 2

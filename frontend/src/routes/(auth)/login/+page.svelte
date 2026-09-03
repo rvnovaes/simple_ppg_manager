@@ -110,7 +110,7 @@
 			</button>
 
 			<p class="text-cinza mt-6 text-sm">
-				Vai cursar disciplina isolada e ainda não tem conta?
+				Ainda não tem conta no programa?
 				<a class="text-tinta underline" href={resolve('/cadastro')}>Cadastre-se</a>
 			</p>
 		</form>

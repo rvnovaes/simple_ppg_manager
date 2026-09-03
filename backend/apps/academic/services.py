@@ -32,6 +32,8 @@ from apps.programs.models import (
 )
 
 from .models import (
+    AccessProfile,
+    AccessRequest,
     DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
@@ -210,34 +212,27 @@ LIMITE_DE_SIGNUP_POR_IP = 5
 JANELA_DE_SIGNUP_EM_SEGUNDOS = 3600
 
 
-def programa_com_inscricao_aberta(
-    *, at: datetime, program_id: int | None = None
-) -> Program:
-    """Resolve o tenant do auto-registro pelo edital, e não pelo chamador.
+def programa_que_aceita_autocadastro(*, program_id: int) -> Program:
+    """Resolve o tenant do autocadastro pelo flag do programa.
 
-    É o substituto de `current_program()` na única rota pública de escrita
-    do projeto: sem sessão não há Person de onde tirar o programa, e
-    aceitar `program_id` livre faria a rota criar conta em qualquer tenant
-    a qualquer momento. Só existe candidato onde existe inscrição aberta.
+    Aposenta a resolução por edital aberto: o autocadastro deixou de ser
+    privilégio de quem tem edital aberto e passou a ser um interruptor do
+    programa (`Program.accepts_self_signup`). O `program_id` agora é
+    obrigatório, mas continua não sendo escolha livre — ele só vale para o
+    que a lista pública (`GET /api/v1/programs/public`) já oferece; a trava
+    mudou de lugar, não sumiu.
+
+    Programa inexistente, inativo e com o flag desligado levantam o MESMO
+    `signup_closed`. Distinguir os três contaria a quem chuta id quais
+    programas existem nesta instalação.
     """
-    abertos = set(
-        IsolatedEnrollmentCycle.objects.active()
-        .filter(submission_opens_at__lte=at, submission_closes_at__gt=at)
-        .values_list("program_id", flat=True)
-    )
-    if program_id is not None:
-        abertos &= {program_id}
-    if not abertos:
+    program = Program.objects.accepting_self_signup().filter(pk=program_id).first()
+    if program is None:
         raise DomainError(
-            "Não há edital de disciplina isolada com inscrições abertas.",
-            code="no_open_cycle",
+            "Este programa não está aceitando cadastros.",
+            code="signup_closed",
         )
-    if len(abertos) > 1:
-        raise DomainError(
-            "Há mais de um edital aberto: informe program_id.",
-            code="program_required",
-        )
-    return Program.objects.get(pk=next(iter(abertos)))
+    return program
 
 
 def ciclo_com_inscricao_aberta(
@@ -311,23 +306,31 @@ def create_isolated_request(
 
 
 @transaction.atomic
-def signup_isolated_candidate(
+def signup_access_request(
     *,
     program: Program,
+    profile: str,
     full_name: str,
     email: str,
     password: str,
     phone_number: str = "",
+    teacher_category: str = "",
+    academic_degree: str = "",
+    home_institution: str = "",
+    lattes_url: str = "",
     request: HttpRequest | None = None,
 ) -> bool:
-    """Cria a conta do candidato — tudo ou nada.
+    """Cria a conta de quem se cadastra sozinho — tudo ou nada.
 
     Devolve True quando a pessoa nasceu agora e False quando já existia. O
-    router ignora o valor de propósito: os dois casos respondem o mesmo
-    corpo, senão a rota conta a quem perguntar quais e-mails têm conta.
+    router ignora o valor de propósito: o corpo da resposta varia por
+    PERFIL, nunca por existência de conta, senão a rota conta a quem
+    perguntar quais e-mails já têm cadastro neste programa.
 
-    Sem confirmação de e-mail: o projeto não tem SMTP, e quem faz o papel
-    de porteiro é o deferimento manual da secretaria (US-012).
+    O candidato sai daqui pronto para entrar (Group "Candidato" e nenhuma
+    linha de `AccessRequest`); docente e discente saem com a solicitação
+    pendente e o Group marcador "Cadastro pendente", que não concede nada —
+    quem faz o papel de porteiro é o deferimento da secretaria.
     """
     # A força da senha é cobrada antes da consulta: se dependesse do
     # desvio, a mensagem de senha fraca denunciaria o e-mail inédito.
@@ -336,9 +339,10 @@ def signup_isolated_candidate(
     email = email.strip().lower()
     if Person.objects.filter(program=program, primary_email=email).exists():
         audit.record(
-            "academic.isolated.signup",
+            "academic.access.signup",
             request=request,
             program=program,
+            profile=profile,
             email=email,
             created=False,
         )
@@ -358,21 +362,189 @@ def signup_isolated_candidate(
 
     # Conta que já existe com senha utilizável é de alguém que se cadastrou
     # em outro programa: definir a senha aqui seria tomar a conta dessa
-    # pessoa. Ela entra no edital com a senha que já tem.
+    # pessoa. Ela entra neste programa com a senha que já tem.
     if not user.has_usable_password():
         user.set_initial_password(password)
         user.save(update_fields=["password"])
 
-    assign_role_group(user, group_name="Candidato", request=request)
+    if profile == AccessProfile.CANDIDATE:
+        # Candidato não gera solicitação: o edital já é a fila dele.
+        assign_role_group(user, group_name="Candidato", request=request)
+    else:
+        solicitacao = AccessRequest(
+            program=program,
+            person=person,
+            profile=profile,
+            # Campo de docente é declaração; o não-docente os mantém vazios
+            # porque a CheckConstraint do model os proíbe.
+            teacher_category=(
+                teacher_category if profile == AccessProfile.TEACHER else ""
+            ),
+            academic_degree=(
+                academic_degree if profile == AccessProfile.TEACHER else ""
+            ),
+            home_institution=(
+                home_institution if profile == AccessProfile.TEACHER else ""
+            ),
+            lattes_url=lattes_url if profile == AccessProfile.TEACHER else "",
+        )
+        # A regra mora no model; aqui só persistimos e auditamos.
+        solicitacao.clean()
+        solicitacao.save()
+        assign_role_group(user, group_name="Cadastro pendente", request=request)
 
     audit.record(
-        "academic.isolated.signup",
+        "academic.access.signup",
         request=request,
         target=person,
+        profile=profile,
         email=email,
         created=True,
     )
     return True
+
+
+@transaction.atomic
+def approve_access_request(
+    *,
+    solicitacao: AccessRequest,
+    campos: dict[str, Any],
+    request: HttpRequest | None = None,
+) -> Teacher | Student:
+    """Defere a solicitação e monta o vínculo — tudo ou nada.
+
+    Está aqui, e não no router, porque escreve em AccessRequest, no vínculo
+    (Teacher ou Student), nos Groups da conta e no AuditLog na mesma
+    transação (ADR-002). A ordem importa: `create_teacher`/`create_student`
+    já criam a ficha, chamam `clean()` e dão o papel de domínio dentro deste
+    mesmo atomic, então a ficha nasce ANTES do papel — não há janela em que
+    a conta tenha "Docente" sem Teacher correspondente.
+
+    `campos` é o que a SECRETARIA informa, já resolvido e escopado pelo
+    router; o que a pessoa declarou no cadastro sai da própria solicitação:
+
+    - docente: `accredited_since` (a data do credenciamento é decisão de
+      quem aprova). Categoria, titulação, instituição e Lattes vêm de
+      `solicitacao.campos_do_professor()`.
+    - discente: `level`, `project`, `advisor` e `admission_date`. O vínculo
+      nasce `modality=REGULAR` e `status=ACTIVE` — autocadastro só produz
+      aluno regular; isolada e eletiva entram por edital, não por esta fila.
+      O `deadline` sai sozinho do `Student.save()` a partir do nível e do
+      ingresso.
+
+    Assunções para conferir no merge: aluno aprovado nasce sem matrícula
+    (`registration_number` continua vazio até a matrícula sair) e o docente
+    entra sem linha de pesquisa nem projeto — os dois são edição posterior
+    da secretaria, não decisão do deferimento.
+    """
+    solicitacao.ensure_decidable()
+
+    person = solicitacao.person
+    program = solicitacao.program
+
+    if solicitacao.profile == AccessProfile.TEACHER:
+        accredited_since = campos.get("accredited_since")
+        if accredited_since is None:
+            raise DomainError(
+                "Informe a data de credenciamento do professor.",
+                code="accredited_since_required",
+            )
+        vinculo: Teacher | Student = create_teacher(
+            program=program,
+            person=person,
+            campos=solicitacao.campos_do_professor(accredited_since),
+            request=request,
+        )
+    elif solicitacao.profile == AccessProfile.STUDENT:
+        vinculo = create_student(
+            program=program,
+            person=person,
+            campos={
+                **campos,
+                "modality": Student.Modality.REGULAR,
+                "status": Student.Status.ACTIVE,
+            },
+            request=request,
+        )
+    else:
+        # Candidato não gera solicitação (`signup_access_request`); chegar
+        # aqui é dado corrompido, não fluxo de tela.
+        raise DomainError(
+            "Este perfil não passa pela fila da secretaria.",
+            code="profile_not_decidable",
+        )
+
+    # O marcador sai depois da ficha, e só dele: o papel de domínio já foi
+    # dado por `create_teacher`/`create_student`.
+    if person.user is not None:
+        revoke_role_group(person.user, group_name="Cadastro pendente", request=request)
+
+    # A regra mora no model; aqui só persistimos e auditamos.
+    solicitacao.approve()
+    # `updated_at` PRECISA estar na lista: `auto_now` só é gravado para os
+    # campos que o `update_fields` cita.
+    solicitacao.save(update_fields=["status", "decided_at", "updated_at"])
+
+    audit.record(
+        "academic.access_request.approve",
+        request=request,
+        target=solicitacao,
+        person_id=person.pk,
+        profile=solicitacao.profile,
+        vinculo_id=vinculo.pk,
+    )
+    return vinculo
+
+
+@transaction.atomic
+def reject_access_request(
+    *,
+    solicitacao: AccessRequest,
+    note: str,
+    request: HttpRequest | None = None,
+) -> AccessRequest:
+    """Indefere a solicitação e arquiva a pessoa — tudo ou nada.
+
+    Escreve em AccessRequest, Person e AuditLog (ADR-002). O arquivamento
+    não é enfeite: o marcador "Cadastro pendente" sozinho não tranca nada,
+    e é `current_program()` — que só enxerga pessoa ATIVA — quem passa a
+    recusar o recusado em toda rota de negócio.
+
+    **O recusado não se recadastra**: `unique_email_por_programa` barra a
+    segunda `Person` no mesmo programa, e `signup_access_request` devolve o
+    mesmo corpo silencioso do anti-enumeração — a pessoa não recebe erro
+    nenhum e também não recupera o acesso. A saída é a secretaria reativar
+    a pessoa; enquanto isso não acontece, a tela de espera mostra o motivo
+    gravado aqui.
+
+    Assunção para conferir no merge: a conta continua no Group "Cadastro
+    pendente". Tirar o marcador só trocaria "pendente sem acesso" por "sem
+    papel nenhum" — quem tranca é a pessoa arquivada, e manter o marcador
+    deixa visível que houve um pedido.
+    """
+    # A regra mora no model; aqui só persistimos e auditamos.
+    # `reject()` já chama `ensure_decidable()` e exige o motivo.
+    solicitacao.reject(note=note)
+    solicitacao.save(
+        update_fields=["status", "decision_note", "decided_at", "updated_at"]
+    )
+
+    person = solicitacao.person
+    # Pessoa já arquivada por outro caminho (a secretaria pode ter arquivado
+    # antes de decidir) não vira erro: `Person.archive()` recusaria a
+    # segunda chamada e deixaria a solicitação pendente para sempre.
+    if person.status != Person.Status.ARCHIVED:
+        person.archive()
+        person.save(update_fields=["status", "updated_at"])
+
+    audit.record(
+        "academic.access_request.reject",
+        request=request,
+        target=solicitacao,
+        person_id=person.pk,
+        profile=solicitacao.profile,
+    )
+    return solicitacao
 
 
 @transaction.atomic

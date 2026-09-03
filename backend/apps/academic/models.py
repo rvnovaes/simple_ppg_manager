@@ -1761,3 +1761,269 @@ class RequestDocument(models.Model):
                 f"O documento tem no máximo {limite} MB.",
                 code="invalid_document",
             )
+
+
+class AccessProfile(models.TextChoices):
+    """O que a pessoa diz ser ao pedir acesso ao programa.
+
+    Mora fora do model, com nome único, pela mesma armadilha de
+    `IsolatedRequestStatus`: o gerador de OpenAPI batiza o schema do enum
+    pelo `__name__` da classe, e dois `Profile` aninhados se sobrescrevem
+    em silêncio.
+
+    "Colaborador externo" NÃO é valor daqui: é `TEACHER` com
+    `teacher_category=Teacher.Category.EXTERNAL`. Categoria é do docente,
+    não um quarto perfil — duplicá-la aqui criaria duas verdades sobre a
+    mesma coisa.
+    """
+
+    TEACHER = "teacher", "Docente"
+    STUDENT = "student", "Discente"
+    # Candidato não vira `AccessRequest`: ele só ganha o Group "Candidato"
+    # e segue para o edital. Existe no enum porque é o que a tela pública
+    # oferece ao lado dos outros dois.
+    CANDIDATE = "candidate", "Candidato"
+
+
+class AccessRequestStatus(models.TextChoices):
+    """Situação da solicitação de acesso.
+
+    Fora do model pelo mesmo motivo de colisão de nome no OpenAPI descrito
+    em `AccessProfile`. `AccessRequest.Status` continua valendo pelo alias.
+    """
+
+    PENDING = "pending", "Pendente"
+    APPROVED = "approved", "Aprovada"
+    REJECTED = "rejected", "Recusada"
+
+
+class AccessRequestQuerySet(models.QuerySet):
+    def for_program(self, program) -> "AccessRequestQuerySet":
+        return self.filter(program=program)
+
+    def for_user(self, user) -> "AccessRequestQuerySet":
+        """As solicitações desta conta, em qualquer programa e situação.
+
+        Escopo por CONTA, e não por tenant: é o que a tela de espera pode
+        ler sem `current_program`, que responderia 403 para o recusado
+        (a recusa arquiva a `Person`). Por isso também não há `.active()`
+        sobre a pessoa aqui.
+        """
+        return self.filter(person__user=user)
+
+    def pending(self) -> "AccessRequestQuerySet":
+        return self.filter(status=AccessRequestStatus.PENDING)
+
+
+class AccessRequest(models.Model):
+    """Pedido de acesso ao programa feito pela própria pessoa.
+
+    `people/models.py:26-30` proíbe transformar "tipo de pessoa" em campo
+    de `Person` — o vínculo é derivado das relações e dos Groups. Por isso
+    a solicitação é model próprio, com histórico, e não um
+    `status="pendente"` na pessoa.
+
+    Mora em `academic` porque é o único app que pode: `people` e
+    `accounts` importariam a direção proibida, e é aqui que estão as
+    choices de `Teacher` e os services `create_teacher`/`create_student`
+    que a aprovação chama.
+
+    Sem `decided_by`: quem decidiu é o `actor` do `AuditLog`, como em
+    `IsolatedEnrollmentRequest`. Um campo aqui seria uma segunda verdade
+    a manter em sincronia.
+
+    A FK `program` é direta mesmo sendo alcançável por `person`
+    (ADR-007 dec. 5): sem ela `apps.core.audit.record()` grava AuditLog
+    com `program=None` e o rastro perde a chave de tenant.
+    """
+
+    Profile = AccessProfile
+    Status = AccessRequestStatus
+
+    program = models.ForeignKey(
+        "programs.Program",
+        on_delete=models.PROTECT,
+        related_name="access_requests",
+        verbose_name="programa",
+    )
+    # FK e não OneToOne, pelo motivo de `Student.person`: quem foi recusado
+    # e se cadastra de novo é uma segunda solicitação, não a edição da
+    # primeira. O índice parcial abaixo é que limita a UMA pendente.
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.PROTECT,
+        related_name="access_requests",
+        verbose_name="pessoa",
+    )
+    profile = models.CharField(
+        "perfil declarado",
+        max_length=20,
+        choices=Profile,
+    )
+    # Os três campos abaixo só existem para o perfil Docente; nos demais o
+    # banco os exige vazios (`access_non_teacher_has_no_teacher_fields`).
+    # São declaração da própria pessoa: a secretaria confere na aprovação.
+    teacher_category = models.CharField(
+        "categoria CAPES declarada",
+        max_length=20,
+        choices=Teacher.Category,
+        blank=True,
+    )
+    academic_degree = models.CharField(
+        "titulação declarada",
+        max_length=20,
+        choices=Teacher.AcademicDegree,
+        blank=True,
+    )
+    home_institution = models.CharField(
+        "instituição de origem",
+        max_length=200,
+        blank=True,
+    )
+    lattes_url = models.URLField("currículo Lattes", blank=True)
+    status = models.CharField(
+        "situação",
+        max_length=20,
+        choices=Status,
+        default=Status.PENDING,
+    )
+    # Motivo da recusa — é o que a pessoa lê na tela dela. Opcional na
+    # aprovação, obrigatório em `reject()`.
+    decision_note = models.TextField("motivo da decisão", blank=True)
+    # Vazio enquanto pendente; carimbado por approve()/reject().
+    decided_at = models.DateTimeField("decidido em", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = AccessRequestQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "solicitação de acesso"
+        verbose_name_plural = "solicitações de acesso"
+        ordering = ["-created_at"]
+        constraints = [
+            # Índice PARCIAL: uma pendente por pessoa, histórico livre.
+            # Como `Person` já é única por (program, primary_email), isto é
+            # uma pendente por pessoa E por programa.
+            models.UniqueConstraint(
+                fields=["person"],
+                condition=models.Q(status=AccessRequestStatus.PENDING),
+                name="unique_solicitacao_pendente_por_pessoa",
+            ),
+            # As três abaixo são CheckConstraint, e não só `clean()`, pela
+            # razão escrita em `Student.Meta`: não há caminho de escrita
+            # que as contorne.
+            models.CheckConstraint(
+                condition=~models.Q(profile=AccessProfile.TEACHER)
+                | (~models.Q(teacher_category="") & ~models.Q(academic_degree="")),
+                name="access_teacher_requires_category_and_degree",
+            ),
+            # Espelho no banco de `Teacher.clean()`: a categoria Externo só
+            # existe para dizer de onde o professor vem.
+            models.CheckConstraint(
+                condition=~models.Q(teacher_category=Teacher.Category.EXTERNAL)
+                | ~models.Q(home_institution=""),
+                name="access_external_requires_home_institution",
+            ),
+            # Simetria com `student_non_regular_requires_term`: quem não é
+            # docente não carrega campo de docente.
+            models.CheckConstraint(
+                condition=models.Q(profile=AccessProfile.TEACHER)
+                | models.Q(
+                    teacher_category="",
+                    academic_degree="",
+                    home_institution="",
+                ),
+                name="access_non_teacher_has_no_teacher_fields",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Solicitação de {self.person} ({self.get_profile_display()})"
+
+    def clean(self) -> None:
+        """A FK `program` é direta (ADR-007 dec. 5) e por isso pode divergir
+        da da pessoa. Divergir significa AuditLog com a chave de tenant
+        errada — é invariante, não detalhe de formulário.
+
+        A instituição de origem do externo repete a CheckConstraint de
+        propósito: só aqui a violação vira 400 com `code` estável, em vez
+        de `IntegrityError` genérico.
+        """
+        super().clean()
+        if (
+            self.teacher_category == Teacher.Category.EXTERNAL
+            and not self.home_institution.strip()
+        ):
+            raise DomainError(
+                "Professor externo precisa ter instituição de origem.",
+                code="home_institution_required",
+            )
+        try:
+            person = self.person
+        except ObjectDoesNotExist:
+            # Sem pessoa ainda: quem cobra a obrigatoriedade é o schema
+            # Ninja (borda) e o NOT NULL da coluna, não este invariante.
+            return
+        if self.program_id != person.program_id:
+            raise DomainError(
+                "O programa da solicitação precisa ser o mesmo da pessoa.",
+                code="program_mismatch",
+            )
+
+    def ensure_decidable(self) -> None:
+        """Só a pendente aceita decisão.
+
+        Separado de `approve()`/`reject()` porque a fila da secretaria
+        precisa da mesma trava antes de montar o vínculo — decidir duas
+        vezes criaria um segundo `Teacher` para a mesma pessoa.
+        """
+        if self.status != self.Status.PENDING:
+            raise InvalidStateTransition(
+                "Esta solicitação já foi decidida.",
+                code="already_decided",
+            )
+
+    def approve(self) -> None:
+        """Aprova a solicitação.
+
+        Não salva, como toda transição do projeto — quem persiste é o
+        service, no mesmo `transaction.atomic()` do AuditLog e da criação
+        do vínculo.
+        """
+        self.ensure_decidable()
+        self.status = self.Status.APPROVED
+        self.decided_at = timezone.now()
+
+    def reject(self, *, note: str) -> None:
+        """Recusa a solicitação, com motivo obrigatório.
+
+        O motivo é o que a pessoa lê na tela dela; recusar sem motivo é
+        uma porta fechada sem explicação — mesma razão de
+        `IsolatedEnrollmentRequest.reject()`.
+        """
+        self.ensure_decidable()
+        if not note.strip():
+            raise DomainError(
+                "Recusar exige um motivo.",
+                code="rejection_requires_note",
+            )
+        self.status = self.Status.REJECTED
+        self.decision_note = note
+        self.decided_at = timezone.now()
+
+    def campos_do_professor(self, accredited_since: date) -> dict:
+        """O dicionário `campos` que `create_teacher` espera.
+
+        Existe aqui, e não no service, porque é o model que sabe quais dos
+        seus campos são declaração de docente. `accredited_since` vem por
+        parâmetro: a data do credenciamento é decisão de quem aprova, não
+        algo que o solicitante declara.
+        """
+        return {
+            "category": self.teacher_category,
+            "academic_degree": self.academic_degree,
+            "accredited_since": accredited_since,
+            "home_institution": self.home_institution,
+            "lattes_url": self.lattes_url,
+        }

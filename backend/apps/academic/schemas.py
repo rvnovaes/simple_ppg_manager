@@ -17,6 +17,8 @@ from apps.people.models import Person
 
 from .models import (
     MAX_ISOLATED_ITEMS,
+    AccessProfile,
+    AccessRequest,
     DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
@@ -837,28 +839,184 @@ class RequestDocumentOut(Schema):
             return 0
 
 
-class IsolatedSignupIn(Schema):
-    """Auto-registro do candidato a disciplina isolada.
+class AccessSignupIn(Schema):
+    """Autocadastro de quem ainda não tem acesso ao programa.
 
-    Não tem `program_id` obrigatório pela mesma razão dos demais schemas de
-    entrada — o tenant não é escolha livre de quem chama. Aqui não há
-    sessão de onde tirá-lo, então ele sai do ciclo com inscrições abertas;
-    o campo só existe (opcional) para desempatar quando mais de um programa
-    está com edital aberto no mesmo instante.
+    `program_id` é OBRIGATÓRIO e continua não sendo escolha livre: ele só
+    vale para programa com `accepts_self_signup` ligado, e é a lista
+    pública (`GET /api/v1/programs/public`) que alimenta o campo na tela.
+    A trava mudou de lugar — saiu do edital aberto e virou interruptor do
+    programa —, não sumiu.
+
+    Os quatro campos de docente são declaração da própria pessoa; a
+    secretaria confere na aprovação. Categoria e titulação são cobrados
+    aqui na borda porque no model são só CheckConstraint: sem este
+    validador, docente sem eles viraria IntegrityError (500) em vez de 422.
     """
 
+    program_id: int
+    profile: AccessProfile
     full_name: str
     email: EmailStr
     phone_number: str = ""
     password: str
-    program_id: int | None = None
+    # Só o docente preenche; o service zera estes campos nos demais perfis.
+    teacher_category: Teacher.Category | None = None
+    academic_degree: Teacher.AcademicDegree | None = None
+    home_institution: str = ""
+    lattes_url: str = ""
+
+    @model_validator(mode="after")
+    def campos_do_perfil(self) -> "AccessSignupIn":
+        if self.profile != AccessProfile.TEACHER:
+            return self
+        faltando = [
+            campo
+            for campo in ("teacher_category", "academic_degree")
+            if getattr(self, campo) is None
+        ]
+        if faltando:
+            raise ValueError("Docente exige " + ", ".join(sorted(faltando)) + ".")
+        if (
+            self.teacher_category == Teacher.Category.EXTERNAL
+            and not self.home_institution.strip()
+        ):
+            raise ValueError("Colaborador externo exige home_institution.")
+        return self
 
 
-class IsolatedSignupOut(Schema):
-    """Resposta única do auto-registro.
+class AccessSignupOut(Schema):
+    """Resposta do autocadastro, que varia por PERFIL — nunca por conta.
 
-    Corpo fixo de propósito: e-mail novo e e-mail já cadastrado respondem
-    exatamente isto, senão a rota vira um oráculo de quem tem conta.
+    E-mail inédito e e-mail já cadastrado respondem exatamente a mesma
+    coisa, senão a rota vira um oráculo de quem tem conta neste programa.
+    O que muda é o perfil declarado: o candidato já pode entrar, enquanto
+    docente e discente esperam o deferimento da secretaria, e é isso que
+    `requires_confirmation` diz à tela.
     """
 
     detail: str
+    requires_confirmation: bool
+
+
+class AccessStatusOut(Schema):
+    """Estado do próprio cadastro, para a tela de espera.
+
+    É o único schema do app lido por quem ainda não tem permissão
+    nenhuma, e por isso carrega tudo que a tela precisa mostrar sem uma
+    segunda chamada: quem não é pendente não consegue ler `/programs/` nem
+    `/people/` para completar a informação.
+
+    Os rótulos viajam prontos (`profile_label`, `status_label`) pelo mesmo
+    motivo de `RequestDocumentOut.kind_label`: traduzir choice no front
+    duplicaria a tabela de valores em outro idioma de programação.
+    """
+
+    id: int
+    program_id: int
+    # A pessoa pode ter se cadastrado em mais de um programa; a tela diz de
+    # qual solicitação está falando.
+    program_name: str
+    profile: str
+    profile_label: str
+    status: str
+    status_label: str
+    # O motivo da recusa é o texto que a pessoa lê na tela dela.
+    decision_note: str
+    decided_at: datetime.datetime | None
+    created_at: datetime.datetime
+
+    @staticmethod
+    def resolve_program_name(obj: AccessRequest) -> str:
+        return obj.program.name
+
+    @staticmethod
+    def resolve_profile_label(obj: AccessRequest) -> str:
+        return obj.get_profile_display()
+
+    @staticmethod
+    def resolve_status_label(obj: AccessRequest) -> str:
+        return obj.get_status_display()
+
+
+class AccessRequestOut(Schema):
+    """Uma solicitação na fila da secretaria.
+
+    Carrega o DECLARADO pela pessoa (perfil, categoria, titulação,
+    instituição, Lattes) porque é isso que a secretaria confere antes de
+    confirmar — sem estes campos a tela faria uma segunda chamada por
+    linha só para saber o que está julgando.
+
+    Sem rótulo pronto, ao contrário de `AccessStatusOut`: a fila é lida
+    por quem tem permissão e já carrega `lib/acesso.ts`, que traduz as
+    choices uma vez para as três telas do módulo.
+    """
+
+    id: int
+    program_id: int
+    person_id: int
+    # Nome e e-mail viajam juntos pela razão de `IsolatedRequestOut`: a
+    # fila lista muitos pedidos e não deve buscar cada pessoa.
+    person_name: str
+    person_email: str
+    person_phone_number: str
+    profile: str
+    teacher_category: str
+    academic_degree: str
+    home_institution: str
+    lattes_url: str
+    status: str
+    decision_note: str
+    decided_at: datetime.datetime | None
+    created_at: datetime.datetime
+
+    @staticmethod
+    def resolve_person_name(obj: AccessRequest) -> str:
+        return obj.person.full_name
+
+    @staticmethod
+    def resolve_person_email(obj: AccessRequest) -> str:
+        return obj.person.primary_email
+
+    @staticmethod
+    def resolve_person_phone_number(obj: AccessRequest) -> str:
+        return obj.person.phone_number
+
+
+class AccessApproveIn(Schema):
+    """O que a SECRETARIA informa ao confirmar o cadastro.
+
+    Todos os campos são opcionais na borda de propósito: quais deles são
+    exigidos depende do `profile` da solicitação, que está no banco e não
+    no corpo. Quem cobra é o domínio, com `code` estável —
+    `accredited_since_required` no service para o docente e
+    `incomplete_regular` no `Student.clean()` para o discente. Repetir a
+    regra aqui criaria uma segunda verdade sobre o mesmo invariante.
+
+    O que a pessoa declarou (categoria, titulação, instituição, Lattes)
+    NÃO entra aqui: sai de `solicitacao.campos_do_professor()`.
+
+    `deadline` também não: o `Student.save()` calcula o prazo regimental a
+    partir do nível e do ingresso.
+    """
+
+    # Docente: a data do credenciamento é decisão de quem aprova.
+    accredited_since: datetime.date | None = None
+    # Discente regular: nível, projeto e ingresso são obrigatórios no
+    # model; o orientador pode entrar depois.
+    level: Student.Level | None = None
+    project_id: int | None = None
+    advisor_id: int | None = None
+    admission_date: datetime.date | None = None
+
+
+class AccessRejectIn(Schema):
+    """Recusa: o motivo é o texto que a pessoa lê na tela de espera.
+
+    Como em `IsolatedRejectIn`, a obrigatoriedade real é do model
+    (`AccessRequest.reject` levanta `rejection_requires_note`): aqui o
+    campo é exigido na borda, mas string em branco só é barrada lá, com
+    `code` estável.
+    """
+
+    note: str

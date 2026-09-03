@@ -8,7 +8,7 @@ negócio aqui.
 from pathlib import Path
 
 from django.db import transaction
-from django.http import FileResponse, HttpRequest
+from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
@@ -31,6 +31,9 @@ from apps.programs.models import (
 )
 
 from .models import (
+    AccessProfile,
+    AccessRequest,
+    AccessRequestStatus,
     AdjustmentStatus,
     DisciplineOffering,
     EnrollmentAdjustmentRequest,
@@ -44,6 +47,12 @@ from .models import (
     Teacher,
 )
 from .schemas import (
+    AccessApproveIn,
+    AccessRejectIn,
+    AccessRequestOut,
+    AccessSignupIn,
+    AccessSignupOut,
+    AccessStatusOut,
     DisciplineOfferingIn,
     DisciplineOfferingOut,
     DisciplineOfferingPatch,
@@ -65,8 +74,6 @@ from .schemas import (
     IsolatedRequestIn,
     IsolatedRequestOut,
     IsolatedRequestPatch,
-    IsolatedSignupIn,
-    IsolatedSignupOut,
     RequestDocumentOut,
     StudentIn,
     StudentOut,
@@ -79,6 +86,7 @@ from .schemas import (
 from .services import (
     JANELA_DE_SIGNUP_EM_SEGUNDOS,
     LIMITE_DE_SIGNUP_POR_IP,
+    approve_access_request,
     ciclo_com_inscricao_aberta,
     close_isolated_cycle,
     conferir_programa,
@@ -87,11 +95,17 @@ from .services import (
     create_student,
     create_teacher,
     enroll_isolated_request,
-    programa_com_inscricao_aberta,
-    signup_isolated_candidate,
+    programa_que_aceita_autocadastro,
+    reject_access_request,
+    signup_access_request,
 )
 
 router = Router(tags=["academic"])
+# Segundo router do arquivo, montado noutro prefixo (/access/), como
+# accounts/router.py faz com `router` e `users_router`. O autocadastro não
+# é assunto de vida acadêmica: quem chama ainda não tem vínculo nenhum, e
+# a única rota pública de escrita do projeto merece prefixo próprio.
+access_router = Router(tags=["access"])
 
 
 def _linhas(ids: list[int]) -> list[ResearchLine]:
@@ -1459,41 +1473,182 @@ def close_isolated_cycle_endpoint(request: HttpRequest, cycle_id: int):
     }
 
 
-@router.post("/isolated/signup", auth=None, response={200: IsolatedSignupOut})
+@access_router.post("/signup", auth=None, response={200: AccessSignupOut})
 @decorate_view(csrf_protect)
-def isolated_signup(request: HttpRequest, payload: IsolatedSignupIn):
+def access_signup(request: HttpRequest, payload: AccessSignupIn):
     # público: é o único endpoint de escrita sem sessão do projeto, e tem
-    # de ser — quem se inscreve em disciplina isolada não tem vínculo com a
-    # UFMG e portanto não tem conta para autenticar. Sem ele, a secretaria
-    # cadastraria à mão cada candidato do edital, que é exatamente o
-    # trabalho que este módulo existe para tirar dela.
+    # de ser — quem se cadastra ainda não tem acesso ao programa e
+    # portanto não tem conta para autenticar. Sem ele, a secretaria
+    # digitaria à mão cada docente, discente e candidato, que é
+    # exatamente o trabalho que este módulo existe para tirar dela.
     #
-    # As três travas que substituem a sessão: só funciona enquanto há
-    # edital aberto (programa_com_inscricao_aberta), limite de tentativas
+    # As três travas que substituem a sessão: só programa com o
+    # interruptor `accepts_self_signup` ligado aceita cadastro
+    # (programa_que_aceita_autocadastro — `program_id` é obrigatório, mas
+    # vem da lista pública e não é escolha livre), limite de tentativas
     # por IP e csrf_protect explícito — auth=None desliga junto a checagem
     # de CSRF que o SessionAuth faria, mesma armadilha do login.
     enforce_rate_limit(
         request,
-        scope="isolated-signup",
+        scope="access-signup",
         limit=LIMITE_DE_SIGNUP_POR_IP,
         window_seconds=JANELA_DE_SIGNUP_EM_SEGUNDOS,
     )
-    program = programa_com_inscricao_aberta(
-        at=timezone.now(), program_id=payload.program_id
-    )
-    signup_isolated_candidate(
+    program = programa_que_aceita_autocadastro(program_id=payload.program_id)
+    signup_access_request(
         program=program,
+        profile=payload.profile,
         full_name=payload.full_name,
         email=str(payload.email),
         password=payload.password,
         phone_number=payload.phone_number,
+        teacher_category=payload.teacher_category or "",
+        academic_degree=payload.academic_degree or "",
+        home_institution=payload.home_institution,
+        lattes_url=payload.lattes_url,
         request=request,
     )
-    # Corpo idêntico nos dois desfechos: dizer "e-mail já cadastrado" aqui
-    # transformaria a rota num verificador de contas para qualquer um.
+    # O corpo varia por PERFIL e só por ele: o valor devolvido pelo service
+    # (pessoa nova x pessoa que já existia) é ignorado de propósito, senão
+    # a rota vira um verificador de contas para qualquer um.
+    if payload.profile == AccessProfile.CANDIDATE:
+        return {
+            "detail": (
+                "Cadastro recebido. Use seu e-mail e sua senha para entrar e "
+                "concluir a inscrição."
+            ),
+            "requires_confirmation": False,
+        }
     return {
         "detail": (
-            "Cadastro recebido. Use seu e-mail e sua senha para entrar e "
-            "concluir a inscrição."
-        )
+            "Cadastro recebido. Este cadastro deve ser confirmado pela secretaria."
+        ),
+        "requires_confirmation": True,
     }
+
+
+@access_router.get("/me", response={200: AccessStatusOut})
+def access_me(request: HttpRequest):
+    # Sem require_perm, no molde de `/auth/me` (accounts/router.py:88-91):
+    # devolve apenas o estado do próprio cadastro de quem chama, e quem
+    # chama é justamente quem ainda não tem permissão nenhuma.
+    #
+    # Sem current_program também, e isto é obrigatório: quem foi recusado
+    # tem a Person arquivada, e o helper responderia 403 — a tela de espera
+    # ficaria sem o motivo da recusa exatamente para quem precisa lê-lo. O
+    # escopo aqui é a própria conta (`for_user`), que é mais estreito que
+    # o tenant.
+    solicitacoes = AccessRequest.objects.for_user(request.user).select_related(
+        "program"
+    )
+    # A pendente vem primeiro: quem já foi recusado num programa e pediu de
+    # novo (ou pediu noutro) deve ver o pedido vivo, não o encerrado. Sem
+    # pendente, a decisão mais recente (ordering `-created_at` do model).
+    solicitacao = solicitacoes.pending().first() or solicitacoes.first()
+    if solicitacao is None:
+        raise Http404("Nenhuma solicitação de acesso para esta conta.")
+    return solicitacao
+
+
+@access_router.get("/requests/", response=list[AccessRequestOut])
+@paginate
+def list_access_requests(
+    request: HttpRequest,
+    status: AccessRequestStatus = AccessRequestStatus.PENDING,
+):
+    """A fila da secretaria: quem pediu acesso a este programa.
+
+    O default é `pending` porque a fila existe para o que ainda falta
+    decidir; as outras duas situações são o histórico, pedido pela tela.
+    Sem valor default, abrir a tela mostraria de saída todo o histórico
+    junto do que precisa de ação. Valor fora do enum é 422 na borda.
+
+    O filtro é do SERVIDOR, e não da tela: a lista é paginada, e filtrar
+    depois de paginar mostraria "3 de 40" de uma página só.
+    """
+    require_perm(request, "academic.view_accessrequest")
+    program: Program = current_program(request)
+    return (
+        AccessRequest.objects.for_program(program)
+        # `person` porque AccessRequestOut publica nome, e-mail e telefone:
+        # sem isto a fila faz uma consulta por linha.
+        .select_related("person")
+        # Filtro de conveniência da tela. Não é escopo de tenant — esse já
+        # foi aplicado acima e não é opcional.
+        .filter(status=status)
+    )
+
+
+def _cadastro_para_decidir(
+    request: HttpRequest, program: Program, request_id: int
+) -> AccessRequest:
+    """A solicitação que esta sessão pode confirmar — nunca a própria.
+
+    Espelho exato de `_requerimento_para_decidir`. Sem esta trava, uma
+    secretária que se cadastrasse como docente confirmaria a si mesma: ela
+    já tem `change_accessrequest`, e o cadastro pendente não retira
+    permissão nenhuma (o marcador "Cadastro pendente" não concede nem
+    remove nada — quem tranca o recusado é a `Person` arquivada).
+
+    A busca já entra escopada: solicitação de outro programa simplesmente
+    não existe para esta requisição (404, nunca 403 — 403 revelaria que o
+    id existe).
+    """
+    solicitacao = get_object_or_404(
+        AccessRequest.objects.for_program(program).select_related("person", "program"),
+        pk=request_id,
+    )
+    pessoas = Person.objects.active().filter(user=request.user, program=program)
+    if pessoas.filter(pk=solicitacao.person_id).exists():
+        raise NotAllowed("Ninguém confirma o próprio cadastro.")
+    return solicitacao
+
+
+@access_router.post("/requests/{int:request_id}/approve", response=AccessRequestOut)
+def approve_access_request_endpoint(
+    request: HttpRequest, request_id: int, payload: AccessApproveIn
+):
+    """Confirma o cadastro e monta o vínculo (Teacher ou Student).
+
+    O router só resolve as FKs em objeto, ESCOPADAS no programa corrente:
+    projeto ou orientador de outro tenant vira 404 aqui, e não
+    `IntegrityError` 500 lá no service. O que exigir cada perfil é do
+    domínio — `accredited_since_required` para o docente,
+    `incomplete_regular` para o discente —, e volta como 4xx com `code`
+    estável pelo handler central.
+    """
+    require_perm(request, "academic.change_accessrequest")
+    program: Program = current_program(request)
+    solicitacao = _cadastro_para_decidir(request, program, request_id)
+    if solicitacao.profile == AccessProfile.STUDENT:
+        campos: dict = {
+            "level": payload.level,
+            "project": _projeto(program, payload.project_id),
+            "advisor": _orientador(program, payload.advisor_id),
+            "admission_date": payload.admission_date,
+        }
+    else:
+        campos = {"accredited_since": payload.accredited_since}
+    # O service é quem abre a transação: a ficha, o papel, a solicitação e
+    # o AuditLog são tudo ou nada (ADR-002).
+    approve_access_request(solicitacao=solicitacao, campos=campos, request=request)
+    return solicitacao
+
+
+@access_router.post("/requests/{int:request_id}/reject", response=AccessRequestOut)
+def reject_access_request_endpoint(
+    request: HttpRequest, request_id: int, payload: AccessRejectIn
+):
+    """Recusa o cadastro, com motivo obrigatório.
+
+    O motivo é o que a pessoa lê na tela de espera — recusar sem explicar
+    é porta fechada sem aviso. A cobrança é do model
+    (`rejection_requires_note`), e a recusa arquiva a `Person` dentro do
+    service.
+    """
+    require_perm(request, "academic.change_accessrequest")
+    program: Program = current_program(request)
+    solicitacao = _cadastro_para_decidir(request, program, request_id)
+    return reject_access_request(
+        solicitacao=solicitacao, note=payload.note, request=request
+    )
