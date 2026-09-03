@@ -136,3 +136,35 @@ Started: qui. 03 set 2026 08:00:07 -03
   - `f2-testes-accessrequest` (próxima) já pode assertar os três grupos: eles existem no
     banco de teste, porque data migration roda na criação do banco do pytest.
 ---
+
+## 2026-09-03 - f2-testes-accessrequest
+- `apps/academic/tests/test_access_request_model.py` (7 testes em memória, sem banco):
+  dupla decisão → `already_decided` (e o status APROVADO permanece), `approve()` carimba
+  `decided_at`, `reject(note="   ")` → `rejection_requires_note` com o status intacto em
+  PENDING, `reject()` com motivo guarda o texto, `clean()` com `program` divergente do da
+  pessoa → `program_mismatch`, externo com `home_institution` em branco →
+  `home_institution_required`, e o caso feliz do externo com instituição.
+- `apps/academic/tests/test_access_request_constraints.py` (8 testes com banco, no molde
+  de `test_student_constraints.py`): duas pendentes da mesma pessoa → `IntegrityError`;
+  pendente DEPOIS de uma recusada passa (o índice é parcial) e
+  `pessoa.access_requests.pending().count() == 1`; docente sem categoria e docente sem
+  titulação → `IntegrityError`; externo sem instituição → `IntegrityError`; não-docente
+  com `academic_degree` preenchido → `IntegrityError`; docente permanente completo é
+  aceito; e o Group "Cadastro pendente" com `permissions.count() == 0`.
+- `make ready` verde: 1961 passed, 10 skipped em 184s.
+- Arquivos: backend/apps/academic/tests/test_access_request_model.py,
+  backend/apps/academic/tests/test_access_request_constraints.py
+- **Learnings for future iterations:**
+  - O gerente reverso `pessoa.access_requests` herda os métodos de
+    `AccessRequestQuerySet` (`.pending()`, `.for_program()`): o Django monta o related
+    manager a partir da classe do manager padrão do model. Vale para todo QuerySet
+    customizado do projeto — não precisa reescrever o filtro no teste.
+  - Constraint que deve PASSAR merece teste tanto quanto a que deve falhar: o índice
+    parcial `unique_solicitacao_pendente_por_pessoa` só está certo se a recusada anterior
+    não atrapalhar, e nenhum teste de `IntegrityError` mostra isso.
+  - Fixture `program` (conftest da raiz) é `Program.objects.get(acronym="PPGD")`, vinda da
+    data migration; para testar `program_mismatch` em memória basta um
+    `Program(pk=2, acronym="PPGA")` não salvo.
+  - `make ready` neste canteiro leva ~4 min só no pytest e o `rtk proxy` segura a saída
+    até o fim — rodar em background e esperar o PID do `make` é o caminho.
+---
