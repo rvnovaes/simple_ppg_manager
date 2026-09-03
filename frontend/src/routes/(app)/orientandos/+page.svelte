@@ -112,7 +112,7 @@
 </script>
 
 <svelte:head>
-	<title>Acertos dos orientandos · PPGD Manager</title>
+	<title>Acertos dos orientandos · PPGM</title>
 </svelte:head>
 
 <header>

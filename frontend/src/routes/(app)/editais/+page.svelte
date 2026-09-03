@@ -304,7 +304,7 @@
 </script>
 
 <svelte:head>
-	<title>Editais de isolada · PPGD Manager</title>
+	<title>Editais de isolada · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

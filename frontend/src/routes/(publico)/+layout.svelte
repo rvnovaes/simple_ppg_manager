@@ -18,7 +18,7 @@
 	<header class="border-borda bg-papel border-b">
 		<div class="mx-auto flex max-w-4xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-4">
 			<p class="regua-tinta text-grafite pl-3 text-sm font-semibold tracking-tight">
-				PPGD · Processo seletivo
+				Processo seletivo
 			</p>
 			<nav class="ml-auto flex items-center gap-5 text-sm">
 				<a class="text-cinza hover:text-tinta" href={resolve('/selecao/inscricao')}>Inscrição</a>

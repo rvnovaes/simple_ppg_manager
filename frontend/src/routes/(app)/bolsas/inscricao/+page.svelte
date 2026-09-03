@@ -441,7 +441,7 @@
 </script>
 
 <svelte:head>
-	<title>Inscrição na bolsa · PPGD Manager</title>
+	<title>Inscrição na bolsa · PPGM</title>
 </svelte:head>
 
 <header>

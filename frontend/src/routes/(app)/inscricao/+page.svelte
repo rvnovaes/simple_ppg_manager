@@ -211,7 +211,7 @@
 </script>
 
 <svelte:head>
-	<title>Inscrição em disciplina isolada · PPGD Manager</title>
+	<title>Inscrição em disciplina isolada · PPGM</title>
 </svelte:head>
 
 <header>

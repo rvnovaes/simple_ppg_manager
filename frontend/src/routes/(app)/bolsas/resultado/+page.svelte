@@ -124,7 +124,7 @@
 </script>
 
 <svelte:head>
-	<title>Resultado da bolsa · PPGD Manager</title>
+	<title>Resultado da bolsa · PPGM</title>
 </svelte:head>
 
 <header>

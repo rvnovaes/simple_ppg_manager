@@ -138,7 +138,7 @@
 </script>
 
 <svelte:head>
-	<title>Disciplinas · PPGD Manager</title>
+	<title>Disciplinas · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

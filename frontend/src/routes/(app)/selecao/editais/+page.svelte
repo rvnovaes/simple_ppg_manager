@@ -527,7 +527,7 @@
 </script>
 
 <svelte:head>
-	<title>Editais do processo seletivo · PPGD Manager</title>
+	<title>Editais do processo seletivo · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

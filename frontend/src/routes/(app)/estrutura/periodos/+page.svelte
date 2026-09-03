@@ -95,7 +95,7 @@
 </script>
 
 <svelte:head>
-	<title>Períodos letivos · PPGD Manager</title>
+	<title>Períodos letivos · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

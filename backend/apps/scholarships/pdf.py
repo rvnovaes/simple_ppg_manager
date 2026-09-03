@@ -290,7 +290,7 @@ def montar_resultado(
         topMargin=18 * mm,
         bottomMargin=18 * mm,
         title=f"{titulo} — {edition.title} — {_nivel(level)}",
-        author="PPGD Manager",
+        author="PPGM",
     )
     elementos: list[Any] = [
         Paragraph(titulo, TITULO),

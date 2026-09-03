@@ -85,7 +85,7 @@
 </script>
 
 <svelte:head>
-	<title>{recorte?.titulo ?? 'Pessoas'} · PPGD Manager</title>
+	<title>{recorte?.titulo ?? 'Pessoas'} · PPGM</title>
 </svelte:head>
 
 {#if !recorte && !REDIRECIONADOS[slug]}

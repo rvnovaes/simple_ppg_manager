@@ -265,7 +265,7 @@
 </script>
 
 <svelte:head>
-	<title>Inscrições · PPGD Manager</title>
+	<title>Inscrições · PPGM</title>
 </svelte:head>
 
 <header>

@@ -469,7 +469,7 @@
 </script>
 
 <svelte:head>
-	<title>Análise da comissão · PPGD Manager</title>
+	<title>Análise da comissão · PPGM</title>
 </svelte:head>
 
 <header>

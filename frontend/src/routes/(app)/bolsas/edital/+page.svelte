@@ -543,7 +543,7 @@
 </script>
 
 <svelte:head>
-	<title>Edital de bolsas · PPGD Manager</title>
+	<title>Edital de bolsas · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

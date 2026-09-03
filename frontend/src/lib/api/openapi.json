@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "PPGD Manager API",
+    "title": "PPGM API",
     "version": "1.0.0",
-    "description": "API interna do sistema de gestão do PPGD."
+    "description": "API interna do PPGM, gestão de programas de pós-graduação."
   },
   "paths": {
     "/auth/csrf": {

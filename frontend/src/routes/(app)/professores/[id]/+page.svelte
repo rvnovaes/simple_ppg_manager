@@ -71,7 +71,7 @@
 </script>
 
 <svelte:head>
-	<title>{professor?.person.full_name ?? 'Professor'} · PPGD Manager</title>
+	<title>{professor?.person.full_name ?? 'Professor'} · PPGM</title>
 </svelte:head>
 
 <a class="etiqueta hover:text-tinta" href={resolve('/professores')}>← Professores</a>

@@ -54,7 +54,7 @@
 </script>
 
 <svelte:head>
-	<title>{aluno?.person.full_name ?? 'Aluno'} · PPGD Manager</title>
+	<title>{aluno?.person.full_name ?? 'Aluno'} · PPGM</title>
 </svelte:head>
 
 <a class="etiqueta hover:text-tinta" href={resolve('/alunos')}>← Alunos</a>

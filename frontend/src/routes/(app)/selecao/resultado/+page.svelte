@@ -341,7 +341,7 @@
 </script>
 
 <svelte:head>
-	<title>Resultado · PPGD Manager</title>
+	<title>Resultado · PPGM</title>
 </svelte:head>
 
 <header>

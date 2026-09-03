@@ -1,7 +1,7 @@
 [project]
 name = "ppgd-backend"
 version = "0.1.0"
-description = "PPGD Manager — backend Django + Ninja"
+description = "PPGM — backend Django + Ninja"
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "django>=5.2,<6.0",

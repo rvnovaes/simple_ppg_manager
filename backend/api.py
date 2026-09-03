@@ -18,9 +18,9 @@ from apps.scholarships.router import router as scholarships_router
 from apps.selection.router import router as selection_router
 
 api = NinjaAPI(
-    title="PPGD Manager API",
+    title="PPGM API",
     version="1.0.0",
-    description="API interna do sistema de gestão do PPGD.",
+    description="API interna do PPGM, gestão de programas de pós-graduação.",
     # Sessão do Django é o padrão de toda rota (ADR-003). Rotas públicas
     # declaram auth=None explicitamente e justificam com `# público`.
     #

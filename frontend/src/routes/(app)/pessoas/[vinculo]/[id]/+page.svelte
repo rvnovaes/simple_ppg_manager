@@ -43,7 +43,7 @@
 </script>
 
 <svelte:head>
-	<title>{pessoa?.full_name ?? 'Pessoa'} · PPGD Manager</title>
+	<title>{pessoa?.full_name ?? 'Pessoa'} · PPGM</title>
 </svelte:head>
 
 <a class="etiqueta hover:text-tinta" href={resolve('/(app)/pessoas/[vinculo]', { vinculo })}>

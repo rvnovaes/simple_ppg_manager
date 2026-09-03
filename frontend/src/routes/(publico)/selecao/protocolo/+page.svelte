@@ -51,7 +51,7 @@
 </script>
 
 <svelte:head>
-	<title>Consultar protocolo · PPGD Manager</title>
+	<title>Consultar protocolo · PPGM</title>
 </svelte:head>
 
 <h1 class="text-grafite text-2xl font-semibold tracking-tight">Situação da inscrição</h1>

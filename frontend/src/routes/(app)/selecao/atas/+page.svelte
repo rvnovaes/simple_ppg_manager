@@ -181,7 +181,7 @@
 </script>
 
 <svelte:head>
-	<title>Atas · PPGD Manager</title>
+	<title>Atas · PPGM</title>
 </svelte:head>
 
 <header>

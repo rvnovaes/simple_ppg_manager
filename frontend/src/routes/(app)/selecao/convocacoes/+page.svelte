@@ -213,7 +213,7 @@
 </script>
 
 <svelte:head>
-	<title>Convocações · PPGD Manager</title>
+	<title>Convocações · PPGM</title>
 </svelte:head>
 
 <header>

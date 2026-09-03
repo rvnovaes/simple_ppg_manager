@@ -143,7 +143,7 @@
 </script>
 
 <svelte:head>
-	<title>Meus acertos · PPGD Manager</title>
+	<title>Meus acertos · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

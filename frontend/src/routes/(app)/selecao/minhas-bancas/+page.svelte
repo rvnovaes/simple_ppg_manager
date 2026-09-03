@@ -42,7 +42,7 @@
 </script>
 
 <svelte:head>
-	<title>Minhas bancas · PPGD Manager</title>
+	<title>Minhas bancas · PPGM</title>
 </svelte:head>
 
 <header>

@@ -84,7 +84,7 @@
 </script>
 
 <svelte:head>
-	<title>Acerto de matrícula · PPGD Manager</title>
+	<title>Acerto de matrícula · PPGM</title>
 </svelte:head>
 
 <header>

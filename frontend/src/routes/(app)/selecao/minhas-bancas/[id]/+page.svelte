@@ -354,7 +354,7 @@
 </script>
 
 <svelte:head>
-	<title>{banca ? `${banca.level_label} · ${banca.target_label}` : 'Banca'} · PPGD Manager</title>
+	<title>{banca ? `${banca.level_label} · ${banca.target_label}` : 'Banca'} · PPGM</title>
 </svelte:head>
 
 <a class="etiqueta hover:text-tinta" href={resolve('/(app)/selecao/minhas-bancas')}>

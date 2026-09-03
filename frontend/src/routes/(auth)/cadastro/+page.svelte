@@ -51,14 +51,14 @@
 </script>
 
 <svelte:head>
-	<title>Criar conta · PPGD Manager</title>
+	<title>Criar conta · PPGM</title>
 </svelte:head>
 
 <div class="grid min-h-screen lg:grid-cols-[minmax(0,42%)_1fr]">
 	<aside
 		class="bg-tinta text-papel flex flex-col justify-between gap-10 px-8 py-10 lg:px-14 lg:py-14"
 	>
-		<p class="etiqueta text-papel/55">PPGD · Disciplina isolada</p>
+		<p class="etiqueta text-papel/55">Disciplina isolada</p>
 
 		<div class="max-w-md">
 			<h1 class="text-3xl leading-[1.1] font-semibold tracking-tight lg:text-[2.75rem]">

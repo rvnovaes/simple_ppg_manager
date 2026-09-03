@@ -266,7 +266,7 @@ def render_record_pdf(record: ExaminationRecord) -> bytes:
         topMargin=18 * mm,
         bottomMargin=18 * mm,
         title=f"Ata — {record.stage} — {record.get_level_display()}",
-        author="PPGD Manager",
+        author="PPGM",
     )
     assinaturas = _assinaturas(record)
     elementos: list[Any] = [

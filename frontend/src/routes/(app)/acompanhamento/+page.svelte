@@ -181,7 +181,7 @@
 </script>
 
 <svelte:head>
-	<title>Acompanhamento da inscrição · PPGD Manager</title>
+	<title>Acompanhamento da inscrição · PPGM</title>
 </svelte:head>
 
 <header>

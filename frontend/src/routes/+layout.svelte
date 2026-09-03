@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>PPGD Manager</title>
+	<title>PPGM</title>
 </svelte:head>
 
 {@render children()}

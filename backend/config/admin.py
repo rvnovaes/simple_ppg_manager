@@ -10,8 +10,8 @@ from django.http import HttpRequest
 
 
 class SysadminAdminSite(AdminSite):
-    site_header = "PPGD Manager — operação da plataforma"
-    site_title = "PPGD Manager"
+    site_header = "PPGM — operação da plataforma"
+    site_title = "PPGM"
     index_title = "Operação da plataforma"
 
     def has_permission(self, request: HttpRequest) -> bool:

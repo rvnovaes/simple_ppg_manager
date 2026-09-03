@@ -218,7 +218,7 @@
 </script>
 
 <svelte:head>
-	<title>Análise das inscrições · PPGD Manager</title>
+	<title>Análise das inscrições · PPGM</title>
 </svelte:head>
 
 <header>

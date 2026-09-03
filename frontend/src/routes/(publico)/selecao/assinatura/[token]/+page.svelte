@@ -111,7 +111,7 @@
 </script>
 
 <svelte:head>
-	<title>Assinatura da ata · PPGD Manager</title>
+	<title>Assinatura da ata · PPGM</title>
 </svelte:head>
 
 <h1 class="text-grafite text-2xl font-semibold tracking-tight">Assinatura da ata</h1>

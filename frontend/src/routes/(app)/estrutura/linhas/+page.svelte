@@ -184,7 +184,7 @@
 </script>
 
 <svelte:head>
-	<title>Linhas de pesquisa · PPGD Manager</title>
+	<title>Linhas de pesquisa · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

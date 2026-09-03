@@ -384,7 +384,7 @@
 </script>
 
 <svelte:head>
-	<title>Alunos · PPGD Manager</title>
+	<title>Alunos · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

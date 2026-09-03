@@ -41,7 +41,7 @@
 						href={resolve(sessao.rotaInicial)}
 						class="text-tinta text-[0.9375rem] font-semibold tracking-tight"
 					>
-						PPGD Manager
+						PPGM
 					</a>
 					<nav class="flex items-center gap-4">
 						<!-- Todo item é condicional: o Candidato da isolada não tem

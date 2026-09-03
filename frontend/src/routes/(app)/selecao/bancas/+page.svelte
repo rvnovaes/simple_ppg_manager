@@ -282,7 +282,7 @@
 </script>
 
 <svelte:head>
-	<title>Bancas · PPGD Manager</title>
+	<title>Bancas · PPGM</title>
 </svelte:head>
 
 <header class="flex flex-wrap items-end justify-between gap-4">

@@ -115,7 +115,7 @@
 </script>
 
 <svelte:head>
-	<title>Classificação dos candidatos · PPGD Manager</title>
+	<title>Classificação dos candidatos · PPGM</title>
 </svelte:head>
 
 <header>

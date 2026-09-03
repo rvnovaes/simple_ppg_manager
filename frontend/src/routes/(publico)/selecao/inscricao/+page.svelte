@@ -186,7 +186,7 @@
 </script>
 
 <svelte:head>
-	<title>Inscrição no processo seletivo · PPGD Manager</title>
+	<title>Inscrição no processo seletivo · PPGM</title>
 </svelte:head>
 
 {#if comprovante}
