@@ -168,3 +168,39 @@ Started: qui. 03 set 2026 08:00:07 -03
   - `make ready` neste canteiro leva ~4 min só no pytest e o `rtk proxy` segura a saída
     até o fim — rodar em background e esperar o PID do `make` é o caminho.
 ---
+
+## 2026-09-03 - f3-service-signup
+- `programa_que_aceita_autocadastro(*, program_id)` em `apps/academic/services.py`:
+  uma linha de query (`Program.objects.accepting_self_signup().filter(pk=...).first()`)
+  e o MESMO `signup_closed` para inexistente, inativo e flag desligado.
+- `signup_access_request(...)`, `@transaction.atomic`, adaptado de
+  `signup_isolated_candidate` preservando a ordem: `validar_senha` antes de qualquer
+  consulta de e-mail, `email.strip().lower()`, retorno silencioso (`False` + audit
+  `created=False`) quando a Person já existe no programa, `create_person_with_user`,
+  `set_initial_password` só `if not user.has_usable_password()`, ramo por perfil e
+  `audit.record("academic.access.signup", profile=..., created=True)`.
+- Perfil CANDIDATE: Group "Candidato" e ZERO linhas de `AccessRequest`. TEACHER/STUDENT:
+  `AccessRequest` com `clean()` antes do `save()` e Group "Cadastro pendente".
+- Os quatro campos de docente são zerados quando o perfil não é TEACHER — a
+  CheckConstraint `access_non_teacher_has_no_teacher_fields` os proíbe, e confiar no
+  chamador transformaria um payload sujo em `IntegrityError`.
+- `programa_com_inscricao_aberta` e `signup_isolated_candidate` continuam de pé: o router
+  ainda os chama, e a remoção é da story `f3-endpoint-signup-e-aposentadoria`. Remover
+  aqui quebraria o `make ready` desta iteração.
+- Verificado no canteiro (shell com `transaction.atomic` + rollback): os três
+  `signup_closed`, candidato só com Group e sem `AccessRequest`, e-mail repetido → `False`,
+  docente externo com `home_institution` gravado, discente que mandou `teacher_category`
+  sai com o campo vazio. `make ready` verde: 1961 passed, 10 skipped em 183s.
+- Arquivos: backend/apps/academic/services.py
+- **Learnings for future iterations:**
+  - Story que "substitui" um símbolo cujo removedor é a story seguinte deve ADICIONAR e
+    deixar o antigo vivo: o `make ready` da iteração roda com o router ainda antigo.
+  - `Program.objects.accepting_self_signup().filter(pk=...).first()` é o jeito de dar o
+    mesmo `code` a "não existe" e "não pode": um `get()` com `try/except` tenderia a
+    separar os casos e vazar quais ids existem.
+  - `AccessRequest.clean()` só cobra `home_institution` do EXTERNAL e o `program_mismatch`;
+    a obrigatoriedade de categoria/titulação do docente é só CheckConstraint. O schema
+    Ninja da próxima story precisa cobrar esses dois na borda, senão o 400 vira 500.
+  - `audit.record(..., program=program)` é como se audita evento cujo alvo não existe
+    (o desvio do e-mail repetido) — sem `target`, mas com a chave de tenant.
+---

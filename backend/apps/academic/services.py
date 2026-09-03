@@ -32,6 +32,8 @@ from apps.programs.models import (
 )
 
 from .models import (
+    AccessProfile,
+    AccessRequest,
     DisciplineOffering,
     EnrollmentAdjustmentItem,
     EnrollmentAdjustmentRequest,
@@ -210,6 +212,29 @@ LIMITE_DE_SIGNUP_POR_IP = 5
 JANELA_DE_SIGNUP_EM_SEGUNDOS = 3600
 
 
+def programa_que_aceita_autocadastro(*, program_id: int) -> Program:
+    """Resolve o tenant do autocadastro pelo flag do programa.
+
+    Substitui `programa_com_inscricao_aberta`: o autocadastro deixou de ser
+    privilégio de quem tem edital aberto e passou a ser um interruptor do
+    programa (`Program.accepts_self_signup`). O `program_id` agora é
+    obrigatório, mas continua não sendo escolha livre — ele só vale para o
+    que a lista pública (`GET /api/v1/programs/public`) já oferece; a trava
+    mudou de lugar, não sumiu.
+
+    Programa inexistente, inativo e com o flag desligado levantam o MESMO
+    `signup_closed`. Distinguir os três contaria a quem chuta id quais
+    programas existem nesta instalação.
+    """
+    program = Program.objects.accepting_self_signup().filter(pk=program_id).first()
+    if program is None:
+        raise DomainError(
+            "Este programa não está aceitando cadastros.",
+            code="signup_closed",
+        )
+    return program
+
+
 def programa_com_inscricao_aberta(
     *, at: datetime, program_id: int | None = None
 ) -> Program:
@@ -369,6 +394,105 @@ def signup_isolated_candidate(
         "academic.isolated.signup",
         request=request,
         target=person,
+        email=email,
+        created=True,
+    )
+    return True
+
+
+@transaction.atomic
+def signup_access_request(
+    *,
+    program: Program,
+    profile: str,
+    full_name: str,
+    email: str,
+    password: str,
+    phone_number: str = "",
+    teacher_category: str = "",
+    academic_degree: str = "",
+    home_institution: str = "",
+    lattes_url: str = "",
+    request: HttpRequest | None = None,
+) -> bool:
+    """Cria a conta de quem se cadastra sozinho — tudo ou nada.
+
+    Devolve True quando a pessoa nasceu agora e False quando já existia. O
+    router ignora o valor de propósito: o corpo da resposta varia por
+    PERFIL, nunca por existência de conta, senão a rota conta a quem
+    perguntar quais e-mails já têm cadastro neste programa.
+
+    O candidato sai daqui pronto para entrar (Group "Candidato" e nenhuma
+    linha de `AccessRequest`); docente e discente saem com a solicitação
+    pendente e o Group marcador "Cadastro pendente", que não concede nada —
+    quem faz o papel de porteiro é o deferimento da secretaria.
+    """
+    # A força da senha é cobrada antes da consulta: se dependesse do
+    # desvio, a mensagem de senha fraca denunciaria o e-mail inédito.
+    validar_senha(password, User(username=email, first_name=full_name, email=email))
+
+    email = email.strip().lower()
+    if Person.objects.filter(program=program, primary_email=email).exists():
+        audit.record(
+            "academic.access.signup",
+            request=request,
+            program=program,
+            profile=profile,
+            email=email,
+            created=False,
+        )
+        return False
+
+    person = create_person_with_user(
+        program=program,
+        full_name=full_name,
+        email=email,
+        phone_number=phone_number,
+        request=request,
+    )
+    user = person.user
+    # create_person_with_user sempre garante a conta; o None é só o caso de
+    # registro histórico, que não passa por aqui.
+    assert user is not None
+
+    # Conta que já existe com senha utilizável é de alguém que se cadastrou
+    # em outro programa: definir a senha aqui seria tomar a conta dessa
+    # pessoa. Ela entra neste programa com a senha que já tem.
+    if not user.has_usable_password():
+        user.set_initial_password(password)
+        user.save(update_fields=["password"])
+
+    if profile == AccessProfile.CANDIDATE:
+        # Candidato não gera solicitação: o edital já é a fila dele.
+        assign_role_group(user, group_name="Candidato", request=request)
+    else:
+        solicitacao = AccessRequest(
+            program=program,
+            person=person,
+            profile=profile,
+            # Campo de docente é declaração; o não-docente os mantém vazios
+            # porque a CheckConstraint do model os proíbe.
+            teacher_category=(
+                teacher_category if profile == AccessProfile.TEACHER else ""
+            ),
+            academic_degree=(
+                academic_degree if profile == AccessProfile.TEACHER else ""
+            ),
+            home_institution=(
+                home_institution if profile == AccessProfile.TEACHER else ""
+            ),
+            lattes_url=lattes_url if profile == AccessProfile.TEACHER else "",
+        )
+        # A regra mora no model; aqui só persistimos e auditamos.
+        solicitacao.clean()
+        solicitacao.save()
+        assign_role_group(user, group_name="Cadastro pendente", request=request)
+
+    audit.record(
+        "academic.access.signup",
+        request=request,
+        target=person,
+        profile=profile,
         email=email,
         created=True,
     )
