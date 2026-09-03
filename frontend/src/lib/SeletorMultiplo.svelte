@@ -33,7 +33,10 @@
 
 	function normalizar(texto: string): string {
 		// Sem acento e em minúsculas, dos dois lados: "jose" acha "José".
-		return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+		return texto
+			.normalize('NFD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.toLowerCase();
 	}
 
 	const escolhidos = $derived(

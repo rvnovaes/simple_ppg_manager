@@ -25,7 +25,7 @@
 </script>
 
 <svelte:head>
-	<title>Entrar · PPGD Manager</title>
+	<title>Entrar · PPGM</title>
 </svelte:head>
 
 <div class="grid min-h-screen lg:grid-cols-[minmax(0,42%)_1fr]">
@@ -33,18 +33,42 @@
 	<aside
 		class="bg-tinta text-papel flex flex-col justify-between gap-10 px-8 py-10 lg:px-14 lg:py-14"
 	>
-		<p class="etiqueta text-papel/55">PPGD · Sistema de gestão</p>
+		<p class="etiqueta text-papel/55">Sistema de gestão</p>
 
 		<div class="max-w-md">
-			<h1 class="text-3xl leading-[1.1] font-semibold tracking-tight lg:text-[2.75rem]">
-				Programa de Pós-Graduação em Direito
-			</h1>
-			<p class="text-papel/70 mt-5 text-[0.9375rem] leading-relaxed">
-				Cadastro de pessoas, papéis de acesso e trilha de auditoria do programa.
-			</p>
+			<h1 class="text-3xl leading-[1.1] font-semibold tracking-tight lg:text-[2.75rem]">PPGM</h1>
+			<p class="text-papel/70 mt-4 text-[0.9375rem] leading-relaxed">Pós Graduação Manager</p>
 		</div>
 
-		<p class="etiqueta text-papel/45">Acesso restrito a servidores autorizados</p>
+		<footer class="space-y-5">
+			<p class="etiqueta text-papel/45">Secretaria, docentes, discentes e candidatos</p>
+
+			<div class="border-papel/15 flex flex-wrap items-center gap-x-7 gap-y-4 border-t pt-5">
+				<p class="text-papel/45 text-xs">
+					Desenvolvido por
+					<a
+						class="text-papel/70 hover:text-papel underline underline-offset-2"
+						href="https://labp2.direito.ufmg.br/"
+						target="_blank"
+						rel="noreferrer"
+					>
+						LabP²
+					</a>
+				</p>
+
+				<!-- Marcas do laboratório e da instituição: discretas de propósito.
+				     A opacidade baixa as põe no mesmo peso da etiqueta ao lado. -->
+				<div class="flex items-center gap-6 opacity-40">
+					<img class="h-7 w-auto" src="/logos/labp2-branco.png" alt="LabP²" />
+					<img class="h-5 w-auto" src="/logos/ufmg-branco.png" alt="UFMG" />
+					<img
+						class="h-10 w-auto"
+						src="/logos/fdufmg-branco.png"
+						alt="Faculdade de Direito da UFMG"
+					/>
+				</div>
+			</div>
+		</footer>
 	</aside>
 
 	<main class="flex items-center justify-center px-6 py-12 lg:px-14">
