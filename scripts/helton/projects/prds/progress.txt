@@ -15,6 +15,10 @@ Started: qui. 03 set 2026 08:00:07 -03
 - Path no client tipado vai SEM o prefixo `/api/v1` (o `scripts/normalizar-openapi.mjs`
   o remove antes do `openapi-typescript`).
 - `save(update_fields=[...])` precisa citar `updated_at`: o `auto_now` só é gravado para os campos listados.
+- Atributo abreviado do Svelte em template (`<option {value}>`) reprova no `eslint` do
+  projeto com `'value' is not defined  no-undef`; escreva `value={valor}` por extenso.
+- Rótulo de enum do domínio mora em `frontend/src/lib/<assunto>.ts` (`isolada.ts`,
+  `acesso.ts`), com um `ROTULO_DO_*` e a `ORDEM_*` correspondente — nunca inline na tela.
 - Service novo se exercita no canteiro sem sujar dado: `manage.py shell -c` com `transaction.atomic()` e um `raise` no fim para dar rollback.
 
 ## 2026-09-03 - f1-programa-flag-autocadastro
@@ -529,4 +533,50 @@ Started: qui. 03 set 2026 08:00:07 -03
     do pytest.
   - Testar 403 de decisão exige `refresh_from_db()` depois: o código de status sozinho não
     prova que nada foi escrito.
+---
+
+## 2026-09-03 - f6-tela-cadastro
+- Novo `frontend/src/lib/acesso.ts`, espelho de `lib/isolada.ts`: `ROTULO_DO_PERFIL`,
+  `ROTULO_DA_CATEGORIA`, `ROTULO_DA_TITULACAO` e `ROTULO_DA_SITUACAO` (com a `ORDEM_*` de
+  cada um, porque `Record` não define ordem de exibição) mais
+  `exigeInstituicaoDeOrigem(categoria)`, que é a regra do `campos_do_perfil` do
+  `AccessSignupIn` escrita uma vez só. Tipos reexportados do `schema.d.ts`
+  (`Perfil`, `CategoriaDocente`, `Titulacao`, `SituacaoDoCadastro`) para as três telas.
+- `ROTULO_DA_SITUACAO` usa as palavras da secretaria — "Aguardando confirmação",
+  "Confirmado", "Não confirmado" —, não "aprovado/recusado". A f6-tela-solicitacoes
+  consome daqui.
+- `(auth)/cadastro/+page.svelte`: as três tabelas inline que a f6-gen-api deixou saíram
+  para o `acesso.ts`; o resto da tela (split screen, `garantirCsrf()`, `mensagemDeErro`,
+  `senhasDiferem`, caixa de sucesso com `data.detail` + link para `/login`, select de
+  programa com formulário desabilitado quando a lista vem vazia, bloco `{#if ehDocente}`)
+  ficou como estava — reescrita NO LUGAR, sem rota nova, sem mexer no `.svelte-kit`.
+- `(auth)/login/+page.svelte`: "Vai cursar disciplina isolada e ainda não tem conta?" →
+  "Ainda não tem conta no programa?". O cadastro deixou de ser só da isolada na f3.
+- `make ready` verde: 1997 passed, 10 skipped em 192s.
+- Conferido no browser (http://localhost:8330/cadastro, front rebuildado): select lista
+  PPGA e PPGD; perfis Candidato/Discente/Docente com a nota do colaborador externo;
+  Docente abre Categoria (Permanente/Colaborador/Visitante/Colaborador externo) e
+  Titulação (Doutorado/Pós-doutorado/Livre-docência); "Instituição de origem (opcional)"
+  vira "Instituição de origem" com `required` ao escolher Colaborador externo. Docente
+  externo (`docente.rotulos.f6@example.com`) → "deve ser confirmado pela secretaria";
+  candidata (`candidata.rotulos.f6@example.com`) → "Use seu e-mail e sua senha para
+  entrar". Link do login conferido na tela.
+- Arquivos: frontend/src/lib/acesso.ts, frontend/src/routes/(auth)/cadastro/+page.svelte,
+  frontend/src/routes/(auth)/login/+page.svelte
+- **Learnings for future iterations:**
+  - **`<option {value}>` (atributo abreviado do Svelte) quebra o `eslint` do projeto com
+    `'value' is not defined  no-undef`**, mesmo com a variável vindo do `{#each ... as
+    valor}` — o parser não liga o shorthand ao escopo do bloco. Escreva
+    `<option value={valor}>` por extenso. O `svelte-check` e o `prettier` passam; só o
+    `eslint` reprova, então o erro só aparece no fim do `make lint`.
+  - `rtk proxy "make ready"` para ver a saída de verdade: com o filtro, o resumo do pytest
+    e a linha "make ready verde" somem no truncamento, e o log em
+    `~/.local/share/rtk/tee/` não é regravado a cada execução — dá para ler o log da
+    rodada ANTERIOR achando que é o da atual.
+  - Formulário Svelte 5 se exercita pelo browser-use com
+    `el.dispatchEvent(new Event('input'/'change', {bubbles:true}))` depois de atribuir
+    `el.value` — só atribuir não aciona a runa, e o `requestSubmit()` do form manda o
+    estado velho. Para `<select>`, o evento que importa é o `change`.
+  - Deixei no banco do canteiro mais um docente pendente (`docente.rotulos.f6@example.com`,
+    PPGD) — a fila da f6-tela-solicitacoes tem três pendentes para exibir.
 ---

@@ -1,6 +1,18 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { api, garantirCsrf, mensagemDeErro } from '$lib/api/client';
+	import {
+		ORDEM_DAS_CATEGORIAS,
+		ORDEM_DAS_TITULACOES,
+		ORDEM_DOS_PERFIS,
+		ROTULO_DA_CATEGORIA,
+		ROTULO_DA_TITULACAO,
+		ROTULO_DO_PERFIL,
+		exigeInstituicaoDeOrigem,
+		type CategoriaDocente,
+		type Perfil,
+		type Titulacao
+	} from '$lib/acesso';
 	import type { components } from '$lib/api/schema';
 
 	// Única tela pública de escrita do sistema: quem pede acesso ao programa
@@ -8,28 +20,6 @@
 	// justamente por não passar pela guarda de sessão.
 
 	type Programa = components['schemas']['PublicProgramOut'];
-	type Perfil = components['schemas']['AccessProfile'];
-	type Categoria = components['schemas']['Category'];
-	type Titulacao = components['schemas']['AcademicDegree'];
-
-	const PERFIS: { valor: Perfil; label: string }[] = [
-		{ valor: 'candidate', label: 'Candidato' },
-		{ valor: 'student', label: 'Discente' },
-		{ valor: 'teacher', label: 'Docente' }
-	];
-
-	const CATEGORIAS: { valor: Categoria; label: string }[] = [
-		{ valor: 'permanent', label: 'Permanente' },
-		{ valor: 'collaborator', label: 'Colaborador' },
-		{ valor: 'visiting', label: 'Visitante' },
-		{ valor: 'external', label: 'Colaborador externo' }
-	];
-
-	const TITULACOES: { valor: Titulacao; label: string }[] = [
-		{ valor: 'doctorate', label: 'Doutorado' },
-		{ valor: 'postdoctorate', label: 'Pós-doutorado' },
-		{ valor: 'habilitation', label: 'Livre-docência' }
-	];
 
 	let programas = $state<Programa[]>([]);
 	let carregando = $state(true);
@@ -41,7 +31,7 @@
 	let telefone = $state('');
 	let senha = $state('');
 	let confirmacao = $state('');
-	let categoria = $state<Categoria | ''>('');
+	let categoria = $state<CategoriaDocente | ''>('');
 	let titulacao = $state<Titulacao | ''>('');
 	let instituicao = $state('');
 	let lattes = $state('');
@@ -53,9 +43,9 @@
 	// do backend, que é a validação que vale (Seção 8).
 	const senhasDiferem = $derived(confirmacao !== '' && senha !== confirmacao);
 	const ehDocente = $derived(perfil === 'teacher');
-	// Instituição de origem só é exigida do colaborador externo — é a mesma
-	// regra do `campos_do_perfil` de `AccessSignupIn`.
-	const exigeInstituicao = $derived(ehDocente && categoria === 'external');
+	// Instituição de origem só é exigida do colaborador externo; quem sabe
+	// disso é `lib/acesso.ts`, junto com os rótulos.
+	const exigeInstituicao = $derived(ehDocente && exigeInstituicaoDeOrigem(categoria));
 	const semPrograma = $derived(!carregando && programas.length === 0);
 
 	async function carregar() {
@@ -178,8 +168,8 @@
 					<div>
 						<label class="etiqueta mb-2 block" for="cadastro-perfil">Você é</label>
 						<select id="cadastro-perfil" class="campo" bind:value={perfil} required>
-							{#each PERFIS as opcao (opcao.valor)}
-								<option value={opcao.valor}>{opcao.label}</option>
+							{#each ORDEM_DOS_PERFIS as valor (valor)}
+								<option value={valor}>{ROTULO_DO_PERFIL[valor]}</option>
 							{/each}
 						</select>
 						<p class="text-cinza mt-2 text-sm">
@@ -192,8 +182,8 @@
 							<label class="etiqueta mb-2 block" for="cadastro-categoria">Categoria</label>
 							<select id="cadastro-categoria" class="campo" bind:value={categoria} required>
 								<option value="" disabled>Selecione…</option>
-								{#each CATEGORIAS as opcao (opcao.valor)}
-									<option value={opcao.valor}>{opcao.label}</option>
+								{#each ORDEM_DAS_CATEGORIAS as valor (valor)}
+									<option value={valor}>{ROTULO_DA_CATEGORIA[valor]}</option>
 								{/each}
 							</select>
 						</div>
@@ -202,8 +192,8 @@
 							<label class="etiqueta mb-2 block" for="cadastro-titulacao">Titulação</label>
 							<select id="cadastro-titulacao" class="campo" bind:value={titulacao} required>
 								<option value="" disabled>Selecione…</option>
-								{#each TITULACOES as opcao (opcao.valor)}
-									<option value={opcao.valor}>{opcao.label}</option>
+								{#each ORDEM_DAS_TITULACOES as valor (valor)}
+									<option value={valor}>{ROTULO_DA_TITULACAO[valor]}</option>
 								{/each}
 							</select>
 						</div>
