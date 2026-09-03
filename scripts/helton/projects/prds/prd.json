@@ -45,7 +45,7 @@
         "f1-programa-flag-autocadastro"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

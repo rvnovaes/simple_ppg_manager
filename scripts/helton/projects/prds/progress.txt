@@ -30,3 +30,26 @@ Started: qui. 03 set 2026 08:00:07 -03
   - `docker compose ps` mostra 5 serviços nesta stack (inclusive `mailpit`), apesar de o
     comentário do `.env` afirmar que não há captura de e-mail no projeto.
 ---
+
+## 2026-09-03 - f1-programs-public-endpoint
+- `GET /api/v1/programs/public` (`auth=None`) devolve `PublicProgramOut` (id, name,
+  acronym) para `Program.objects.accepting_self_signup()`, com
+  `enforce_rate_limit(scope="programs-public-read", limit=60, window_seconds=3600)`.
+  Constantes no topo do router, ao lado do `Router(...)`.
+- `ProgramOut` ganhou `accepts_self_signup` (quem tem `programs.view_program` enxerga o
+  interruptor); `GET /programs/` continua intacta e exigindo a permissão.
+- Novo `apps/programs/tests/test_programs_api.py`: responde sem sessão, omite programa
+  com flag desligado e programa inativo, corpo sem `is_active`/`accepts_self_signup`,
+  429 no 61º acesso, rota interna ainda barra anônimo e mostra o flag.
+- Verificado no canteiro: `curl http://localhost:8330/api/v1/programs/public` → 200 com
+  só o PPGD.
+- Arquivos: backend/apps/programs/schemas.py, router.py, tests/test_programs_api.py
+- **Learnings for future iterations:**
+  - `pytest` chamado pela ferramenta Bash sai filtrado ("No tests collected") por causa do
+    proxy rtk; use `rtk proxy "uv run pytest ..."` para ver a saída de verdade.
+  - Rota pública do projeto não leva barra final (`/isolated/signup`, `/public`) — as
+    internas levam. Repita o padrão em vez de uniformizar.
+  - O rate limit é testável direto: a fixture autouse `cache_limpo` (backend/conftest.py)
+    zera o contador entre testes, então basta repetir a chamada `limit` vezes.
+  - `client` do pytest-django sem login serve de cliente anônimo para rota `auth=None`.
+---

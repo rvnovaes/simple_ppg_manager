@@ -19,6 +19,7 @@ from ninja.pagination import paginate
 from apps.academic.models import Teacher
 from apps.core import audit
 from apps.core.permissions import require_perm
+from apps.core.ratelimit import enforce_rate_limit
 from apps.core.tenancy import current_program
 
 from .models import AcademicTerm, CollectiveProject, Discipline, Program, ResearchLine
@@ -33,6 +34,7 @@ from .schemas import (
     DisciplineOut,
     DisciplinePatch,
     ProgramOut,
+    PublicProgramOut,
     ResearchLineIn,
     ResearchLineOut,
     ResearchLinePatch,
@@ -40,11 +42,36 @@ from .schemas import (
 
 router = Router(tags=["programs"])
 
+# Leitura pública: o limite é generoso porque a tela de cadastro chama a
+# rota uma vez ao abrir, e um laboratório inteiro pode sair do mesmo IP.
+LIMITE_DE_LEITURA_PUBLICA_POR_IP = 60
+JANELA_DE_LEITURA_PUBLICA_EM_SEGUNDOS = 3600
+
 
 @router.get("/", response=list[ProgramOut])
 def list_programs(request: HttpRequest):
     require_perm(request, "programs.view_program")
     return Program.objects.active()
+
+
+@router.get("/public", auth=None, response=list[PublicProgramOut])
+def list_public_programs(request: HttpRequest):
+    # público: a tela de cadastro precisa oferecer os programas antes de
+    # existir sessão — quem vai se cadastrar não tem conta para autenticar.
+    # A rota é só leitura e devolve apenas o que já é público (nome e
+    # sigla) dos programas que o próprio programa abriu ao autocadastro;
+    # GET /programs/ continua exigindo programs.view_program e devolvendo
+    # o estado interno.
+    #
+    # Sem sessão não há de quem cobrar abuso, então a trava é o limite por
+    # IP: impede varrer a rota como se fosse um índice de tenants.
+    enforce_rate_limit(
+        request,
+        scope="programs-public-read",
+        limit=LIMITE_DE_LEITURA_PUBLICA_POR_IP,
+        window_seconds=JANELA_DE_LEITURA_PUBLICA_EM_SEGUNDOS,
+    )
+    return Program.objects.accepting_self_signup()
 
 
 @router.get("/research-lines/", response=list[ResearchLineOut])
