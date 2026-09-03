@@ -79,3 +79,36 @@ Started: qui. 03 set 2026 08:00:07 -03
   - Story que muda `defaults` de `get_or_create` para um campo novo precisa SEMPRE do
     religamento explícito: o banco do canteiro e o de produção já têm a linha criada.
 ---
+
+## 2026-09-03 - f2-accessrequest-model
+- `AccessRequest` no fim de `apps/academic/models.py`, com os enums `AccessProfile`
+  (TEACHER/STUDENT/CANDIDATE) e `AccessRequestStatus` (PENDING/APPROVED/REJECTED) FORA do
+  model e com nome único, mais os aliases `AccessRequest.Profile`/`.Status`.
+- Campos conforme o plano; sem `decided_by` (quem decidiu é o `actor` do AuditLog).
+  `program` é FK direta (ADR-007 dec. 5) e `person` é FK, não OneToOne.
+- Quatro constraints: `unique_solicitacao_pendente_por_pessoa` (UniqueConstraint parcial
+  com `condition=Q(status='pending')`), `access_teacher_requires_category_and_degree`,
+  `access_external_requires_home_institution`, `access_non_teacher_has_no_teacher_fields`.
+- Métodos sem salvar: `clean()` (`home_institution_required`, `program_mismatch`),
+  `ensure_decidable()` (`already_decided`), `approve()`, `reject(*, note)`
+  (`rejection_requires_note`), `campos_do_professor(accredited_since)`.
+  `AccessRequestQuerySet.for_program()/.pending()`.
+- Migration `academic/0013_accessrequest.py` lida antes do commit: só o CreateModel, com
+  as quatro constraints nas `options`; dependências corretas (academic 0012, people 0003,
+  programs 0007).
+- Verificado no banco do canteiro (`make migrate` + shell com `transaction.atomic` e
+  rollback): os quatro constraints levantam `IntegrityError` nos casos previstos.
+- Arquivos: backend/apps/academic/models.py,
+  backend/apps/academic/migrations/0013_accessrequest.py
+- **Learnings for future iterations:**
+  - `make migrate` do HOST funciona neste canteiro (usa o `DB_PORT` do `.env`) — ao
+    contrário do `make seed`, que precisa do `docker compose exec`.
+  - Conferir CheckConstraint de verdade é barato: `manage.py shell` com
+    `with transaction.atomic():` por caso e captura de `IntegrityError` — cada bloco faz
+    rollback sozinho e o banco do canteiro não fica sujo.
+  - `campos_do_professor()` devolve exatamente o dict `campos` de
+    `create_teacher(program=..., person=..., campos=...)` (services.py:59) — a chamada da
+    aprovação (f5) não deve remontá-lo.
+  - A migration NÃO cria os Groups: isso é a `0014_papeis_do_autocadastro`, story
+    `f2-migration-papeis-autocadastro`, no molde de `0011_papeis_da_isolada.py`.
+---
