@@ -2,9 +2,9 @@
 
 - **Data**: 2026-08-05
 - **Status**: aceito
-- **Origem**: `docs/notes/2026-08-05-disciplinas-isoladas-grill.md`
+- **Origem**: `docs/archive/notes/2026-08-05-disciplinas-isoladas-grill.md`
 - **Substitui**: a lista única de situação do aluno capturada em
-  `docs/notes/2026-08-05-cadastros-professores-alunos-grill.md` (Q8) e
+  `docs/archive/notes/2026-08-05-cadastros-professores-alunos-grill.md` (Q8) e
   especificada na primeira versão de `tasks/prd-cadastros-basicos.md`
 
 ## Contexto
