@@ -18,8 +18,7 @@ scripts/helton/projects/
 
 Sem subpasta de domínio em lugar nenhum: tema costuma cruzar domínios, e a
 subpasta só cria a dúvida de onde procurar. Para o que **não** vira plano —
-conferências, checklists, transcrições avulsas — use `notes/` na raiz do
-repositório.
+conferências, checklists, transcrições avulsas — use `docs/archive/notes/`.
 
 **O nome do arquivo do plano é a chave primária de tudo.** Ele precisa ser
 kebab-case (minúsculas, dígitos e hífen simples), porque vira, sem tradução:
@@ -118,7 +117,8 @@ precisa ser reescrito (`needs_reslicing`). Guarda também o sha256 de cada plano
 
 - Specs — inclusive a saída do `/grill-me` → `scripts/helton/projects/specs/`.
 - O que não vira plano (conferências, checklists, transcrições avulsas) →
-  `notes/`, onde também ficam as capturas de grill anteriores a 09/08/2026.
+  `docs/archive/notes/`, onde já estão as capturas de grill anteriores a
+  09/08/2026 (origem do ADR-007).
 - PRDs de execução → `scripts/helton/projects/prds/prd.json` (o corrente) e
   `scripts/helton/projects/prds/implemented/` (os encerrados).
 
