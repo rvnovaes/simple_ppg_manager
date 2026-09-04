@@ -163,7 +163,7 @@
   <div class="bloco-head"><span class="bloco-num">1</span><h2>O contrato: onde o backend termina</h2><span class="tempo">15 min</span></div>
   <p>Antes de entrar no Svelte, fechamos a conta da aula 2. A impressão que fica de lá está certa: <strong>o Django Ninja é mesmo uma camada fina</strong> sobre o Django puro. Tudo de substância — model, QuerySet, auth, transação — é Django; o Ninja só traduz HTTP ↔ Python. O que resta dele para conhecer cabe num arquivo, o <code>backend/api.py</code>:</p>
   <pre><code>api = NinjaAPI(
-    title="PPGD Manager API", version="1.0.0",
+    title="PPGM API", version="1.0.0",
     auth=django_auth,   <span class="c"># sessão do Django é o PADRÃO de toda rota (ADR-003);</span>
 )                       <span class="c"># rota pública declara auth=None e justifica com "# público"</span>
 
@@ -432,6 +432,6 @@ $effect(() =&gt; { <span class="k">if</span> (recorte) carregar(recorte.bond); }
 </section>
 
 <footer>
-  PPGD Manager · material de integração · aula 3 · gerada a partir de api.py, client.ts, sessao.svelte.ts, +layout.svelte e pessoas/[vinculo]/+page.svelte em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
+  PPGM · material de integração · aula 3 · gerada a partir de api.py, client.ts, sessao.svelte.ts, +layout.svelte e pessoas/[vinculo]/+page.svelte em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
 </footer>
 </main>

@@ -161,7 +161,7 @@
 
 <section class="bloco" id="b1">
   <div class="bloco-head"><span class="bloco-num">1</span><h2>O que estamos construindo</h2><span class="tempo">10 min</span></div>
-  <p>O PPGD Manager gerencia um programa de pós-graduação: pessoas, usuários, papéis, permissões e auditoria formam o primeiro módulo; a vida acadêmica (matrículas, disciplinas isoladas, editais) já cresce em cima dessa fundação. Foi criado para uma instituição, mas nasceu <strong>multi-tenant</strong>: quase toda tabela de negócio carrega uma chave para o <em>programa</em>, porque o sistema será usado por outros cursos.</p>
+  <p>O PPGM gerencia um programa de pós-graduação: pessoas, usuários, papéis, permissões e auditoria formam o primeiro módulo; a vida acadêmica (matrículas, disciplinas isoladas, editais) já cresce em cima dessa fundação. Foi criado para uma instituição, mas nasceu <strong>multi-tenant</strong>: quase toda tabela de negócio carrega uma chave para o <em>programa</em>, porque o sistema será usado por outros cursos.</p>
   <p>Duas consequências práticas dessa decisão, que você vai encontrar no código desde o primeiro dia:</p>
   <ul>
     <li>Toda consulta de dado de negócio é escopada por <code>current_program(request)</code> — nunca por um <code>program_id</code> que o chamador escolhe. Um filtro opcional vazaria o tenant inteiro para quem omitir o parâmetro.</li>
@@ -374,6 +374,6 @@ make migrate && make seed         <span class="c"># migra e carrega dados de dem
 </section>
 
 <footer>
-  PPGD Manager · material de integração · aula 1 · gerado a partir de CLAUDE.md, docker-compose.yml, nginx.conf, Makefile e manual_dev.md em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
+  PPGM · material de integração · aula 1 · gerado a partir de CLAUDE.md, docker-compose.yml, nginx.conf, Makefile e manual_dev.md em 11/08/2026 — em caso de divergência, os arquivos do repositório vencem.
 </footer>
 </main>
