@@ -36,9 +36,9 @@ variables:
 ready:
   stage: verificar
   # A imagem é a do Node (glibc — o rollup e o @tailwindcss/oxide do
-  # package-lock são binários linux-x64-gnu, e em musl não carregam; ver
-  # manual_dev.md, Seção 3). O Python 3.14 do `backend/.python-version` quem
-  # traz é o próprio uv, que o baixa para UV_PYTHON_INSTALL_DIR e o guarda no
+  # package-lock são binários linux-x64-gnu, e em musl não carregam; ver a
+  # seção 7 do Manual do Desenvolvedor no README.md). O Python 3.14 do
+  # `backend/.python-version` quem traz é o próprio uv, que o baixa para UV_PYTHON_INSTALL_DIR e o guarda no
   # cache. Assim não há imagem própria para manter.
   image: node:25-bookworm
   services:
