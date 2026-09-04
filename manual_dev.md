@@ -1,7 +1,8 @@
 # Manual do dev — como esta máquina está montada
 
-Síntese do que foi construído em **11/08/2026**, para retomar o trabalho em
-outro computador sem reconstruir o raciocínio.
+Síntese do que foi construído até **03/09/2026**, para retomar o trabalho em
+outro computador sem reconstruir o raciocínio. Começou em 11/08 e foi
+revisado a cada empreitada da esteira.
 
 Este arquivo é um mapa, não uma fonte de verdade. Quando divergir de
 [`CLAUDE.md`](CLAUDE.md), do [`README.md`](README.md) ou de
@@ -14,7 +15,7 @@ estão e por que estão assim.
 
 | Onde | O que é |
 | --- | --- |
-| `github.com/rvnovaes/simple_ppg_manager` | **este projeto** — Django + SvelteKit + Postgres + Nginx |
+| `dso.direito.ufmg.br/ati/ppgd-manager` (GitLab da faculdade, `origin`) | **este projeto** — Django + SvelteKit + Postgres + Nginx. O `github.com/rvnovaes/simple_ppg_manager` ficou como `old-origin`, só histórico |
 | `github.com/rvnovaes/helton` (clonado em `/opt/helton`) | **a esteira** — o kit que instala o loop autônomo em qualquer projeto |
 
 A esteira é genérica de propósito. O que ela sabe deste projeto está todo em
@@ -40,12 +41,12 @@ projeto externo real.
 ## 2. Subir para trabalhar
 
 ```bash
-git clone https://github.com/rvnovaes/simple_ppg_manager.git
-cd simple_ppg_manager
+git clone https://dso.direito.ufmg.br/ati/ppgd-manager.git
+cd ppgd-manager
 cp .env.example .env          # ajuste se precisar
 cd frontend && npm ci && cd ..
 cd backend  && uv sync --locked && cd ..
-make up                       # sobe os QUATRO serviços
+make up                       # sobe os CINCO serviços
 ```
 
 Abra **http://localhost:8080**. Só isso — o antigo segundo terminal com
@@ -56,6 +57,7 @@ Abra **http://localhost:8080**. Só isso — o antigo segundo terminal com
 | `db` | Postgres 17.5 | `DB_PORT`, 5433 |
 | `backend` | Django, `runserver` | nenhuma (só pelo nginx) |
 | `frontend` | Vite dev server (`node:25-slim`) | nenhuma (rede interna) |
+| `mailpit` | captura todo e-mail do canteiro (ver seção 5) | nenhuma (`docker compose port mailpit 8025` para abrir a UI) |
 | `nginx` | origem única | `NGINX_PORT`, 8080 |
 
 **Nunca abra a porta do Vite direto.** Login e CSRF quebram — é o ADR-004. Hoje
@@ -127,7 +129,7 @@ sessão NOVA em plan mode           o plano              → scripts/helton/proj
   ── de volta ──
 ./scripts/helton/obra/desmontar-canteiro.sh <nome>     preserva a branch helton/<nome>
 git merge --no-ff helton/<nome>
-./scripts/helton/obra/arquivar-plano.sh <nome>
+./scripts/helton/obra/arquivar-plano.sh <nome>     move plano, spec e prd para .../implemented/
 ```
 
 O passo a passo com as armadilhas está em [`scripts/helton/projects/README.md`](scripts/helton/projects/README.md).
@@ -156,22 +158,34 @@ um loop com aquele prompt executa exatamente as stories que alguém barrou.
   provisionamento. As migrations vão no `SEED_CMD`, antes do `seed_demo`; os
   dois são idempotentes.
 - Portas: `DB` 5433 e `WEB` 8080. `APP` e `MAIL` existem só porque as quatro
-  variáveis são obrigatórias no script — nada escuta nelas, e o rótulo avisa.
+  variáveis são obrigatórias no script — nada escuta nelas no host, e o
+  rótulo avisa. O Mailpit existe, mas só na rede interna da stack (8025 do
+  container); a `PORT_MAIL` do relatório continua sem publicação.
 - `instalar_dependencias()` roda `npm ci` e `uv sync --locked` — nunca `npm
   install`/`uv sync`, que reescrevem o lockfile e fazem o canteiro nascer com a
   árvore suja (o primeiro commit do loop usa `git add -A` e varreria o ruído).
 
-### Human gates
+### Human gates e `review_required`
 
-As sete categorias que o loop **não** decide sozinho estão no `CLAUDE.md`, com
-os caminhos concretos deste repositório. A regra é reversibilidade: *se der
-errado e só for notado uma semana depois, dá para voltar usando apenas o git?*
-Não → gate. Na dúvida, gate.
+O `CLAUDE.md` separa **dois** campos do `prd.json`, e a diferença é o que
+decide se a esteira anda:
 
-Aqui elas são: decisão sobre a vida acadêmica de alguém (fechar ciclo, deferir
-matrícula, anexos em `media/`), migrations, regra de classificação e vaga,
-permissões/tenant/autenticação, contrato de API publicado, infra e segredos, e
-enfraquecer a maquinaria de verificação.
+- **`human_gate: true`** — o loop **não executa**. Só para efeito que **escapa
+  do canteiro**: (1) efeito irreversível sobre terceiro — hoje o projeto não
+  tem nenhum, e-mail vai para o Mailpit; (2) segredos e o que roda fora daqui
+  (`.env*` reais, `prod.py`, nginx de produção, `.github/workflows/`);
+  (3) enfraquecer a maquinaria de verificação (apagar asserção, afrouxar
+  `ruff`/`mypy`/`svelte-check`, mexer em `.claude/` ou em `scripts/helton/`).
+- **`review_required: true`** — o loop **executa**, e a story aparece no índice
+  do `desmontar-canteiro.sh` para o humano conferir antes do merge. É aqui que
+  ficam migrations, decisão sobre a vida acadêmica, regra de classificação e
+  vaga, permissões/tenant/autenticação, contrato de API publicado e os
+  arquivos de infra de dev.
+
+O teste é: *o estrago sobrevive a `desmontar-canteiro.sh --volumes` e a um
+`git revert`?* Não sobrevive → `review_required`. **Na dúvida, é aí** — a
+regra antiga de "na dúvida, gate" foi aposentada porque travava a
+empreitada cedo e levava as stories dependentes junto.
 
 ---
 
@@ -293,7 +307,113 @@ e a caixa fica vazia em silêncio.
 
 ---
 
-## 6. Armadilhas já pagas
+## 6. O edital de bolsas
+
+O app `backend/apps/scholarships/` (24 stories em 01/09, ADR-010) é a
+distribuição anual de bolsas por barema. É irmão do processo seletivo, mas
+**não** reaproveita a comissão dele: a **Comissão de Bolsas** é Group próprio
+(`migrations/0008_papeis_da_bolsa.py`), com composição por edição em
+`CommitteeMember`. Juntar as duas daria a quem julga recurso de bolsa o poder
+de realocar vaga do processo seletivo.
+
+### Quem faz o quê
+
+| Papel | O que pode |
+| --- | --- |
+| **Secretaria** | monta a `ScholarshipEdition`, o barema (`BaremeItem`) e a comissão; publica (`publish_scholarshipedition`); nos inscritos alheios escreve só dois campos, com permissão própria cada um: `set_fump_level` e `override_band`. Não pontua e não julga |
+| **Discente** | inscreve-se (`ScholarshipApplication`), lança os itens do barema (`BaremeEntry`) com comprovante, interpõe recurso (`ScholarshipAppeal`) |
+| **Comissão de Bolsas** | avalia lançamento a lançamento (`review_baremeentry`, separada de `change_` para não confundir a nota do candidato com a da comissão), baixa comprovante, julga recurso |
+| **Coordenação** | leitura de todo o app |
+
+### O caminho
+
+A edição anda **só para frente** — `ScholarshipEditionStatus`: `draft` →
+`submissions_open` → `under_review` → `preliminary_result` →
+`appeals_under_review` → `final_result`. Correção de rumo é quebra-vidro no
+Admin, não transição. Cada passo é um `POST /scholarships/editions/{id}/...`
+(`open-submissions`, `start-review`, `publish-preliminary`, `open-appeals`,
+`publish-final`) que chama o método do model de mesmo nome.
+
+1. **Edição e barema** — secretaria em `/bolsas/edital`: cria a edição do ano,
+   monta o barema item a item ou **clona** o do ano anterior
+   (`clone_bareme`), e compõe a comissão. Publicar congela o ano.
+2. **Inscrição** — o discente em `/bolsas/inscricao`: a inscrição copia o nível
+   do aluno (`ScholarshipLevel`, mestrado/doutorado) e o congela; ele lança
+   cada item do barema com o comprovante. Upload é `POST .../entries/{id}/proof`
+   (o `PATCH` fica para os demais campos — ver armadilha no `CLAUDE.md`).
+3. **Análise** — a comissão em `/bolsas/analise`: fila de inscrições, revisão
+   item a item (`ItemReview`) com observação. A secretaria lança o nível FUMP
+   e, se preciso, força a faixa (`override_band`).
+4. **Classificação** — nota final e **faixa de prioridade** (`PriorityBand`:
+   2.1-I, 2.1-II, 2.4-I … 2.4-IX, residual), ordenação e desempate dentro da
+   faixa. É regra de negócio no model (`ScholarshipEdition.result(level)`) e
+   é `review_required`: teste verde não prova critério certo.
+5. **Resultado preliminar e recurso** — `publish_preliminary` grava um
+   **snapshot** das faixas (é ele que a tela e o PDF mostram, não o cálculo ao
+   vivo); o discente interpõe recurso em `/bolsas/recurso`; a comissão julga
+   (`judge`: deferido, parcialmente deferido, indeferido).
+6. **Resultado final** — `publish_final` grava o snapshot definitivo. Tela em
+   `/bolsas/resultado`; PDF em `GET .../editions/{id}/result.pdf`, montado em
+   `apps/scholarships/pdf.py` no mesmo desenho da ata (ADR-010, ReportLab).
+   Valor em real no papel usa `force_grouping=True` — sem isso sai `3200,00`.
+
+`make seed` cria, em **cada** programa, duas edições de bolsa — a do ano
+anterior e a do ano, com o barema clonado da primeira — e candidatos em vários
+estágios (`_bolsas` e `_edicao_de_bolsa` no `seed_demo.py`).
+
+---
+
+## 7. Cadastro geral e autocadastro
+
+Entregue em 03/09 (plano `cadastro-geral`). Antes, toda conta nascia pela
+secretaria. Agora quem tem vínculo com o programa pode **se cadastrar sozinho**
+e esperar a secretaria confirmar. Mora no app `academic` (model
+`AccessRequest`, migrations `0013` e `0014`), com rotas em `/api/v1/access/`.
+
+### O caminho
+
+1. **O programa opta** — `Program.accepts_self_signup` (default `False`). A
+   rota pública `GET /programs/public` (`auth=None`) lista só os que aceitam;
+   é dela que a tela de cadastro monta o `<select>` de programa.
+2. **Cadastro** — em `/cadastro`, sem login: nome, e-mail, senha, programa e
+   **perfil declarado** (docente, discente ou candidato). Docente informa
+   categoria CAPES, titulação, Lattes e, se externo, instituição de origem
+   (constraints no banco cobram isso). `POST /access/signup` chama
+   `signup_access_request`.
+   - **Candidato** sai pronto para entrar: Group "Candidato", sem
+     `AccessRequest`. É o mesmo perfil da inscrição em isolada.
+   - **Docente e discente** nascem com uma `AccessRequest` `pending` e o Group
+     marcador **"Cadastro pendente"**, que tem lista de permissões **vazia** de
+     propósito — quem faz de porteiro é o deferimento.
+   - A resposta é a **mesma para e-mail novo e já cadastrado** (anti-enumeração),
+     e por isso a senha é validada *antes* da consulta ao banco: mensagem de
+     senha fraca só para e-mail inédito denunciaria quem já tem conta.
+3. **Espera** — `GET /access/me` diz ao front se a sessão está pendente; o
+   `+layout.svelte` do grupo `(app)` desvia para `/aguardando-confirmacao`, que
+   mostra o status e, se recusado, o motivo.
+4. **Fila da secretaria** — `/solicitacoes` (menu Pessoas): `GET
+   /access/requests/`, com aprovação e recusa por linha.
+   - **Aprovar** (`approve_access_request`) cria o vínculo na mesma transação:
+     `create_teacher` com a data de credenciamento que a secretaria informa, ou
+     `create_student` com nível, projeto, orientador e data de admissão — o
+     aluno nasce **regular e ativo**; isolada e eletiva entram por edital, não
+     por esta fila. A ficha nasce antes do papel: nunca há conta "Docente" sem
+     `Teacher`.
+   - **Recusar** (`reject_access_request`) grava o motivo e **arquiva a
+     `Person`**. É o arquivamento que tranca, não o Group: `current_program()`
+     só enxerga pessoa ativa. **O recusado não se recadastra** — a
+     `unique_email_por_programa` barra e o signup responde o mesmo corpo
+     silencioso. Reverter é a secretaria reativar a pessoa.
+
+`make seed` liga `accepts_self_signup` nos dois programas.
+
+O commit `23870a0` (também 03/09) reorganizou os menus da barra lateral e
+passou a associar professores ao projeto coletivo — se você lembra de outro
+agrupamento de itens, é isso.
+
+---
+
+## 8. Armadilhas já pagas
 
 Cada uma destas custou tempo. Estão aqui para não custarem de novo.
 
@@ -337,7 +457,7 @@ Qualquer linha antes do `ok` é problema.
 
 ---
 
-## 7. Pendências
+## 9. Pendências
 
 - **O ensaio (`--ensaio`) nunca rodou.** É ele que prova a instalação de ponta a
   ponta — monta um canteiro, migra, semeia e desmonta:
@@ -354,3 +474,10 @@ Qualquer linha antes do `ok` é problema.
 - **`docs/adr/` não tem ADR para o Vite no Compose.** A mudança está registrada
   no corpo do commit `d22e1f4` e na seção 7 do README; se virar decisão de
   arquitetura estável, merece ADR próprio.
+
+- **A marca é PPGM, mas o README e o `CLAUDE.md` ainda abrem com "PPGD
+  Manager".** O sistema foi renomeado nas telas em 03/09 (commit `2e63fb4`);
+  os dois documentos não acompanharam.
+
+- **Publicar `MAILPIT_UI_PORT` por canteiro** continua story à parte. Hoje a
+  UI só abre por `docker compose port mailpit 8025`.
