@@ -1,0 +1,75 @@
+# Pipeline do GitLab: roda `make ready` a cada push.
+#
+# A regra do projeto é "make ready verde é pré-condição de qualquer commit"
+# (CLAUDE.md, Seção 7). Este arquivo só faz o GitLab cobrar isso de quem
+# esqueceu de rodar antes de dar push. Ele NÃO faz deploy: publicar em
+# produção continua sendo `migrate` + recarregar o gunicorn, à mão, na ordem
+# da Seção 10 do CLAUDE.md.
+#
+# Um job só, de propósito: `make ready` já encadeia lint, typecheck e test
+# nas duas metades (backend e frontend), e o time não precisa de um grafo de
+# jobs para ler o resultado — ou está verde, ou o log diz o que quebrou.
+#
+# Executa fora do canteiro, no runner do GitLab: mudar este arquivo é
+# human_gate no CLAUDE.md, e por isso ele nunca é editado pelo loop.
+
+stages:
+  - verificar
+
+variables:
+  # O Postgres sobe como "service" (abaixo) e responde pelo nome da imagem,
+  # `postgres`, na porta padrão — não na 5433 do host, que é coisa do Compose.
+  # Mesmo usuário/senha/banco do `.env.example` e do docker-compose.yml.
+  POSTGRES_DB: ppg
+  POSTGRES_USER: ppg
+  POSTGRES_PASSWORD: ppg
+  DATABASE_URL: postgres://ppg:ppg@postgres:5432/ppg
+  # Só para o Django subir; nenhum segredo real entra aqui. `DEBUG` não é
+  # necessário: o pytest usa `config.settings.dev`, que já o liga.
+  SECRET_KEY: ci-inseguro-nao-usar-em-producao
+  # Caches dentro do projeto, porque só o que está em $CI_PROJECT_DIR pode
+  # ser guardado entre pipelines pelo `cache:` abaixo.
+  UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
+  UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv-python
+  npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+
+ready:
+  stage: verificar
+  # A imagem é a do Node (glibc — o rollup e o @tailwindcss/oxide do
+  # package-lock são binários linux-x64-gnu, e em musl não carregam; ver
+  # manual_dev.md, Seção 3). O Python 3.14 do `backend/.python-version` quem
+  # traz é o próprio uv, que o baixa para UV_PYTHON_INSTALL_DIR e o guarda no
+  # cache. Assim não há imagem própria para manter.
+  image: node:25-bookworm
+  services:
+    # Mesma major do docker-compose.yml. Trocar aqui e lá juntos.
+    - postgres:17.5-alpine
+  cache:
+    # A chave muda quando um lockfile muda; até lá o pipeline reaproveita
+    # pacotes Python, o interpretador e os tarballs do npm.
+    key:
+      files:
+        - backend/uv.lock
+        - frontend/package-lock.json
+    paths:
+      - .cache/
+  before_script:
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    - uv --version && node --version
+    # `--locked` e `npm ci`, nunca `uv sync`/`npm install`: os dois últimos
+    # reescrevem o lockfile em silêncio e o pipeline passaria com dependência
+    # diferente da que está versionada (mesma regra do obra.conf).
+    - cd backend && uv sync --locked && cd ..
+    - cd frontend && npm ci && cd ..
+  script:
+    - make ready
+    # `make lint` FORMATA (ruff format, ruff check --fix, prettier --write)
+    # em vez de só conferir, e sai com zero mesmo quando reescreveu arquivo.
+    # No computador do dev isso é o que se quer; aqui, o que se quer é
+    # recusar código que chegou sem formatar. Se o lint mexeu em algo, a
+    # árvore fica suja e este diff acusa — o log mostra exatamente o quê.
+    - git diff --exit-code
+  rules:
+    # Todo push em qualquer branch. Sem job em tag nem em agenda por enquanto.
+    - if: $CI_COMMIT_BRANCH
