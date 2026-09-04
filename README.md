@@ -1,7 +1,8 @@
-# PPGD Manager
+# PPGM — Pós-Graduação Manager
 
-Sistema de gestão para programa de pós-graduação. Multi-tenant desde a
-primeira migração: todo dado de negócio carrega a chave do programa.
+Sistema de gestão para programa de pós-graduação. Nasceu para o PPGD (o
+repositório e o banco ainda se chamam `ppgd-manager`), mas é multi-tenant
+desde a primeira migração: todo dado de negócio carrega a chave do programa.
 
 Backend em Django + Django Ninja, frontend em SvelteKit como SPA estática,
 tudo servido por um Nginx em **uma origem só**.
@@ -15,7 +16,7 @@ Este README tem duas partes independentes. Leia a que corresponde ao seu
 papel:
 
 - **[Manual do Usuário](#manual-do-usuário)** — para quem usa o sistema:
-  secretaria, coordenação, docentes e discentes.
+  secretaria, coordenação, docentes, discentes, comissões e candidatos.
 - **[Manual do Desenvolvedor](#manual-do-desenvolvedor)** — para quem
   escreve código.
 
@@ -23,8 +24,9 @@ papel:
 
 # Manual do Usuário
 
-Para quem usa o sistema: secretaria, coordenação, docentes, discentes e
-candidatos a disciplina isolada. Nada aqui pressupõe conhecimento técnico.
+Para quem usa o sistema: secretaria, coordenação, docentes, discentes,
+comissões e candidatos — ao processo seletivo ou a disciplina isolada. Nada
+aqui pressupõe conhecimento técnico.
 
 ## Sumário
 
@@ -35,6 +37,8 @@ candidatos a disciplina isolada. Nada aqui pressupõe conhecimento técnico.
 - [Docente](#docente)
 - [Discente](#discente)
 - [Candidato a disciplina isolada](#candidato-a-disciplina-isolada)
+- [Processo seletivo](#processo-seletivo)
+- [Bolsas](#bolsas)
 - [Quando algo dá errado](#quando-algo-dá-errado)
 
 ## Como entrar
@@ -42,14 +46,28 @@ candidatos a disciplina isolada. Nada aqui pressupõe conhecimento técnico.
 Acesse o endereço que a secretaria informou e entre com **o seu e-mail
 completo** (não a parte antes do `@`) e a sua senha.
 
-**Primeiro acesso.** Quem trabalha no programa — secretaria, coordenação,
-docentes e discentes — não cria a própria conta. A secretaria cadastra a
-pessoa e define a senha do primeiro acesso, que ela informa a você. Depois
-disso, a senha é sua: nem a secretaria pode trocá-la sozinha.
+**Primeiro acesso.** Há dois caminhos, e os dois terminam na mesma conta:
 
-**Candidato a disciplina isolada é a exceção**: essa conta você mesmo cria,
-e só enquanto houver um edital com inscrições abertas. Veja
-[Candidato a disciplina isolada](#candidato-a-disciplina-isolada).
+- **A secretaria cadastra você.** Ela cria a pessoa e define a senha do
+  primeiro acesso, que informa a você. Depois disso, a senha é sua: nem a
+  secretaria pode trocá-la sozinha.
+- **Você se cadastra.** Na tela de login, embaixo do botão **Entrar**,
+  clique em **Cadastre-se** ("Ainda não tem conta no programa?"). Informe
+  nome, e-mail, senha, o programa e o seu perfil:
+  - **Candidato** (a disciplina isolada) entra na hora.
+  - **Docente** e **discente** ficam em espera: a tela mostra "Aguardando a
+    secretaria" até que ela confirme o vínculo. Docente informa também a
+    categoria, a titulação e o Lattes; quem é de outra instituição,
+    informa qual. Quando a secretaria confirma, o menu aparece completo no
+    próximo acesso. Se ela recusar, a mesma tela mostra o motivo — e a
+    saída é procurá-la, porque o sistema não aceita um segundo cadastro com
+    o mesmo e-mail.
+
+Só aparecem na lista os programas que aceitam autocadastro. Se o seu não
+aparece, fale com a secretaria dele.
+
+**Candidato ao processo seletivo não tem conta.** A inscrição é pública e
+o acompanhamento é por protocolo — veja [Processo seletivo](#processo-seletivo).
 
 Para sair, use o botão **Sair** no canto superior direito.
 
@@ -58,15 +76,18 @@ Para sair, use o botão **Sair** no canto superior direito.
 O menu superior muda conforme o seu papel — você só vê o que pode usar.
 Alguns itens abrem submenus.
 
-| Menu                              | Submenu                                         | Quem vê                                      |
-| --------------------------------- | ----------------------------------------------- | -------------------------------------------- |
-| **Pessoas**                       | Professores, Alunos, Candidatos, Administrativo | Secretaria e coordenação                     |
-| **Estrutura**                     | —                                               | Secretaria e coordenação                     |
-| **Disciplinas**                   | —                                               | Secretaria e coordenação                     |
-| **Disciplina isolada**            | Análise, Editais                                | Secretaria (análise) e coordenação (leitura) |
-| **Inscrição**, **Acompanhamento** | —                                               | Candidato                                    |
-| **Classificação**                 | —                                               | Docente responsável por oferta               |
-| **Acerto de matrícula**           | Meus acertos, Orientandos, Do programa          | Cada papel vê só a sua parte                 |
+| Menu                                     | Submenu                                                                 | Quem vê                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Pessoas**                              | Professores, Alunos, Candidatos, Administrativo, Solicitações de acesso | Secretaria e coordenação                                   |
+| **Estrutura**                            | Linhas de Pesquisa, Períodos Letivos, Disciplinas                       | Secretaria e coordenação                                   |
+| **Disciplina isolada**                   | Análise, Editais                                                        | Secretaria (análise) e coordenação (leitura)               |
+| **Inscrição**, **Acompanhamento**        | —                                                                       | Candidato a disciplina isolada                             |
+| **Classificação**                        | —                                                                       | Docente responsável por oferta de isolada                  |
+| **Processo seletivo**                    | Editais, Bancas, Inscrições, Convocações, Atas, Resultado               | Secretaria, Comissão de Seleção e coordenação              |
+| **Minhas bancas**                        | —                                                                       | Docente que compõe banca                                   |
+| **Acerto de matrícula**                  | Meus acertos, Orientandos, Do programa                                  | Cada papel vê só a sua parte                               |
+| **Bolsas**                               | Edital, Análise, Resultado                                              | Secretaria, Comissão de Bolsas e coordenação               |
+| **Minha bolsa**, **Recurso da bolsa**    | —                                                                       | Discente                                                   |
 
 Se um item que você espera não aparece, o motivo quase sempre é o papel da
 sua conta. Fale com a secretaria — link que só levaria a uma tela negada
@@ -177,6 +198,25 @@ As quatro listas de Pessoas **não são exclusivas**: quem coordena e dá
 aula aparece em Professores _e_ em Administrativo, porque é uma pessoa só
 com dois vínculos.
 
+### Solicitações de acesso
+
+Menu **Pessoas → Solicitações de acesso**. É a fila de quem se cadastrou
+sozinho como docente ou discente e está esperando a confirmação. Cada
+linha mostra o que a pessoa declarou; você decide:
+
+- **Aprovar** completa o cadastro com o que só a secretaria sabe: para
+  docente, a data de credenciamento; para discente, o nível, o projeto
+  coletivo, o orientador e a data de ingresso. O aluno nasce **regular e
+  ativo** — isolada e eletiva não passam por aqui, entram pelo edital.
+  A pessoa passa a aparecer em Professores ou em Alunos, e o menu dela
+  abre no próximo acesso.
+- **Recusar** exige motivo, que é o que a pessoa lê na tela de espera. A
+  pessoa fica arquivada e não consegue se recadastrar com o mesmo e-mail;
+  se foi engano, reative-a pela lista correspondente.
+
+Candidato não passa por esta fila: entra sozinho, porque só enxerga a
+própria inscrição.
+
 ### Edital de disciplina isolada
 
 Menu **Disciplina isolada → Editais**. Um edital por semestre. O
@@ -276,10 +316,10 @@ disciplinas** da pós num semestre.
 
 ### 1. Criar a conta
 
-Só é possível enquanto houver edital com inscrições abertas. Na tela de
-login, embaixo do botão **Entrar**, clique em **Cadastre-se** ("Vai cursar
-disciplina isolada e ainda não tem conta?") e informe nome, e-mail e
-senha.
+Na tela de login, embaixo do botão **Entrar**, clique em **Cadastre-se**,
+escolha o programa, o perfil **Candidato** e informe nome, e-mail e senha.
+A conta abre na hora, sem confirmação da secretaria — mas a inscrição só
+existe enquanto houver edital com inscrições abertas.
 
 ### 2. Fazer a inscrição
 
@@ -319,7 +359,196 @@ e anexe o comprovante. Quem é isento pula essa etapa.
 razões e, se o problema foi documentação, anexe a página que faltou — esse
 é o único momento depois da inscrição em que dá para trocar um documento.
 
+## Processo seletivo
+
+É a seleção de mestrado e doutorado: edital, inscrição, bancas, atas,
+convocação e resultado. Cada etapa trava a seguinte, e essa trava costuma
+ser a resposta para "por que este botão está desabilitado?".
+
+### Quem faz o quê
+
+| Papel                   | O que faz                                                                                                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Secretaria**          | monta e publica o edital, homologa ou indefere inscrições, compõe as bancas, dispara convocações, acompanha as atas e converte o aprovado em aluno. É a única que baixa os anexos do candidato |
+| **Docente**             | como membro de banca, lança notas e assina a ata; como presidente, monta e congela a ata                                                                                    |
+| **Comissão de Seleção** | lê tudo e é a única que **realoca vaga** entre alvos — é decisão colegiada, não expediente da secretaria                                                                   |
+| **Coordenação**         | acompanha, só leitura                                                                                                                                                       |
+| **Candidato**           | inscreve-se sem conta e acompanha por protocolo                                                                                                                             |
+
+### Secretaria: o edital
+
+Menu **Processo seletivo → Editais**. O edital pode ser **Regular** ou
+**Suplementar** (muda a documentação exigida do candidato). Antes de
+publicar, ele precisa ter:
+
+- as **etapas** em ordem (por exemplo: prova escrita, projeto, entrevista),
+  cada uma com a nota de corte;
+- a **grade de vagas**, por nível (mestrado, doutorado) e por categoria —
+  ampla concorrência, cota racial, pessoa com deficiência, quilombola,
+  pessoa trans, indígena;
+- o **modelo da convocação**, o texto que vai por e-mail;
+- o PDF do edital anexado.
+
+**Publicar** é um botão, e ele confere tudo isso. Depois de publicado,
+etapas e vagas não mudam mais: corrigir é encerrar e abrir outro.
+
+### Candidato: inscrição e protocolo
+
+Não há conta. A inscrição fica num endereço público que a secretaria
+divulga com o edital. O candidato escolhe o edital aberto, o nível, a
+categoria de vaga, preenche os dados e anexa os documentos:
+
+- identidade, diploma ou certidão de conclusão, currículo Lattes e
+  comprovante de pagamento — sempre;
+- resumo expandido (edital Regular) ou memorial (Suplementar);
+- comprovação da cota, quando não for ampla concorrência.
+
+Ao enviar, recebe um **protocolo**. É com ele, e só com ele, que consulta
+a situação depois, na tela de consulta pública. Guarde o protocolo: ele
+faz as vezes de senha, e o sistema não o reenvia.
+
+| Situação    | O que significa                                   |
+| ----------- | ------------------------------------------------- |
+| Inscrita    | enviada, aguardando homologação                   |
+| Homologada  | documentação aceita; vai para as bancas           |
+| Indeferida  | documentação recusada, com o motivo               |
+| Eliminada   | nota abaixo do corte em alguma etapa              |
+| Aprovada    | passou por todas as etapas                        |
+| Matriculada | a secretaria já converteu a aprovação em matrícula |
+
+### Secretaria: homologação, bancas e convocação
+
+**Inscrições** (menu Processo seletivo) é a fila de homologação: para cada
+inscrição você vê os anexos e **homologa** ou **indefere** com motivo. Só
+inscrição homologada chega às bancas.
+
+**Bancas**: uma banca para cada combinação de nível, categoria de vaga e
+etapa, com presidente e membros. Examinador **de fora da casa** é
+cadastrado como professor externo, com a instituição de origem; ele não
+precisa ter conta, porque assina a ata por um link enviado ao e-mail dele.
+
+**Convocações**: para cada edital e etapa, a lista de quem pode ser
+convocado. O envio é em lote, e cada destinatário ganha uma situação
+própria: enviado ou falhou. **Falha não cancela o lote** — quem falhou
+aparece marcado e pode ser reenviado depois de corrigir o e-mail.
+
+### Docente: notas e ata
+
+Menu **Minhas bancas**. Cada banca abre uma tela para lançar as notas da
+etapa, em lote. O caminho da ata é do presidente:
+
+1. **Gerar a ata** monta o texto a partir das notas lançadas. Enquanto
+   for rascunho, **atualizar** reconstrói o texto se alguma nota mudou.
+2. **Congelar** fecha o texto: a partir daí ninguém lança nota naquela
+   etapa, e o sistema envia o link de assinatura ao examinador externo.
+   Enquanto ninguém assinou, **reabrir** desfaz o congelamento.
+3. **Assinar**: quem tem conta assina na própria tela da banca; o externo
+   assina pelo link do e-mail.
+
+Quando a **última assinatura** entra, o sistema fecha a etapa sozinho:
+promove quem passou para a etapa seguinte, elimina quem ficou abaixo do
+corte e, na etapa final, aprova. A ata vira PDF. Ata assinada não se
+apaga: se houver erro, faz-se uma ata retificadora, que substitui a
+anterior e deixa as duas no histórico.
+
+A secretaria acompanha tudo isso em **Atas**, de onde reenvia o link ao
+externo e baixa o PDF.
+
+### Resultado, realocação e matrícula
+
+Menu **Processo seletivo → Resultado**. Com a ata da etapa final assinada,
+a secretaria **calcula a classificação**, que distribui os aprovados pelas
+vagas. Se sobrar vaga num alvo e faltar noutro, a **Comissão de Seleção**
+pode **realocar** — o que invalida a classificação e obriga recalcular.
+
+Por fim, **Matricular** converte o aprovado em aluno: o sistema cria a
+pessoa (ou reaproveita, se já existia) e o vínculo de aluno regular. Daí em
+diante a pessoa aparece em **Pessoas → Alunos**.
+
+## Bolsas
+
+É a distribuição anual das bolsas por barema: o discente pontua o próprio
+currículo, a comissão confere, e o resultado sai em faixas de prioridade.
+
+### Quem faz o quê
+
+| Papel                 | O que faz                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Secretaria**        | monta a edição do ano, o barema e a comissão; publica; informa o nível FUMP de cada inscrito e, se preciso, força a faixa           |
+| **Discente**          | inscreve-se, lança os itens do barema com comprovantes e, se discordar, interpõe recurso                                          |
+| **Comissão de Bolsas** | confere item a item, baixa os comprovantes e julga os recursos. É outra comissão, diferente da de Seleção                        |
+| **Coordenação**       | acompanha, só leitura                                                                                                             |
+
+### As fases da edição
+
+A edição do ano anda **só para frente**:
+
+1. **Rascunho** — a secretaria monta o barema e a comissão.
+2. **Inscrições abertas** — os discentes se inscrevem e pontuam.
+3. **Em análise** — a comissão confere.
+4. **Resultado preliminar** — publicado; abre o prazo de recurso.
+5. **Recursos em análise** — a comissão julga.
+6. **Resultado final** — publicado e definitivo.
+
+Cada passagem é um botão na tela do edital, e não há volta: se algo saiu
+errado, a correção é com a equipe que opera a plataforma.
+
+### Secretaria: edital, barema e comissão
+
+Menu **Bolsas → Edital**. O barema tem seis seções — formação acadêmica,
+produção bibliográfica, participação em eventos, atividade profissional,
+participação em bancas e outros títulos — e cada item diz o que pontua, em
+que unidade (semestre, mês, hora, unidade) e com que teto. Você pode
+**clonar o barema do ano anterior** e ajustar, em vez de digitar tudo de
+novo.
+
+A comissão é escolhida por edição. Publicar congela o ano: a partir daí
+barema e comissão não mudam.
+
+Durante a análise, é a secretaria quem lança o **nível FUMP** de cada
+inscrito e, em caso excepcional, **força a faixa** de prioridade — os dois
+únicos campos que ela escreve na inscrição de outra pessoa.
+
+### Discente: inscrever-se e pontuar
+
+Menu **Minha bolsa**, com as inscrições abertas. A inscrição copia o seu
+nível (mestrado ou doutorado) e o congela. Para cada item do barema que se
+aplica a você, informe a quantidade e anexe o comprovante; a nota do item
+é calculada pelo sistema, respeitando o teto. O questionário da inscrição
+pergunta também sobre ação afirmativa, professor substituto e vínculo de
+trabalho público ou privado, que entram no cálculo da faixa.
+
+Enquanto a edição estiver em **Inscrições abertas**, você pode alterar o
+que quiser. Depois, não.
+
+### Comissão: análise
+
+Menu **Bolsas → Análise**. A fila de inscritos e, para cada um, o barema
+lançado: você confere item a item, com o comprovante ao lado, e registra a
+sua avaliação e uma observação, que o discente lê no resultado.
+
+### Resultado e recurso
+
+Menu **Bolsas → Resultado**. A classificação sai por nível, em **faixas de
+prioridade** (2.1-I, 2.1-II, 2.4-I até 2.4-IX, e residual), na ordem em que
+as bolsas são distribuídas. O resultado publicado é uma **fotografia** do
+momento da publicação: mexer numa inscrição depois não muda o que está na
+tela nem no PDF, que a secretaria imprime para afixar.
+
+Com o resultado preliminar publicado, o discente pode interpor **um**
+recurso em **Recurso da bolsa**, escrevendo as razões. A comissão julga —
+deferido, parcialmente deferido ou indeferido — com a fundamentação, e o
+resultado final é publicado em seguida.
+
 ## Quando algo dá errado
+
+**Entrei e só vejo "Aguardando a secretaria".** Você se cadastrou como
+docente ou discente e a secretaria ainda não confirmou. Não há nada a
+fazer do seu lado; se estiver demorando, fale com ela.
+
+**A tela diz "Cadastro não confirmado".** A secretaria recusou o seu
+cadastro, e o motivo está na própria tela. O sistema não aceita um novo
+cadastro com o mesmo e-mail: a saída é a secretaria reativar você.
 
 **Não vejo um item de menu que deveria ver.** O menu reflete o papel da
 sua conta. Fale com a secretaria.
@@ -330,6 +559,14 @@ alcança aquela ação. Nada foi perdido.
 **Esqueci minha senha.** Fale com a secretaria. Ela define a senha do
 _primeiro_ acesso; se a sua conta já tem senha, quem faz a redefinição é a
 equipe que opera a plataforma.
+
+**Perdi o protocolo da inscrição no processo seletivo.** O sistema não o
+reenvia — ele faz as vezes de senha. Fale com a secretaria do programa,
+que localiza a inscrição pelo seu e-mail.
+
+**Não recebi o e-mail de convocação (ou o link de assinatura da ata).**
+A secretaria vê, na tela de convocações ou de atas, se o envio falhou, e
+reenvia. Confira também a pasta de spam.
 
 **O sistema recusou uma data.** Datas de edital seguem uma ordem
 obrigatória, e prazos são conferidos contra o calendário publicado. A
@@ -361,6 +598,8 @@ evita desfazê-lo sem querer.
 7. [O Vite em desenvolvimento e em produção](#7-o-vite-em-desenvolvimento-e-em-produção)
 8. [Quem entra onde](#8-quem-entra-onde)
 9. [Armadilhas conhecidas](#9-armadilhas-conhecidas)
+10. [Os módulos de negócio por dentro](#10-os-módulos-de-negócio-por-dentro)
+11. [E-mail em desenvolvimento: o Mailpit](#11-e-mail-em-desenvolvimento-o-mailpit)
 
 ---
 
@@ -395,19 +634,20 @@ enxerga as dependências do projeto.
 ## 3. Subindo pela primeira vez
 
 ```bash
+git clone https://dso.direito.ufmg.br/ati/ppgd-manager.git
+cd ppgd-manager
 cp .env.example .env      # ajuste se precisar; o .env nunca vai pro git
 make install              # dependências do backend
 make install-web          # dependências do frontend
-make up                   # sobe db + backend + nginx
+make up                   # sobe db + backend + frontend + nginx + mailpit
 make migrate              # cria as tabelas
+make seed                 # carga de demonstração: dois programas, todos os papéis
 make superuser            # crie a SUA conta de sysadmin
 ```
 
-Em **outro terminal**, e deixe rodando:
-
-```bash
-make web                  # servidor de desenvolvimento do frontend
-```
+Um terminal só. O Vite sobe dentro do `make up`, como serviço do Compose;
+`make web` existe apenas para acompanhar o log dele (ver a
+[seção 7](#7-o-vite-em-desenvolvimento-e-em-produção)).
 
 Pronto:
 
@@ -415,7 +655,20 @@ Pronto:
 - **Admin** → http://localhost:8080/admin/ (só superusuário — veja a seção 8)
 - **Documentação da API** → http://localhost:8080/api/v1/docs
 
-O motivo de serem dois terminais está na [seção 7](#7-o-vite-em-desenvolvimento-e-em-produção).
+O `make seed` deixa o sistema com dois programas (PPGD e PPGA), contas
+para cada papel e o caminho de cada módulo quase todo andado — editais
+publicados, bancas, uma ata assinada, edições de bolsa, inscrições em
+isolada. As contas e a senha ficam em **`CONTAS-DEMO.txt`**, na raiz do
+repositório (ignorado pelo git). É idempotente: rode de novo à vontade; só
+funciona com `DEBUG=True`.
+
+| Serviço    | O que é                                 | Porta no host                          |
+| ---------- | --------------------------------------- | -------------------------------------- |
+| `db`       | Postgres 17.5                           | `DB_PORT`, 5433                        |
+| `backend`  | Django, `runserver`                     | nenhuma (só pelo nginx)                |
+| `frontend` | Vite dev server (`node:25-slim`)        | nenhuma (rede interna)                 |
+| `mailpit`  | captura todo e-mail (ver a seção 11)    | nenhuma (`docker compose port mailpit 8025`) |
+| `nginx`    | origem única                            | `NGINX_PORT`, 8080                     |
 
 ---
 
@@ -472,7 +725,10 @@ Duas regras que valem desde já:
 - **Toda tabela de negócio tem `program_id`.** É a chave de tenant. O
   sistema nasce para o PPGD, mas o dado já vem preparado para vários
   programas, porque acrescentar essa coluna depois, com dados em produção,
-  é caro.
+  é caro. A FK é direta mesmo quando alcançável por navegação, porque sem
+  ela o `AuditLog` perde a chave de tenant. Única exceção: o período letivo
+  (`AcademicTerm`), que é da instituição inteira
+  ([ADR-007](docs/adr/007-modalidade-e-situacao-do-aluno.md)).
 - **Nunca edite uma migration já aplicada.** Gere uma nova.
 
 ### Camada 2 — o model, que é a entidade
@@ -516,8 +772,8 @@ O `people` é o **exemplo de referência**. App novo: copie a estrutura dele.
 
 ### Camada 3 — o service, só quando precisa
 
-`backend/apps/people/services.py`. Existe **um** service no projeto
-inteiro, e o próprio arquivo explica por quê:
+`backend/apps/people/services.py`. O mais curto dos services do projeto, e
+o próprio arquivo explica por que existe:
 
 > Este arquivo só existe porque `create_person_with_user` escreve em três
 > models e precisa ser atômico (ADR-002). Operação que toca um model só é
@@ -526,6 +782,13 @@ inteiro, e o próprio arquivo explica por quê:
 Ou seja: service não é camada obrigatória. É a exceção para operação que
 precisa de `@transaction.atomic` cruzando models. **Service que só
 encaminha para um model é code smell — apague.**
+
+Hoje cinco apps têm `services.py` — `people`, `accounts`, `academic`,
+`selection` e `scholarships` — e em todos vale o mesmo critério: cada
+função de lá escreve em mais de um model (ou em model + `AuditLog` + e-mail)
+e precisa ser tudo ou nada. O de `selection` é grande porque o processo
+seletivo é uma sequência de transições que cruzam inscrição, banca, ata e
+vaga; não porque a regra tenha saído do model.
 
 ### Camada 4 — o router, a borda HTTP
 
@@ -572,14 +835,23 @@ o front tipado com uma versão que não existe mais.
 
 ```python
 api = NinjaAPI(..., auth=django_auth)
-api.add_router("/auth/", accounts_router)
-api.add_router("/programs/", programs_router)
+api.add_router("/auth/", accounts_router)          # login, logout, csrf, me
+api.add_router("/accounts/", accounts_users_router) # senha inicial
+api.add_router("/programs/", programs_router)      # programa, linhas, projetos, disciplinas, períodos
 api.add_router("/people/", people_router)
+api.add_router("/academic/", academic_router)      # professores, alunos, isolada, acerto de matrícula
+api.add_router("/access/", academic_access_router) # autocadastro e fila de solicitações
+api.add_router("/selection/", selection_router)    # processo seletivo
+api.add_router("/scholarships/", scholarships_router)
 ```
 
 `auth=django_auth` significa **sessão do Django em toda rota por padrão**
 ([ADR-003](docs/adr/003-sessao-e-csrf-sem-jwt.md)). Rota pública precisa
-declarar `auth=None` explicitamente e se justificar.
+declarar `auth=None` explicitamente e se justificar. As que existem:
+`/auth/csrf` e `/auth/login`, `/programs/public` (programas que aceitam
+autocadastro), `/access/signup`, e as `/selection/public/*` da inscrição
+do candidato — estas com rate limit e `csrf_protect` explícitos, e com o
+tenant saindo do edital encontrado, nunca de um `program_id` do chamador.
 
 ### Camada 7 — a ponte de tipos
 
@@ -660,18 +932,25 @@ backend/
     urls.py                 /api/v1/ e /admin/
     wsgi.py                 ponto de entrada (WSGI, não ASGI — ADR-001)
   apps/
-    core/                   permissions.py, audit.py, exceptions.py
-    accounts/               login, logout, CSRF
-    programs/               Program — a chave de tenant
+    core/                   permissions.py, audit.py, exceptions.py, tenancy.py, seed_demo
+    accounts/               User, login, logout, CSRF, senha inicial
+    programs/               Program (a chave de tenant), linhas, projetos, disciplinas, períodos
     people/                 Person — o exemplo de referência
+    academic/               Teacher, Student, isolada, acerto de matrícula, AccessRequest
+    selection/              processo seletivo (+ pdf.py da ata, emails.py)
+    scholarships/           edital de bolsas (+ pdf.py do resultado)
     audit/                  AuditLog
 frontend/src/
   lib/api/client.ts         o cliente único
   lib/api/schema.d.ts       tipos GERADOS — não edite à mão
   lib/sessao.svelte.ts      estado da sessão
-  routes/                   as telas
+  routes/(auth)/            login, cadastro, aguardando-confirmacao
+  routes/(publico)/         inscrição e protocolo do processo seletivo, assinatura por token
+  routes/(app)/             as telas autenticadas
 nginx/                      configuração da origem única
 docs/adr/                   as decisões de arquitetura
+scripts/helton/             a esteira de desenvolvimento autônomo (README próprio)
+.gitlab-ci.yml              o pipeline: `make ready` a cada push
 ```
 
 Cada app do Django tem `models.py`, `admin.py`, `router.py`, `schemas.py`,
@@ -693,7 +972,7 @@ permissão e auditoria. Ver [ADR-006](docs/adr/006-admin-so-para-sysadmin.md).
 ## 5. As decisões de arquitetura
 
 Estão em [`docs/adr/`](docs/adr/), um arquivo por decisão, no formato
-ADR — contexto, decisão, consequências. **Leia os seis antes de propor
+ADR — contexto, decisão, consequências. **Leia os dez antes de propor
 mudança estrutural.** Eles registram não só o que foi escolhido, mas o que
 foi descartado e por quê, o que evita reabrir discussão já encerrada.
 
@@ -794,6 +1073,63 @@ inclusive quando o prazo aperta. Há um **período de desconforto
 deliberado** aqui, e reabrir o Admin "temporariamente" é exatamente o que
 o ADR proíbe.
 
+### [ADR-007](docs/adr/007-modalidade-e-situacao-do-aluno.md) — Modalidade e situação do aluno
+
+**Decisão:** no aluno, **modalidade** (Regular, Isolada, Eletiva) e
+**situação** (Ativo, Trancado, Excluído) são dois campos. Trancar só vale
+para regular, e o banco garante isso por `CheckConstraint`. `Student.person`
+é `ForeignKey`, não `OneToOne`: uma pessoa tem vários episódios de vínculo,
+cada um com a própria matrícula. Período letivo (`AcademicTerm`) é entidade
+**institucional**, sem FK de programa — a única exceção à regra do tenant.
+
+**Por quê:** um campo só de "status" misturava o que a pessoa é no programa
+com como está o vínculo agora, e "excluído" tinha de significar desistência
+e fim normal de semestre ao mesmo tempo.
+
+**No seu dia a dia:** todo model de negócio novo carrega `program` direto,
+mesmo quando alcançável por navegação. Campos de grau são obrigatórios por
+constraint quando a modalidade é regular — o formulário não é a garantia.
+
+### [ADR-008](docs/adr/008-pdf-da-ata-com-reportlab.md) — PDF da ata com ReportLab
+
+**Decisão:** o PDF da ata do processo seletivo sai do **ReportLab**, montado
+em `apps/selection/pdf.py`. Sem HTML-para-PDF, sem binário externo. O texto
+da ata é o `content` congelado no banco; o PDF é renderização, nunca a
+fonte.
+
+**Por quê:** WeasyPrint e afins trazem dependência de sistema (Cairo, Pango)
+que a imagem não tem e a infra teria de manter. ReportLab é Python puro com
+fonte embutida.
+
+**No seu dia a dia:** procurar texto dentro do PDF em teste exige desfazer
+três camadas (compressão, escape octal dos acentos, quebra de `Paragraph`
+em `Tj` separados). Há um helper para isso nos testes de bolsas.
+
+### [ADR-009](docs/adr/009-email-de-convocacao-sem-fila.md) — E-mail síncrono, sem fila
+
+**Decisão:** `django.core.mail` direto, dentro do request, sem Celery, sem
+broker e sem retry automático. Cada envio vira uma linha com status
+(`pending`/`sent`/`failed`) e a mensagem do erro. O envio fica **fora** do
+`transaction.atomic`.
+
+**Por quê:** um lote de dezenas de mensagens, algumas vezes por ano, não
+justifica uma peça de infraestrutura nova. Falha é dado, não exceção
+perdida: quem decide reenviar é uma pessoa, que sabe se o endereço estava
+errado.
+
+**No seu dia a dia:** link que vai em e-mail se monta com
+`settings.SITE_URL`, nunca com `request.build_absolute_uri()`. Em
+desenvolvimento tudo cai no Mailpit ([seção 11](#11-e-mail-em-desenvolvimento-o-mailpit)).
+
+### [ADR-010](docs/adr/010-pdf-do-resultado-de-bolsas.md) — PDF do resultado de bolsas
+
+**Decisão:** mesmo motor do ADR-008, em `apps/scholarships/pdf.py`,
+espelhando o desenho da ata. O documento renderiza o **snapshot** publicado,
+não o cálculo ao vivo.
+
+**No seu dia a dia:** valor em real no papel usa `force_grouping=True`; sem
+isso sai `3200,00` em vez de `3.200,00`, sem erro nenhum.
+
 ### Como escrever um ADR novo
 
 Copie [`docs/adr/000-template.md`](docs/adr/000-template.md). Contexto são
@@ -846,6 +1182,7 @@ Ver a [seção 7](#7-o-vite-em-desenvolvimento-e-em-produção).
 | `make migrations` | `makemigrations` — gera os arquivos de migração a partir das mudanças nos models. **Leia o arquivo gerado antes de commitar**: o Django às vezes infere algo diferente do que você quis. |
 | `make migrate`    | `migrate` — aplica as migrações pendentes no banco.                                                                                                                                      |
 | `make superuser`  | `createsuperuser` — cria uma conta de sysadmin, a única que entra no Admin (ADR-006).                                                                                                    |
+| `make seed`       | `seed_demo` — carga de demonstração nos dois programas, idempotente, só com `DEBUG=True`. Escreve as contas em `CONTAS-DEMO.txt`.                                                        |
 
 Em produção a ordem é **migração primeiro, sempre**, e a migração precisa
 ser retrocompatível com o código anterior: campo novo entra `null=True` ou
@@ -872,6 +1209,22 @@ exatamente o que a geração de tipos existe para evitar.
 
 `make ready` é o único que você precisa lembrar antes de commitar — ele
 chama os outros três. Se ele estiver vermelho, o commit não sai.
+
+### O pipeline do GitLab
+
+O `.gitlab-ci.yml` roda **o mesmo `make ready`** a cada push, num job só,
+com um Postgres de serviço. Duas diferenças em relação à sua máquina:
+
+- Ele instala com `uv sync --locked` e `npm ci`: lockfile desatualizado
+  **falha**, em vez de ser reescrito em silêncio.
+- Depois do `make ready` ele roda `git diff --exit-code`. O `make lint`
+  formata em vez de conferir, e sai com zero mesmo tendo reescrito arquivo;
+  no CI, arquivo reescrito significa que chegou sem formatar, e o diff
+  acusa exatamente qual.
+
+Para ver o resultado sem abrir o navegador, `glab ci status` (o `glab`
+precisa estar autenticado no GitLab da faculdade). O pipeline não faz
+deploy: produção continua sendo a seção 10 do `CLAUDE.md`.
 
 ---
 
@@ -925,7 +1278,7 @@ location / {
 Aquela `5173` é a porta **interna** da rede do Compose. Ela não é publicada e
 não precisa ser: quem atende o navegador é o Nginx, na 8080.
 
-Um só terminal, portanto — `make up` sobe os quatro serviços e o front já
+Um só terminal, portanto — `make up` sobe os cinco serviços e o front já
 está no ar. O `make web` continua existindo, mas agora só acompanha o log do
 Vite.
 
@@ -979,7 +1332,7 @@ roteamento acontece no navegador.
 |                        | Desenvolvimento                   | Produção                                             |
 | ---------------------- | --------------------------------- | ---------------------------------------------------- |
 | SPA                    | Vite em `:5173`, Nginx faz proxy  | Arquivos estáticos, Nginx serve do disco             |
-| Processo Node contínuo | sim (`make web`)                  | **nenhum**                                           |
+| Processo Node contínuo | sim (serviço `frontend` do Compose) | **nenhum**                                         |
 | Django                 | `runserver` (container ou nativo) | `gunicorn`, WSGI                                     |
 | Deploy do front        | —                                 | copiar arquivos; rollback é copiar os anteriores     |
 | Deploy do back         | —                                 | `migrate` **primeiro**, depois recarregar o gunicorn |
@@ -992,9 +1345,9 @@ Produção roda, no total, `gunicorn` + `postgres` + `nginx`. É o desenho
 que a infra já opera.
 
 > O `docker-compose.yml` deste repositório é **o perfil de desenvolvimento**
-> (`db` + `backend` + `nginx`). Não existe compose de produção aqui: a
-> infra de produção está descrita na seção 10 do `CLAUDE.md`, a alinhar
-> com o time de infra.
+> (`db` + `backend` + `frontend` + `nginx` + `mailpit`). Não existe compose
+> de produção aqui: a infra de produção está descrita na seção 10 do
+> `CLAUDE.md`, a alinhar com o time de infra.
 
 ---
 
@@ -1067,3 +1420,169 @@ Você mexeu no schema e não rodou `make gen-api`. O `schema.d.ts` é gerado
 Comportamento esperado e documentado: o Admin edita campo direto e não
 passa pelos métodos do model. É exatamente por isso que ele é restrito a
 sysadmin (ADR-006).
+
+**Adicionei um pacote com `uv add` e o container quebra com
+`ModuleNotFoundError`.** A imagem continua a antiga. `docker compose up -d
+--build backend` e, junto, `docker compose restart nginx` — o `upstream`
+resolve `backend:8000` uma vez e o container novo ganha IP novo.
+
+**O e-mail "não saiu".** Em desenvolvimento ele nunca sai: está no Mailpit
+([seção 11](#11-e-mail-em-desenvolvimento-o-mailpit)). Em teste, sem
+`django_capture_on_commit_callbacks(execute=True)` o `on_commit` não roda e
+a caixa fica vazia em silêncio.
+
+**Rota nova no front quebra o `make typecheck` com `EACCES` em
+`.svelte-kit/`.** O Vite do container regenerou os artefatos como root.
+Apague-os de dentro do container (o comando exato está na seção "Além dos
+gates" do `CLAUDE.md`) e rode de novo.
+
+**Upload em `PATCH` chega vazio.** O Django só parseia `multipart` em
+`POST`. Rota que recebe arquivo é `POST`, sempre.
+
+As demais armadilhas que já custaram uma iteração — `prefetch_related`
+inútil, `isnull` em relação ausente, texto dentro de PDF, `openapi-fetch`
+estreitando para `never` — estão registradas na seção "Além dos gates" do
+[`CLAUDE.md`](CLAUDE.md), que é onde o loop autônomo as relê.
+
+---
+
+## 10. Os módulos de negócio por dentro
+
+O que cada módulo faz está no Manual do Usuário. Aqui vai o que **não** se
+vê pela tela: onde a regra mora, qual service é o portão de cada transição
+e o que trava o quê. Vale ler o módulo inteiro antes de mexer num pedaço.
+
+### Identidade, papéis e tenant
+
+- **Usuário é global; pessoa é do programa.** `User` (app `accounts`) não
+  tem `program`. Quem tem é `Person`, e uma conta pode estar ligada a mais
+  de uma pessoa (uma por programa). `current_program(request)`
+  (`apps/core/tenancy.py`) sai da(s) `Person` **ativa(s)** do usuário — e é
+  chamado logo depois do `require_perm` em toda rota de negócio.
+- **Papel é `Group`**, criado por data migration em cada app: Secretaria e
+  Coordenação nascem em `programs`, Discente e Docente em `academic`,
+  Candidato e "Cadastro pendente" nas migrations do autocadastro, Comissão
+  de Seleção em `selection`, Comissão de Bolsas em `scholarships`. Nenhum
+  recebe `delete_*`, `is_staff` ou `is_superuser`.
+- **Autocadastro** (`AccessRequest`, app `academic`, rotas `/access/`):
+  `signup_access_request` valida a senha **antes** de consultar o banco e
+  responde o mesmo corpo para e-mail novo e já existente (anti-enumeração).
+  Candidato sai com o Group e sem solicitação; docente e discente saem com
+  a solicitação `pending` e o Group "Cadastro pendente", cuja lista de
+  permissões é **vazia** — o porteiro é `approve_access_request`, que cria
+  `Teacher` ou `Student` na mesma transação. `reject_access_request` grava
+  o motivo e **arquiva a `Person`**: é o arquivamento que tranca, porque
+  `current_program()` só enxerga pessoa ativa. O recusado não se recadastra
+  (`unique_email_por_programa`).
+
+### Disciplina isolada (app `academic`)
+
+`IsolatedEnrollmentCycle` é o edital do semestre, com seis marcos de data
+em ordem; `DisciplineOffering` a oferta com docente e vagas;
+`IsolatedEnrollmentRequest` a inscrição, com até dois itens. As decisões da
+secretaria (`enroll_isolated_request`, `close_isolated_cycle`) e o acerto
+de matrícula (`create_enrollment_adjustment`) estão em
+`apps/academic/services.py`; a classificação do docente é permissão própria
+(`rank_disciplineoffering`). São as funções marcadas `review_required` no
+`CLAUDE.md`: escrevem no banco e só, mas decidem a vida acadêmica de alguém.
+
+### Processo seletivo (app `selection`)
+
+1. **Edital** — `SelectionProcess` (Regular/Suplementar), `SelectionStage`
+   em ordem, grade de `Vacancy` (nível × categoria de cota) e template de
+   convocação. **Publicar é `publish_process`**, nunca `status = "published"`
+   na mão: é o service que cobra etapa, vaga e template. Depois, etapa e
+   vaga só se escrevem em `draft`.
+2. **Bancas** — uma `Board` por (nível × alvo × etapa). Examinador externo é
+   `Teacher` com `category = EXTERNAL` e `home_institution` obrigatória;
+   normalmente não tem conta, e por isso assina por token.
+3. **Inscrição pública** — rotas `/selection/public/*`, `auth=None`, rate
+   limit e `csrf_protect` explícitos. O tenant sai do edital encontrado.
+   `required_document_kinds()` decide os anexos pelo tipo do edital e pela
+   cota. O candidato recebe um protocolo, que é o segredo da consulta.
+4. **Homologação** — só inscrição homologada entra em banca.
+5. **Notas** — `GET /boards/mine` lista as bancas do docente; lançamento em
+   lote. Com a ata `frozen` ou `signed`, o lançamento recusa com
+   `record_frozen`.
+6. **Ata** — `generate_record` monta o conteúdo a partir das notas,
+   `refresh_record` reconstrói em rascunho, `freeze_record` congela (hash,
+   tokens, e-mail ao externo), `reopen_record` desfaz enquanto ninguém
+   assinou. Ata assinada não se apaga: retifica-se com versão nova
+   (`ExaminationRecord.supersedes`).
+7. **Assinaturas** — `sign_record` (logado) e `sign_record_with_token`
+   (externo, em `/selecao/assinatura/<token>`). **Na última assinatura**
+   `_close_stage` roda: promove, elimina abaixo do corte, aprova na etapa
+   final e gera o PDF.
+8. **Convocação** — lote e linhas `pending` gravados **dentro** da
+   transação; envio **fora** dela, um destinatário por vez; falha de SMTP
+   vira `ConvocationEmail` com status `failed`, nunca 500.
+9. **Resultado** — `compute_ranking` exige a ata da etapa final assinada.
+   `reallocate_vacancy` (Comissão) invalida a classificação.
+   `convert_to_student` cria ou reaproveita a `Person` e cria o `Student`.
+
+### Bolsas (app `scholarships`)
+
+- **Enums no nível do módulo**, com nome único (`ScholarshipEditionStatus`,
+  `PriorityBand`…): é a regra deste app, por causa do gerador de tipos.
+- `ScholarshipEdition` anda só para frente; cada transição é um método do
+  model chamado por um `POST .../editions/{id}/<transição>`. Não há volta
+  ao rascunho: correção é quebra-vidro no Admin.
+- `ScholarshipApplication` copia e congela o nível do aluno. `BaremeEntry`
+  é o lançamento do discente; `ItemReview` a avaliação da comissão
+  (`review_baremeentry`, permissão separada de `change_` de propósito).
+  Upload de comprovante é `POST .../entries/{id}/proof`; os demais campos
+  vão no `PATCH`.
+- A secretaria escreve só dois campos na inscrição alheia, cada um com
+  permissão própria: `set_fump_level` e `override_band`.
+- `ScholarshipEdition.result(level)` calcula as dez faixas ao vivo;
+  `publish_preliminary`/`publish_final` (`services.py`) gravam um
+  **snapshot**, e `published_result` é o que tela e PDF leem. Regra de
+  classificação é `review_required`: teste verde não prova critério certo.
+- `ScholarshipAppeal` é um por inscrição; `judge()` recebe o desfecho
+  (deferido, parcial, indeferido) e a fundamentação.
+
+### O que o `make seed` deixa pronto
+
+Nos **dois** programas: editais de seleção publicados, quatro bancas (uma
+com externo), inscrições em todos os status, uma ata assinada com PDF, um
+lote de convocação enviado, uma matrícula feita, duas edições de bolsa (a
+do ano anterior e a do ano, com barema clonado) e candidatos em vários
+estágios, ciclo de isolada com inscrições, autocadastro ligado. O PPGA é o
+tenant limpo; o PPGD do seu checkout pode carregar dado de sessões
+anteriores, porque a carga **adota** o que já existe.
+
+---
+
+## 11. E-mail em desenvolvimento: o Mailpit
+
+Todo e-mail do sistema — token de assinatura, convocação — sai por
+`django.core.mail`, síncrono e sem fila (ADR-009). No Compose o destino é o
+serviço `mailpit`: SMTP em 1025, tudo em memória (`MP_MAX_MESSAGES=500`,
+sem volume — o histórico some no `down`) e **nada sai para a internet**. É
+isso que torna seguro exercitar convocação e link de assinatura aqui.
+
+A UI não é publicada. Para abri-la, `docker compose port mailpit 8025` e
+use a porta que ele imprimir. Para ler as mensagens sem UI — **a imagem do
+backend não tem `curl`**:
+
+```bash
+docker compose exec -T backend python -c "
+import json, urllib.request
+d = json.load(urllib.request.urlopen('http://mailpit:8025/api/v1/messages'))
+print(d['total'])
+for m in d['messages'][:5]:
+    print(m['From']['Address'], '->', [t['Address'] for t in m['To']], '|', m['Subject'])
+"
+```
+
+O corpo de uma mensagem (é dele que se colhe o link de assinatura) sai em
+`/api/v1/message/<ID>`.
+
+Fora do Compose, quem manda são as variáveis de ambiente: `EMAIL_BACKEND`
+(default **console**, para que ambiente sem configuração não tente falar
+com servidor nenhum), `EMAIL_HOST/PORT/USE_TLS/HOST_USER/HOST_PASSWORD`,
+`DEFAULT_FROM_EMAIL` e **`SITE_URL`**, com que se montam os links. Em
+teste o `pytest-django` troca o backend por `locmem` sozinho: teste de
+e-mail lê `django.core.mail.outbox`, sem mock — e precisa de
+`django_capture_on_commit_callbacks(execute=True)`, senão o `on_commit` não
+roda e a caixa fica vazia em silêncio.

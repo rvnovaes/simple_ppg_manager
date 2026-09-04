@@ -528,8 +528,8 @@ As que já custaram iteração aqui:
   backend é `locmem` (`django.core.mail.outbox`). Nenhum dos dois falha visível
   quando algo está errado: sem
   `django_capture_on_commit_callbacks(execute=True)` o `on_commit` não roda e a
-  caixa fica vazia **em silêncio**. Como ler a caixa do canteiro está na Seção 5
-  do `manual_dev.md` — a imagem do backend não tem `curl`.
+  caixa fica vazia **em silêncio**. Como ler a caixa do canteiro está na seção 11
+  do Manual do Desenvolvedor (`README.md`) — a imagem do backend não tem `curl`.
 - **Link que vai em e-mail se monta com `settings.SITE_URL`, nunca com
   `request.build_absolute_uri()`.** O e-mail é aberto no navegador do
   destinatário, fora de qualquer request: o `build_absolute_uri` traria o host

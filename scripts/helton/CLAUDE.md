@@ -129,7 +129,7 @@ Only update CLAUDE.md if you have **genuinely reusable knowledge** that would he
 
 For any story that changes UI, verify it in the browser. Which tool is real here, and the
 manual consent step it needs, are in the root `CLAUDE.md` under **Automação de browser** and
-in `docs/manual_dev.md`. Read those before trying anything else — the other tool names that
+in `README.md`. Read those before trying anything else — the other tool names that
 turn up are dead ends.
 
 1. Navigate to the relevant page
