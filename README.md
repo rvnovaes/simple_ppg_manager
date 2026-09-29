@@ -1223,8 +1223,22 @@ com um Postgres de serviço. Duas diferenças em relação à sua máquina:
   acusa exatamente qual.
 
 Para ver o resultado sem abrir o navegador, `glab ci status` (o `glab`
-precisa estar autenticado no GitLab da faculdade). O pipeline não faz
-deploy: produção continua sendo a seção 10 do `CLAUDE.md`.
+precisa estar autenticado no GitLab da faculdade).
+
+**Na `main`, o pipeline também publica** em https://ppgm.direito.ufmg.br
+([ADR-011](docs/adr/011-deploy-pelo-gitlab-ci.md)): com o `make ready` verde,
+o job `construir` gera as imagens de produção e o `publicar` as sobe no
+servidor. Push na `main` **é** deploy — branch de trabalho só verifica.
+
+- O que roda no servidor, e em que ordem, está em `deploy/deploy.sh`
+  (migração antes do código novo, sempre).
+- Voltar uma versão: no GitLab, em *Operate > Environments > producao*,
+  reexecute o deploy de um pipeline anterior. A migração não volta junto.
+- Operar o servidor (logs, restart, superusuário): os comandos estão no
+  cabeçalho de `deploy/docker-compose.yml`, rodados de dentro de `/opt/ppgm`.
+- Backup do banco:
+  `docker compose -f /opt/ppgm/docker-compose.yml exec -T db pg_dump -U ppgm ppgm | gzip > ppgm-$(date +%F).sql.gz`.
+  Os uploads estão no volume `ppgm_media`.
 
 ---
 

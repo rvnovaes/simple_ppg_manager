@@ -1,20 +1,33 @@
-# Pipeline do GitLab: roda `make ready` a cada push.
+# Pipeline do GitLab: roda `make ready` a cada push e, na main, publica em
+# https://ppgm.direito.ufmg.br (ADR-011).
+#
+#   verificar  (todo push)  `make ready` — lint, typecheck e test
+#   construir  (só main)    imagens de produção -> registry do GitLab
+#   publicar   (só main)    SSH no servidor: pull, migrate, subir
 #
 # A regra do projeto é "make ready verde é pré-condição de qualquer commit"
-# (CLAUDE.md, Seção 7). Este arquivo só faz o GitLab cobrar isso de quem
-# esqueceu de rodar antes de dar push. Ele NÃO faz deploy: publicar em
-# produção continua sendo `migrate` + recarregar o gunicorn, à mão, na ordem
-# da Seção 10 do CLAUDE.md.
+# (CLAUDE.md, Seção 7). O `verificar` cobra isso de quem esqueceu de rodar
+# antes do push, e é também o que segura o deploy: com ele vermelho, nada
+# é construído nem publicado.
 #
-# Um job só, de propósito: `make ready` já encadeia lint, typecheck e test
-# nas duas metades (backend e frontend), e o time não precisa de um grafo de
-# jobs para ler o resultado — ou está verde, ou o log diz o que quebrou.
+# Um job só no `verificar`, de propósito: `make ready` já encadeia lint,
+# typecheck e test nas duas metades (backend e frontend), e o time não
+# precisa de um grafo de jobs para ler o resultado — ou está verde, ou o log
+# diz o que quebrou.
 #
 # Executa fora do canteiro, no runner do GitLab: mudar este arquivo é
 # human_gate no CLAUDE.md, e por isso ele nunca é editado pelo loop.
+#
+# Variáveis que o `publicar` exige, em Settings > CI/CD > Variables, todas
+# Protected (só a main as enxerga):
+#   SSH_PRIVATE_KEY   tipo File — chave de deploy (não a pessoal de ninguém)
+#   SSH_KNOWN_HOSTS   tipo File — `ssh-keyscan 150.164.104.58`
+#   DEPLOY_TARGET     tipo Variable — usuario@150.164.104.58
 
 stages:
   - verificar
+  - construir
+  - publicar
 
 variables:
   # O Postgres sobe como "service" (abaixo) e responde pelo nome da imagem,
@@ -73,3 +86,50 @@ ready:
   rules:
     # Todo push em qualquer branch. Sem job em tag nem em agenda por enquanto.
     - if: $CI_COMMIT_BRANCH
+
+# Imagens de produção: backend (gunicorn) e web (Nginx + build do front).
+# Vão para o registry do projeto com a tag do commit — é essa tag que o
+# servidor publica, então cada deploy aponta para uma imagem imutável e voltar
+# atrás é reexecutar o `publicar` de um pipeline antigo.
+construir:
+  stage: construir
+  needs: [ready]
+  image: docker:28
+  # Docker-in-Docker: exige o runner com `privileged = true`.
+  services:
+    - docker:28-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+  script:
+    - docker build -f backend/Dockerfile.prod -t "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA" backend
+    # Contexto na raiz: a imagem web precisa de frontend/ e nginx/.
+    - docker build -f nginx/Dockerfile.prod -t "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Deploy: copia o compose e o deploy.sh para /opt/ppgm e roda o script lá.
+# O que ele faz, e em que ordem, está no próprio deploy/deploy.sh.
+publicar:
+  stage: publicar
+  needs: [construir]
+  image: alpine:3.22
+  # Um deploy de cada vez: dois pushes seguidos na main não disputam o
+  # servidor — o segundo espera o primeiro terminar.
+  resource_group: producao
+  environment:
+    name: producao
+    url: https://ppgm.direito.ufmg.br
+  before_script:
+    - apk add --no-cache openssh-client
+    - chmod 600 "$SSH_PRIVATE_KEY"
+    - mkdir -p ~/.ssh && cp "$SSH_KNOWN_HOSTS" ~/.ssh/known_hosts
+  script:
+    - scp -i "$SSH_PRIVATE_KEY" deploy/docker-compose.yml deploy/deploy.sh "$DEPLOY_TARGET:/opt/ppgm/"
+    # O token do job vai pela entrada padrão (ver o cabeçalho do deploy.sh).
+    - printf '%s' "$CI_JOB_TOKEN" | ssh -i "$SSH_PRIVATE_KEY" "$DEPLOY_TARGET" /opt/ppgm/deploy.sh "$CI_COMMIT_SHORT_SHA" "$CI_REGISTRY_IMAGE"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -398,6 +398,12 @@ consequências. Já valem como decididos:
   (`ConvocationEmail` com status), não exceção engolida. O envio fica **fora**
   do `transaction.atomic`. SPF/DKIM/relay de produção se alinham com a infra;
   ambiente que envia precisa de `SITE_URL`.
+- **ADR-011**: push na `main` com `make ready` verde **é deploy** em
+  `ppgm.direito.ufmg.br`: o CI constrói as imagens (`backend/Dockerfile.prod`,
+  `nginx/Dockerfile.prod`) no registry do GitLab e roda `deploy/deploy.sh`
+  por SSH. O servidor é compartilhado e o TLS termina no **Caddy do host**,
+  na frente do nosso Nginx — daí o `nginx.prod.conf` repassar o
+  `X-Forwarded-Proto` e reconstruir o IP pelo `X-Forwarded-For`.
 
 ## 12. O que este projeto NÃO faz (anti-padrões)
 

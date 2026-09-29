@@ -1,0 +1,10 @@
+# O que não entra no contexto de build das imagens do backend. Sem isto o
+# `COPY . .` levaria o .venv do host (binários de outra máquina), caches e os
+# uploads locais de media/ para dentro da imagem.
+.venv/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+media/
+static_root/

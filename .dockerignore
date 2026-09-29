@@ -1,0 +1,10 @@
+# Contexto de build das imagens que partem da raiz (hoje só a do Nginx de
+# produção, nginx/Dockerfile.prod). Lista de PERMISSÃO: tudo fora, e só o que
+# o build usa volta. Sem isto o Docker enviaria o repositório inteiro — .git,
+# .venv, node_modules do host — a cada build.
+*
+!frontend/
+!nginx/
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/

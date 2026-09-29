@@ -1,0 +1,68 @@
+# Stack de PRODUÇÃO — ppgm.direito.ufmg.br (ADR-011).
+#
+# Mora em /opt/ppgm no servidor, ao lado do .env (segredos, nunca no git).
+# O job `publicar` do .gitlab-ci.yml copia este arquivo e o deploy.sh para lá
+# a cada deploy; não edite a cópia do servidor — ela é sobrescrita.
+#
+# Operação no servidor, de dentro de /opt/ppgm:
+#   docker compose ps                  estado dos serviços
+#   docker compose logs -f backend     log do gunicorn
+#   docker compose restart backend     reinicia o Django
+#   docker compose exec backend python manage.py createsuperuser
+#
+# Backup: o que não pode se perder está nos volumes `pgdata` (banco — use
+# pg_dump, ver o README) e `media` (uploads). `static` é regenerado a cada
+# deploy.
+
+name: ppgm
+
+services:
+  db:
+    # Mesma major do docker-compose.yml de desenvolvimento e do CI. Trocar a
+    # major invalida o volume: pg_dump antes, sempre.
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Sem porta publicada: só o backend fala com o banco, pela rede interna.
+
+  backend:
+    image: ${REGISTRY_IMAGE}/backend:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - static:/app/static_root
+      - media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: ${REGISTRY_IMAGE}/web:${IMAGE_TAG}
+    restart: unless-stopped
+    ports:
+      # Só em 127.0.0.1: quem atende a internet é o Caddy do host, com TLS,
+      # repassando para cá. Ninguém de fora chega nesta porta.
+      - "127.0.0.1:${HTTP_PORT:-8100}:80"
+    volumes:
+      - static:/srv/static:ro
+      - media:/srv/media:ro
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  media:
+  static:
