@@ -399,9 +399,10 @@ consequências. Já valem como decididos:
   do `transaction.atomic`. SPF/DKIM/relay de produção se alinham com a infra;
   ambiente que envia precisa de `SITE_URL`.
 - **ADR-011**: push na `main` com `make ready` verde **é deploy** em
-  `ppgm.direito.ufmg.br`: o CI constrói as imagens (`backend/Dockerfile.prod`,
-  `nginx/Dockerfile.prod`) no registry do GitLab e roda `deploy/deploy.sh`
-  por SSH. O servidor é compartilhado e o TLS termina no **Caddy do host**,
+  `ppgm.direito.ufmg.br`: o CI roda `deploy/deploy.sh` por SSH, que constrói
+  as imagens (`backend/Dockerfile.prod`, `nginx/Dockerfile.prod`) no próprio
+  servidor — provisório, até o runner ter `privileged` e o build voltar para o
+  registry do GitLab (o ADR traz o roteiro da volta). O servidor é compartilhado e o TLS termina no **Caddy do host**,
   na frente do nosso Nginx — daí o `nginx.prod.conf` repassar o
   `X-Forwarded-Proto` e reconstruir o IP pelo `X-Forwarded-For`.
 

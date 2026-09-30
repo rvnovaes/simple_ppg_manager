@@ -2,7 +2,12 @@
 #
 # Mora em /opt/ppgm no servidor, ao lado do .env (segredos, nunca no git).
 # O job `publicar` do .gitlab-ci.yml copia este arquivo e o deploy.sh para lá
-# a cada deploy; não edite a cópia do servidor — ela é sobrescrita.
+# a cada deploy, e o código do commit para /opt/ppgm/src; não edite nada disso
+# no servidor — é sobrescrito.
+#
+# PROVISÓRIO (ADR-011): as imagens são construídas aqui, a partir de src/, e
+# não baixadas do registry. Na volta ao registry, cada `build:` sai e o
+# `image:` passa a ser ${REGISTRY_IMAGE}/<serviço>:${IMAGE_TAG}.
 #
 # Operação no servidor, de dentro de /opt/ppgm:
 #   docker compose ps                  estado dos serviços
@@ -36,7 +41,10 @@ services:
     # Sem porta publicada: só o backend fala com o banco, pela rede interna.
 
   backend:
-    image: ${REGISTRY_IMAGE}/backend:${IMAGE_TAG}
+    build:
+      context: src/backend
+      dockerfile: Dockerfile.prod
+    image: ppgm/backend:${IMAGE_TAG}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -50,7 +58,11 @@ services:
         condition: service_healthy
 
   web:
-    image: ${REGISTRY_IMAGE}/web:${IMAGE_TAG}
+    build:
+      # Raiz do repositório: a imagem precisa de frontend/ e nginx/.
+      context: src
+      dockerfile: nginx/Dockerfile.prod
+    image: ppgm/web:${IMAGE_TAG}
     restart: unless-stopped
     ports:
       # Só em 127.0.0.1: quem atende a internet é o Caddy do host, com TLS,

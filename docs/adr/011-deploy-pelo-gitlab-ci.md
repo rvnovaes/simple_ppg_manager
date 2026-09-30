@@ -37,14 +37,38 @@ compilando front e back a cada push, e sem imagem imutável para voltar
 atrás); instalar um runner no servidor (mais um serviço rodando na máquina
 compartilhada, quando o runner existente alcança o servidor por SSH).
 
+### Provisório: build no servidor
+
+O runner não roda em `privileged` (o Docker-in-Docker do `construir` não
+sobe: `mount: permission denied`), e ligar isso depende de acesso à máquina
+do runner. Até lá, o job `construir` fica desligado (`when: never`) e o
+`publicar` envia o código do commit por SSH (`git archive | ssh`) para
+`/opt/ppgm/src`, onde o `deploy.sh` constrói as imagens com
+`docker compose build` antes de seguir o mesmo roteiro (migrate,
+collectstatic, subir, conferir). O servidor guarda as imagens da versão
+atual e da anterior.
+
+**Volta ao registry**, quando o runner tiver `privileged = true`:
+
+1. `.gitlab-ci.yml`: tirar o `when: never` do `construir` e pôr
+   `needs: [construir]` no `publicar`, que volta a mandar o `CI_JOB_TOKEN`
+   pela entrada padrão em vez do tar.
+2. `deploy/docker-compose.yml`: tirar os `build:` e apontar o `image:` para
+   `${REGISTRY_IMAGE}/<serviço>:${IMAGE_TAG}`.
+3. `deploy/deploy.sh`: trocar a extração do código e o `build` pelo
+   `docker login` com o token + `docker compose pull`.
+
 ## Consequências
 
 - Voltar uma versão é reexecutar o job `publicar` de um pipeline antigo: a
-  imagem daquela tag está no registry. **A migração não volta junto** — por
+  imagem daquela tag está no registry (no modo provisório, ela é
+  reconstruída a partir do código daquele commit). **A migração não volta
+  junto** — por
   isso continua valendo que toda migração seja retrocompatível com o código
   anterior (Seção 10).
 - O job `construir` usa Docker-in-Docker: o runner precisa de
-  `privileged = true`.
+  `privileged = true` — enquanto não tiver, vale o modo provisório acima,
+  e cada deploy compila front e back na máquina compartilhada.
 - Por estar atrás do Caddy, o Nginx de produção **repassa** o
   `X-Forwarded-Proto` recebido (e não `$scheme`, que seria `http` e causaria
   loop com o `SECURE_SSL_REDIRECT`) e reconstrói o IP do cliente a partir do

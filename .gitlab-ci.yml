@@ -2,8 +2,13 @@
 # https://ppgm.direito.ufmg.br (ADR-011).
 #
 #   verificar  (todo push)  `make ready` — lint, typecheck e test
-#   construir  (só main)    imagens de produção -> registry do GitLab
-#   publicar   (só main)    SSH no servidor: pull, migrate, subir
+#   publicar   (só main)    SSH no servidor: envia o código, build, migrate,
+#                           subir
+#
+# PROVISÓRIO: as imagens são construídas no próprio servidor, porque o runner
+# ainda não roda em modo privileged e o Docker-in-Docker não sobe nele. O job
+# `construir` (registry) está abaixo, desligado; a volta está descrita no
+# ADR-011.
 #
 # A regra do projeto é "make ready verde é pré-condição de qualquer commit"
 # (CLAUDE.md, Seção 7). O `verificar` cobra isso de quem esqueceu de rodar
@@ -87,6 +92,11 @@ ready:
     # Todo push em qualquer branch. Sem job em tag nem em agenda por enquanto.
     - if: $CI_COMMIT_BRANCH
 
+# DESLIGADO enquanto o runner não tiver `privileged = true` (ADR-011). Para
+# voltar ao registry: tirar o `when: never` daqui, pôr `needs: [construir]` no
+# `publicar` e trocar o envio do código pelo pull (deploy.sh e
+# deploy/docker-compose.yml, onde está marcado PROVISÓRIO).
+#
 # Imagens de produção: backend (gunicorn) e web (Nginx + build do front).
 # Vão para o registry do projeto com a tag do commit — é essa tag que o
 # servidor publica, então cada deploy aponta para uma imagem imutável e voltar
@@ -109,13 +119,13 @@ construir:
     - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA"
     - docker push "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHORT_SHA"
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
 
-# Deploy: copia o compose e o deploy.sh para /opt/ppgm e roda o script lá.
-# O que ele faz, e em que ordem, está no próprio deploy/deploy.sh.
+# Deploy: envia o código do commit e o deploy.sh para /opt/ppgm e roda o
+# script lá. O que ele faz, e em que ordem, está no próprio deploy/deploy.sh.
 publicar:
   stage: publicar
-  needs: [construir]
+  needs: [ready]
   image: alpine:3.22
   # Um deploy de cada vez: dois pushes seguidos na main não disputam o
   # servidor — o segundo espera o primeiro terminar.
@@ -124,12 +134,14 @@ publicar:
     name: producao
     url: https://ppgm.direito.ufmg.br
   before_script:
-    - apk add --no-cache openssh-client
+    - apk add --no-cache openssh-client git
     - chmod 600 "$SSH_PRIVATE_KEY"
     - mkdir -p ~/.ssh && cp "$SSH_KNOWN_HOSTS" ~/.ssh/known_hosts
   script:
     - scp -i "$SSH_PRIVATE_KEY" deploy/docker-compose.yml deploy/deploy.sh "$DEPLOY_TARGET:/opt/ppgm/"
-    # O token do job vai pela entrada padrão (ver o cabeçalho do deploy.sh).
-    - printf '%s' "$CI_JOB_TOKEN" | ssh -i "$SSH_PRIVATE_KEY" "$DEPLOY_TARGET" /opt/ppgm/deploy.sh "$CI_COMMIT_SHORT_SHA" "$CI_REGISTRY_IMAGE"
+    # O código vai como tar pelo próprio SSH, e não por clone: o servidor não
+    # precisa de credencial para ler o GitLab, e /opt/ppgm/src é sempre
+    # exatamente o commit publicado — nunca uma árvore com mudança local.
+    - git archive --format=tar "$CI_COMMIT_SHA" | ssh -i "$SSH_PRIVATE_KEY" "$DEPLOY_TARGET" /opt/ppgm/deploy.sh "$CI_COMMIT_SHORT_SHA"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

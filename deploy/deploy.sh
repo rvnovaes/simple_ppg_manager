@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # Publica uma versão em produção. Roda NO SERVIDOR, chamado por SSH pelo job
-# `publicar` do .gitlab-ci.yml (ADR-011):
+# `publicar` do .gitlab-ci.yml (ADR-011), com o código do commit chegando
+# como tar pela entrada padrão:
 #
-#   printf '%s' "$CI_JOB_TOKEN" | ssh servidor /opt/ppgm/deploy.sh <tag> <imagem>
+#   git archive <commit> | ssh servidor /opt/ppgm/deploy.sh <tag>
 #
-# O token do job chega pela entrada padrão, não pela linha de comando, para
-# não aparecer no `ps` do servidor. Ele só vale enquanto o job roda: serve
-# para o pull e expira logo depois — o servidor não guarda credencial do
-# registry.
+# PROVISÓRIO: as imagens são construídas aqui, a partir de src/, porque o
+# runner ainda não constrói imagem (sem privileged). Na volta ao registry, o
+# bloco "código" e o `build` saem, e entra o `docker compose pull` com o
+# token do job (ver o ADR-011).
 #
 # Ordem da Seção 10 do CLAUDE.md: migração primeiro, depois o código novo.
 set -euo pipefail
 
-TAG="${1:?uso: deploy.sh <tag> <imagem-do-registry>}"
-REGISTRY_IMAGE="${2:?uso: deploy.sh <tag> <imagem-do-registry>}"
-REGISTRY_HOST="${REGISTRY_IMAGE%%/*}"
+TAG="${1:?uso: git archive <commit> | deploy.sh <tag>}"
 DOMINIO="ppgm.direito.ufmg.br"
 
 cd "$(dirname "$0")"
@@ -25,7 +24,10 @@ if [[ ! -f .env ]]; then
 fi
 
 # A versão publicada fica gravada no .env, para que um `docker compose` dado
-# à mão depois (restart, logs, reboot do servidor) use as mesmas imagens.
+# à mão depois (restart, logs, reboot do servidor) use as mesmas imagens. Só
+# é gravada no fim, com a versão nova respondendo: até lá ela vale apenas
+# para este script (o export abaixo vence o .env), e um deploy que quebra no
+# meio deixa o .env apontando para a versão anterior, cujas imagens existem.
 grava() {
     if grep -q "^$1=" .env; then
         sed -i "s|^$1=.*|$1=$2|" .env
@@ -34,14 +36,18 @@ grava() {
     fi
 }
 ANTERIOR="$(sed -n 's/^IMAGE_TAG=//p' .env)"
-grava REGISTRY_IMAGE "$REGISTRY_IMAGE"
-grava IMAGE_TAG "$TAG"
 echo "==> publicando $TAG (anterior: ${ANTERIOR:-nenhuma})"
 
-echo "==> pull das imagens"
-docker login "$REGISTRY_HOST" -u gitlab-ci-token --password-stdin
-trap 'docker logout "$REGISTRY_HOST" >/dev/null' EXIT
-docker compose pull backend web
+# Código: extrai ao lado e só então troca, para que src/ nunca fique pela
+# metade se o envio for interrompido.
+echo "==> código"
+rm -rf src.novo && mkdir src.novo
+tar -x -C src.novo
+rm -rf src && mv src.novo src
+
+echo "==> build das imagens"
+export IMAGE_TAG="$TAG"
+docker compose build backend web
 
 echo "==> banco"
 docker compose up -d --wait db
@@ -60,12 +66,21 @@ docker compose up -d --remove-orphans
 echo "==> conferindo"
 PORTA="$(sed -n 's/^HTTP_PORT=//p' .env)"
 PORTA="${PORTA:-8100}"
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
     if curl -fsS -o /dev/null -H "Host: $DOMINIO" -H "X-Forwarded-Proto: https" \
             "http://127.0.0.1:$PORTA/admin/login/" \
        && curl -fsS -o /dev/null "http://127.0.0.1:$PORTA/"; then
+        grava IMAGE_TAG "$TAG"
         echo "==> no ar: https://$DOMINIO ($TAG)"
+        # Guarda a versão atual e a anterior (para voltar rápido); o resto sai.
+        # O cache de build fica limitado a uma semana, para o disco da máquina
+        # compartilhada não crescer sem fim.
+        docker images --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E '^ppgm/(backend|web):' \
+            | grep -vE ":(${TAG}|${ANTERIOR:-nenhuma})$" \
+            | xargs -r docker rmi >/dev/null || true
         docker image prune -f >/dev/null
+        docker builder prune -f --filter until=168h >/dev/null
         exit 0
     fi
     sleep 2

@@ -1227,8 +1227,9 @@ precisa estar autenticado no GitLab da faculdade).
 
 **Na `main`, o pipeline também publica** em https://ppgm.direito.ufmg.br
 ([ADR-011](docs/adr/011-deploy-pelo-gitlab-ci.md)): com o `make ready` verde,
-o job `construir` gera as imagens de produção e o `publicar` as sobe no
-servidor. Push na `main` **é** deploy — branch de trabalho só verifica.
+o job `publicar` envia o código ao servidor, que constrói as imagens e as
+sobe. Push na `main` **é** deploy — branch de trabalho só verifica. (Construir
+no servidor é provisório, até o runner poder construir imagem; ver o ADR.)
 
 - O que roda no servidor, e em que ordem, está em `deploy/deploy.sh`
   (migração antes do código novo, sempre).
