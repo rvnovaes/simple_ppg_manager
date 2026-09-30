@@ -1,0 +1,30 @@
+/* Estilo de impressão do roteiro de testes. Para regerar o PDF, da raiz:
+ *
+ *   pandoc docs/testes/roteiro-de-testes-por-papel.md -s --embed-resources \
+ *     --css docs/testes/impressao.css -o /tmp/roteiro.html
+ *   google-chrome --headless --no-pdf-header-footer \
+ *     --print-to-pdf=docs/testes/roteiro-de-testes-por-papel.pdf /tmp/roteiro.html
+ */
+@page { size: A4; margin: 18mm 16mm; }
+html { font-size: 10.5pt; }
+body {
+  font-family: "Source Sans 3", "Noto Sans", "DejaVu Sans", sans-serif;
+  color: #1c1c1c; line-height: 1.45; max-width: none; margin: 0; padding: 0;
+}
+header#title-block-header { border-bottom: 2px solid #7a1f2b; margin-bottom: 1.2em; padding-bottom: .6em; }
+h1.title { font-size: 2em; color: #7a1f2b; margin: 0; }
+p.subtitle { font-size: 1.15em; margin: .2em 0; color: #444; }
+p.date { color: #666; margin: 0; }
+h1 { font-size: 1.55em; color: #7a1f2b; margin-top: 1.4em; page-break-after: avoid; }
+h1:not(.title) { page-break-before: always; }
+#title-block-header + h1 { page-break-before: avoid; }
+h2 { font-size: 1.2em; margin-top: 1.3em; border-bottom: 1px solid #ddd; padding-bottom: .15em; page-break-after: avoid; }
+p { margin: .45em 0; orphans: 3; widows: 3; }
+p strong:first-child { color: #7a1f2b; }
+code { font-size: .92em; background: #f3f0f0; padding: 0 .25em; border-radius: 3px; }
+a { color: #7a1f2b; }
+table { border-collapse: collapse; width: 100%; margin: .8em 0; font-size: .92em; page-break-inside: avoid; }
+th, td { border: 1px solid #ccc; padding: .3em .45em; vertical-align: top; }
+th { background: #f3eaeb; }
+td[style*="center"], th[style*="center"] { width: 3.2em; }
+tr:nth-child(even) td { background: #fafafa; }
